@@ -1,0 +1,66 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Cloud Functions
+/functions/node_modules/
+/functions/lib/
+
+# ローカルの秘密情報（APIキー・署名鍵・サービスアカウント鍵など）。
+# 絶対にコミットしない。CIではGitHub Secretsを使う。
+.env.local
+*.keystore
+*.jks
+key.properties
+**/serviceAccountKey*.json
+**/play-store-service-account*.json
+firestore-debug.log
+
+# Claude Code のローカル設定（このマシン固有）
+.claude/settings.local.json
+
+# パートナーのメールアドレス等の個人情報・環境固有情報を含むため、
+# このマシンにのみ残し、リポジトリにはpushしない
+CLAUDE.md

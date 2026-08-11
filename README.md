@@ -1,0 +1,219 @@
+# AIMARU — セットアップ手順
+
+## 0. プラットフォームフォルダの補完
+
+このリポジトリは `lib/` と `pubspec.yaml` のみのFlutterプロジェクトで、`flutter create` が生成する `android/` `ios/` などのプラットフォームフォルダを含んでいません。Flutter SDK導入後、プロジェクトルートで一度だけ実行してください（既存の `lib/` `pubspec.yaml` は上書きされません）。
+
+```bash
+flutter create --platforms=android,ios --org com.example .
+```
+
+## 1. Flutter環境
+
+```bash
+# Flutter SDKインストール（未導入の場合）
+# https://docs.flutter.dev/get-started/install
+
+flutter --version  # 3.x.x 以上を確認
+```
+
+## 2. Firebaseプロジェクト作成
+
+1. https://console.firebase.google.com → 新規プロジェクト作成
+2. 「Authentication」→ 「Google」を有効化
+3. 「Firestore Database」→ 作成（テストモードで開始）
+4. 「Storage」→ 有効化
+
+### FlutterFire CLI でFirebase接続
+
+```bash
+dart pub global activate flutterfire_cli
+flutterfire configure
+# → firebase_options.dart が自動生成される
+```
+
+## 3. Gemini APIキー取得
+
+1. https://aistudio.google.com/apikey → 「APIキーを作成」
+2. **重要**: 課金（Blazeプラン）が有効なGoogle Cloudプロジェクト（Firebase用のプロジェクトなど）を選ぶと、そのプロジェクトのGemini APIは無料枠が使えず「最初のトークンから課金」扱いになる（前払いクレジット¥0だと`prepayment credits are depleted`エラー）。無料枠を使うなら、プルダウンから「＋ プロジェクトを作成」で**課金が紐付いていない新規プロジェクト**を作り、そちらでキーを発行する
+3. 無料枠の対象は Flash / Flash-Lite系のみ（Proモデルは対象外、2026年4月時点）。`gemini_service.dart` は `gemini-flash-latest` を使用
+4. **キーはソースコードに書かず、ローカルの `.env.local` に置く**（GitHubにpushされないよう`.gitignore`済み）
+
+```bash
+cp .env.local.example .env.local
+# .env.local を開いて GEMINI_API_KEY=発行したキー を設定
+```
+
+起動・ビルドは通常の `flutter run` / `flutter build apk` の代わりに、キーを読み込む付属スクリプトを使う：
+
+```bash
+./scripts/run_dev.sh                 # flutter run 相当
+./scripts/build_release_apk.sh        # flutter build apk --release 相当
+```
+
+（直接 `flutter run` する場合は `--dart-define=GEMINI_API_KEY=xxx` を手動で付ける。`gemini_service.dart` は `String.fromEnvironment('GEMINI_API_KEY')` でこれを読む）
+
+## 4. Google Calendar API（カレンダー同期）
+
+1. https://console.cloud.google.com → Firebaseプロジェクトと同じGCPプロジェクトを選択
+2. 「APIとサービス」→「ライブラリ」→ **Google Calendar API** を有効化
+3. 「APIとサービス」→「OAuth同意画面」→ スコープに `.../auth/calendar.events` を追加
+4. アプリはログイン時に `lib/services/auth_service.dart` の `GoogleSignIn(scopes: [...])` で `calendar.events` スコープを要求し、`lib/services/google_calendar_service.dart` が予定の作成・更新・削除を同期します（予定詳細画面のトグルでON/OFF）
+5. **重要**: `calendar.events` は機密性の高いスコープのため、OAuth同意画面は「テスト中」ステータスのまま運用する（Google Cloud Console →「対象」）。この状態では**テストユーザーとして登録したGoogleアカウントしかログインできない**。Google Cloud Console →「対象」→「テストユーザー」→「Add users」から、自分と彼女のGoogleアカウントの両方を登録すること（上限100人、審査不要）
+6. Androidで実機/エミュレータ実行する場合は、デバッグ/リリース用のSHA-1証明書フィンガープリントをFirebase Console →「プロジェクトの設定」→ Androidアプリ →「フィンガープリントを追加」で登録する必要がある（未登録だとGoogleログインが失敗する）。デバッグ用は次のコマンドで取得できる:
+   ```bash
+   keytool -list -v -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android -keypass android
+   ```
+
+## 5. Firestore / Storage セキュリティルール
+
+Firestoreのルールは [`firestore.rules`](firestore.rules) を正としてリポジトリで管理しています（`firebase deploy --only firestore:rules` でデプロイ）。`rules_test/`ディレクトリ（Node.js + `@firebase/rules-unit-testing`）でユニットテスト可能です。
+
+ハマりどころ:
+- `create`時は`resource`がまだ存在せず`null`になるため、`resource.data`ではなく`request.resource.data`で判定すること
+- `inviteCode`でのクエリ（招待コード参加）のように、ルールが参照するフィールド（`memberIds`）とクエリの絞り込み条件が一致しないクエリは、Firestoreがルールを"証明"できずに常に拒否される。読み取りは`request.auth != null`まで緩め、書き込み側（create/update/delete）で安全性を担保している
+
+Storage（`storage_service.dart` が `couples/{coupleId}/...` 配下に画像を保存するため、カップルのメンバーのみ読み書きできるようにする）:
+
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /couples/{coupleId}/{allPaths=**} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in firestore.get(/databases/(default)/documents/couples/$(coupleId)).data.memberIds;
+    }
+  }
+}
+```
+
+## 6. 依存パッケージインストール
+
+```bash
+flutter pub get
+```
+
+## 7. main.dart の修正
+
+```dart
+// コメントアウトを解除
+import 'firebase_options.dart';
+
+await Firebase.initializeApp(
+  options: DefaultFirebaseOptions.currentPlatform,
+);
+```
+
+## 8. 起動
+
+```bash
+flutter run
+```
+
+## 9. プッシュ通知（Cloud Functions）
+
+「パートナーが予定を追加したら通知」と「予定のリマインダー通知」はCloud Functions（`functions/`ディレクトリ）で動いています。**Blazeプラン（従量課金）が必須**です。Firebase Console →「使用量と請求額」からアップグレードしてください（Gemini APIですでにBlazeにしている場合は不要）。
+
+```bash
+# firebase-tools が未導入の場合
+npm install -g firebase-tools
+firebase login
+
+# 依存パッケージインストール
+cd functions
+npm install
+cd ..
+
+# デプロイ（Functions本体 + collectionGroupクエリ用インデックス）
+firebase deploy --only functions,firestore:indexes
+```
+
+仕組み:
+- `onEventCreated`: `couples/{coupleId}/events/{eventId}` が作成されたら、作成者以外のメンバーへ「◯◯さんが予定を追加しました」というプッシュ通知を送る（`users/{uid}.notifyOnNewEvent` がfalseの人には送らない）
+- `sendReminders`: 15分おきに実行されるスケジュール関数。各メンバーの `users/{uid}.reminderMinutesBefore`（設定画面で変更可、デフォルト60分）に応じて、開始前の予定をプッシュ通知する。`recurring: true` の予定（記念日など）は毎年の発生日を計算して繰り返し通知する
+
+通知のON/OFFやタイミングはアプリの「設定」画面（⚙️）から変更できます。
+
+### iOS でプッシュ通知を使う場合
+
+1. Apple Developer で APNs認証キー（.p8）を作成
+2. Firebase Console →「プロジェクトの設定」→「Cloud Messaging」→ APNs認証キーをアップロード
+3. Xcode で `ios/Runner` に「Push Notifications」と「Background Modes → Remote notifications」の Capability を追加
+
+### 通知が届かないとき
+
+- 端末側で通知の許可（初回起動時のダイアログ）を許可しているか確認
+- `users/{uid}` ドキュメントに `fcmToken` が保存されているかFirestoreコンソールで確認（ログインし直すと再取得されます）
+- `firebase functions:log` でCloud Functions側のエラーを確認
+
+---
+
+## 彼女への配布
+
+### Android（Firebase App Distribution）
+
+```bash
+# APKビルド
+flutter build apk --release
+
+# Firebase App Distribution にアップロード
+# → Firebase Console → App Distribution → 彼女のメールを招待
+```
+
+### iOS（TestFlight）
+
+```bash
+# Apple Developer登録（¥12,900/年）が必要
+
+# ipaビルド
+flutter build ipa --release
+
+# App Store Connect → TestFlight → 彼女を内部テスターに追加
+```
+
+---
+
+## ファイル構成
+
+```
+lib/
+├── main.dart                     # エントリポイント + ルーティング + ボトムナビ
+├── models/
+│   └── models.dart               # CoupleModel, AimaruEvent, ChatMessage, GeminiParsedEvent
+├── services/
+│   ├── auth_service.dart         # Google認証（+ Calendar同期スコープ）
+│   ├── couple_service.dart       # ペアリング（招待コード）
+│   ├── event_service.dart        # 予定 CRUD + リアルタイム同期
+│   ├── gemini_service.dart       # AI 自然言語→予定変換・デートプラン提案
+│   ├── chat_service.dart         # カップルチャット CRUD + リアルタイム同期
+│   ├── storage_service.dart      # Firebase Storage 画像アップロード
+│   ├── google_calendar_service.dart # Googleカレンダーへの予定push/削除
+│   ├── notification_service.dart # FCMトークン保存・フォアグラウンド通知・タップ遷移
+│   └── notification_settings_service.dart # 通知ON/OFF・リマインダー時間の設定（users/{uid}）
+├── functions/                    # Cloud Functions（予定登録通知・リマインダー送信）
+├── screens/
+│   ├── login_screen.dart         # ログイン画面
+│   ├── pairing_screen.dart       # ペアリング画面
+│   ├── ai_chat_screen.dart       # AIチャット画面（自然言語で予定追加）
+│   ├── calendar_screen.dart      # カレンダー画面（月表示・予定一覧）
+│   ├── event_form_screen.dart    # 予定の新規作成・編集フォーム
+│   ├── event_detail_screen.dart  # 予定詳細（写真・メモ・Google同期）
+│   ├── chat_screen.dart          # カップルチャット（AIとは別）
+│   ├── memories_screen.dart      # 思い出アルバム（画像グリッド）
+│   └── settings_screen.dart      # 設定（プロフィール・ログアウト・Googleカレンダー表示設定）
+└── utils/
+    └── app_theme.dart            # カラー・テーマ定義
+```
+
+## 次のステップ
+
+- [x] `CalendarScreen` — table_calendar でカレンダーUI実装
+- [x] `EventDetailScreen` — 写真・メモ詳細画面
+- [x] AIデートプラン提案（専用画面は廃止し、AIチャットの自然言語対話に統合）
+- [x] Google Calendar API 同期（push + アプリ内表示、パートラー分もFirestore経由で共有）
+- [x] カップルチャット・思い出アルバム（画像の端末保存対応）
+- [x] Firebase Cloud Messaging — 予定登録通知・リマインダー通知（上記「9.」を参照、Cloud Functionsのデプロイが必要）
+- [x] `CalendarScreen` — 全体表示（月グリッドに予定プレビュー）⇔ 選択表示（ドット+下部リスト）のトグル
+- [x] 設定画面（プロフィール・ログアウト・Googleカレンダー表示/同期設定）
+- [ ] `flutter create` でのプラットフォーム補完（上記「0.」を参照、ユーザー側で実施）
+- [ ] `flutterfire configure` / Gemini APIキー / Google Cloud設定（上記手順を参照、ユーザー側で実施）

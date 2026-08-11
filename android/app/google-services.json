@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "597876032880",
+    "project_id": "aimaru-7eb2e",
+    "storage_bucket": "aimaru-7eb2e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:597876032880:android:3549f776859cbcc546bbb5",
+        "android_client_info": {
+          "package_name": "com.example.aimaru"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "597876032880-jukccm8vbegg751t9knjhkp2v9qfe1se.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.aimaru",
+            "certificate_hash": "32487fc5703915d3f70142ee1bc6ea2646e0cfc4"
+          }
+        },
+        {
+          "client_id": "597876032880-eaj3fuknjf3k7vt3mdh7htm55cut6np2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-h7eDkkKqfQ2VkLkyZN9NQWKGA6rjRtY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "597876032880-eaj3fuknjf3k7vt3mdh7htm55cut6np2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "597876032880-c3oqrtinapnjam7v9jg3318vvnl6mot4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.aimaru"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
