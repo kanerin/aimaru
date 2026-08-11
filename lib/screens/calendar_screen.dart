@@ -273,10 +273,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
   ) {
     const daysOfWeekHeight = 22.0;
     const headerHeight = 56.0; // ヘッダー行の実測より少し余裕を持たせ、はみ出しを防ぐ
+    const fabReserve = 84.0; // FABがスクロールなしの初期表示で最終行に被らないための余白
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final rowHeight = ((constraints.maxHeight - headerHeight - daysOfWeekHeight) / 6)
+        final rowHeight = ((constraints.maxHeight - headerHeight - daysOfWeekHeight - fabReserve) / 6)
             .clamp(40.0, 140.0);
 
         return SingleChildScrollView(

@@ -79,7 +79,12 @@ class _EventFormScreenState extends State<EventFormScreen> {
   }
 
   Future<void> _pickTime() async {
-    final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_date));
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_date),
+      // ダイヤル表示だと選択円と数字が重なって見づらいため、入力式にする
+      initialEntryMode: TimePickerEntryMode.input,
+    );
     if (picked != null) {
       setState(() => _date = DateTime(_date.year, _date.month, _date.day, picked.hour, picked.minute));
     }

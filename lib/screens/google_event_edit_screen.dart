@@ -47,7 +47,12 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
 
   Future<void> _pickTime(bool isStart) async {
     final target = isStart ? _start : _end;
-    final picked = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(target));
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(target),
+      // ダイヤル表示だと選択円と数字が重なって見づらいため、入力式にする
+      initialEntryMode: TimePickerEntryMode.input,
+    );
     if (picked == null) return;
     setState(() {
       final updated = DateTime(target.year, target.month, target.day, picked.hour, picked.minute);

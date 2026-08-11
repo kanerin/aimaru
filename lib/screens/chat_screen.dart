@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -80,6 +81,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _copyText(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('コピーしました'), duration: Duration(seconds: 1)),
+    );
+  }
+
   Future<void> _saveImageToDevice(String url) async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('保存中...'), duration: Duration(seconds: 1)),
@@ -130,28 +138,32 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<List<ChatMessage>>(
-              stream: _chatService.watchMessages(widget.coupleId),
-              builder: (context, snap) {
-                final messages = snap.data ?? [];
-                if (!snap.hasData) {
-                  return Center(child: CircularProgressIndicator(color: appAccent(context)));
-                }
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('まだメッセージがありません\n最初のひとことを送ってみましょう',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: StreamBuilder<List<ChatMessage>>(
+                stream: _chatService.watchMessages(widget.coupleId),
+                builder: (context, snap) {
+                  final messages = snap.data ?? [];
+                  if (!snap.hasData) {
+                    return Center(child: CircularProgressIndicator(color: appAccent(context)));
+                  }
+                  if (messages.isEmpty) {
+                    return const Center(
+                      child: Text('まだメッセージがありません\n最初のひとことを送ってみましょう',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+                    );
+                  }
+                  _scrollToBottom();
+                  return ListView.builder(
+                    controller: _scrollCtrl,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: messages.length,
+                    itemBuilder: (ctx, i) => _buildBubble(messages[i]),
                   );
-                }
-                _scrollToBottom();
-                return ListView.builder(
-                  controller: _scrollCtrl,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
-                  itemBuilder: (ctx, i) => _buildBubble(messages[i]),
-                );
-              },
+                },
+              ),
             ),
           ),
           Container(
@@ -205,34 +217,55 @@ class _ChatScreenState extends State<ChatScreen> {
 
     Widget content;
     if (m.imageUrl != null) {
-      content = ClipRRect(
-        borderRadius: BorderRadius.circular(16).copyWith(
-          bottomLeft: isMe ? null : const Radius.circular(4),
-          bottomRight: isMe ? const Radius.circular(4) : null,
-        ),
-        child: GestureDetector(
-          onLongPress: () => _saveImageToDevice(m.imageUrl!),
-          child: CachedNetworkImage(
-            imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
-            memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
-            placeholder: (_, __) => Container(width: 180, height: 140, color: AppColors.navySurface),
+      content = Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16).copyWith(
+              bottomLeft: isMe ? null : const Radius.circular(4),
+              bottomRight: isMe ? const Radius.circular(4) : null,
+            ),
+            child: GestureDetector(
+              onLongPress: () => _saveImageToDevice(m.imageUrl!),
+              child: CachedNetworkImage(
+                imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
+                memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
+                placeholder: (_, __) => Container(width: 180, height: 140, color: AppColors.navySurface),
+              ),
+            ),
           ),
-        ),
+          Positioned(
+            right: 6, bottom: 6,
+            child: GestureDetector(
+              onTap: () => _saveImageToDevice(m.imageUrl!),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.download_rounded, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       );
     } else {
-      content = Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isMe ? appAccent(context) : AppColors.navySurface,
-          borderRadius: BorderRadius.circular(18).copyWith(
-            bottomLeft: isMe ? null : const Radius.circular(4),
-            bottomRight: isMe ? const Radius.circular(4) : null,
+      content = GestureDetector(
+        onLongPress: () => _copyText(m.text),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isMe ? appAccent(context) : AppColors.navySurface,
+            borderRadius: BorderRadius.circular(18).copyWith(
+              bottomLeft: isMe ? null : const Radius.circular(4),
+              bottomRight: isMe ? const Radius.circular(4) : null,
+            ),
+            border: isMe ? null : Border.all(color: AppColors.hairline),
           ),
-          border: isMe ? null : Border.all(color: AppColors.hairline),
+          child: Text(m.text, style: TextStyle(
+            fontSize: 13, color: isMe ? Colors.white : AppColors.textPrimary, height: 1.5,
+          )),
         ),
-        child: Text(m.text, style: TextStyle(
-          fontSize: 13, color: isMe ? Colors.white : AppColors.textPrimary, height: 1.5,
-        )),
       );
     }
 

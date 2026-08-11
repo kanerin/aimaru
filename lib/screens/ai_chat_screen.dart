@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../models/models.dart';
 import '../../services/gemini_service.dart';
@@ -49,32 +50,52 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
     _scrollToBottom();
 
-    final history = _messages
-        .where((m) => m.type == _ChatType.user || m.type == _ChatType.ai)
-        .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
-        .toList();
-    // 直前に送信したユーザー発言は履歴とAI呼び出しの両方に含めないよう除く
-    if (history.isNotEmpty) history.removeLast();
+    try {
+      final history = _messages
+          .where((m) => m.type == _ChatType.user || m.type == _ChatType.ai)
+          .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
+          .toList();
+      // 直前に送信したユーザー発言は履歴とAI呼び出しの両方に含めないよう除く
+      if (history.isNotEmpty) history.removeLast();
 
-    final upcoming = await _eventService.watchUpcomingEvents(widget.coupleId, limit: 30).first;
-    final reply = await _gemini.respond(text, history, upcomingEvents: upcoming);
+      // 予定の参照に使う直近の予定一覧。取得に失敗しても会話自体は続けられるように
+      // ここだけ個別にフォールバックする（例: 通信が不安定な状態から復帰した直後など）。
+      List<AimaruEvent> upcoming = const [];
+      try {
+        upcoming = await _eventService
+            .watchUpcomingEvents(widget.coupleId, limit: 30)
+            .first
+            .timeout(const Duration(seconds: 6));
+      } catch (_) {
+        upcoming = const [];
+      }
 
-    setState(() {
-      _thinking = false;
-      if (reply.kind == GeminiReplyKind.events) {
-        if (reply.events.length > 1) {
-          final batchId = DateTime.now().microsecondsSinceEpoch;
-          _messages.add(_ChatItem.bulkAdd(reply.events, batchId));
-          for (final e in reply.events) {
-            _messages.add(_ChatItem.eventPreview(e, batchId: batchId));
+      final reply = await _gemini.respond(text, history, upcomingEvents: upcoming);
+      if (!mounted) return;
+
+      setState(() {
+        _thinking = false;
+        if (reply.kind == GeminiReplyKind.events) {
+          if (reply.events.length > 1) {
+            final batchId = DateTime.now().microsecondsSinceEpoch;
+            _messages.add(_ChatItem.bulkAdd(reply.events, batchId));
+            for (final e in reply.events) {
+              _messages.add(_ChatItem.eventPreview(e, batchId: batchId));
+            }
+          } else {
+            _messages.add(_ChatItem.eventPreview(reply.events.first));
           }
         } else {
-          _messages.add(_ChatItem.eventPreview(reply.events.first));
+          _messages.add(_ChatItem.ai(reply.text));
         }
-      } else {
-        _messages.add(_ChatItem.ai(reply.text));
-      }
-    });
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _thinking = false;
+        _messages.add(_ChatItem.ai('エラーが発生しました。もう一度試してください'));
+      });
+    }
     _scrollToBottom();
   }
 
@@ -164,14 +185,18 @@ class _AiChatScreenState extends State<AiChatScreen> {
         children: [
           // ── メッセージ一覧 ──
           Expanded(
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_thinking ? 1 : 0),
-              itemBuilder: (ctx, i) {
-                if (i == _messages.length) return _buildThinking();
-                return _buildMessage(_messages[i]);
-              },
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: ListView.builder(
+                controller: _scrollCtrl,
+                padding: const EdgeInsets.all(16),
+                itemCount: _messages.length + (_thinking ? 1 : 0),
+                itemBuilder: (ctx, i) {
+                  if (i == _messages.length) return _buildThinking();
+                  return _buildMessage(_messages[i]);
+                },
+              ),
             ),
           ),
 
@@ -253,22 +278,30 @@ class _AiChatScreenState extends State<AiChatScreen> {
       ),
       child: Align(
         alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: isAi ? AppColors.navySurface : appAccent(context),
-            borderRadius: BorderRadius.circular(18).copyWith(
-              bottomLeft: isAi ? const Radius.circular(4) : null,
-              bottomRight: !isAi ? const Radius.circular(4) : null,
+        child: GestureDetector(
+          onLongPress: () {
+            Clipboard.setData(ClipboardData(text: item.text ?? ''));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('コピーしました'), duration: Duration(seconds: 1)),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isAi ? AppColors.navySurface : appAccent(context),
+              borderRadius: BorderRadius.circular(18).copyWith(
+                bottomLeft: isAi ? const Radius.circular(4) : null,
+                bottomRight: !isAi ? const Radius.circular(4) : null,
+              ),
+              border: isAi ? Border.all(color: AppColors.hairline) : null,
             ),
-            border: isAi ? Border.all(color: AppColors.hairline) : null,
-          ),
-          child: Text(
-            item.text ?? '',
-            style: TextStyle(
-              fontSize: 13,
-              color: isAi ? AppColors.textPrimary : Colors.white,
-              height: 1.5,
+            child: Text(
+              item.text ?? '',
+              style: TextStyle(
+                fontSize: 13,
+                color: isAi ? AppColors.textPrimary : Colors.white,
+                height: 1.5,
+              ),
             ),
           ),
         ),
