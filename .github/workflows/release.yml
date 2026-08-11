@@ -35,8 +35,10 @@ jobs:
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
+      # Play Storeはアップロードのたびに versionCode の単調増加を要求するため、
+      # CI実行番号をそのままビルド番号に使う。
       - name: Build release App Bundle
-        run: flutter build appbundle --release --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       # デフォルトはinternalトラック（審査なし・即時反映）。
       # 本番(production)トラックへ出す場合は track を変更するか、
