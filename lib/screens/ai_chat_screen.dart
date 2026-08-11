@@ -22,12 +22,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final List<_ChatItem> _messages = [];
   bool _thinking = false;
 
-  // サジェストチップ
+  // サジェストチップ（実在の人物名は使わない）
   final _suggestions = [
-    '星野源の誕生日を追加',
+    '好きなアーティストの誕生日を追加',
     '来週の土曜デートしたい',
     '付き合って1年の記念日',
-    '雨の日のプランを提案して',
+    '来週の予定を教えて',
   ];
 
   @override
@@ -35,7 +35,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     super.initState();
     _messages.add(_ChatItem.ai(
       '2人のスケジュール管理をお手伝いします ✦\n'
-      '「星野源の誕生日追加して」のように話しかけてみてください',
+      '「来週の土曜デートしたい」のように話しかけたり、「来週の予定は？」と聞いたりしてみてください',
     ));
   }
 
@@ -49,38 +49,36 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
     _scrollToBottom();
 
-    // まず予定として解析を試みる（複数件になる場合もある）
-    final parsedList = await _gemini.parseEventFromText(text);
+    final history = _messages
+        .where((m) => m.type == _ChatType.user || m.type == _ChatType.ai)
+        .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
+        .toList();
+    // 直前に送信したユーザー発言は履歴とAI呼び出しの両方に含めないよう除く
+    if (history.isNotEmpty) history.removeLast();
 
-    if (parsedList != null && parsedList.isNotEmpty) {
-      // 予定として解析できた → 確認カードを表示（複数可）
-      setState(() {
-        _thinking = false;
-        if (parsedList.length > 1) {
-          _messages.add(_ChatItem.ai('${parsedList.length}件の予定が見つかりました。確認して追加してください'));
-        }
-        for (final e in parsedList) {
-          _messages.add(_ChatItem.eventPreview(e));
-        }
-      });
-    } else {
-      // 通常チャット
-      final history = _messages
-          .where((m) => m.type != _ChatType.eventPreview)
-          .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
-          .toList();
-      final reply = await _gemini.chat(text, history);
+    final upcoming = await _eventService.watchUpcomingEvents(widget.coupleId, limit: 30).first;
+    final reply = await _gemini.respond(text, history, upcomingEvents: upcoming);
 
-      setState(() {
-        _thinking = false;
-        _messages.add(_ChatItem.ai(reply));
-      });
-    }
+    setState(() {
+      _thinking = false;
+      if (reply.kind == GeminiReplyKind.events) {
+        if (reply.events.length > 1) {
+          final batchId = DateTime.now().microsecondsSinceEpoch;
+          _messages.add(_ChatItem.bulkAdd(reply.events, batchId));
+          for (final e in reply.events) {
+            _messages.add(_ChatItem.eventPreview(e, batchId: batchId));
+          }
+        } else {
+          _messages.add(_ChatItem.eventPreview(reply.events.first));
+        }
+      } else {
+        _messages.add(_ChatItem.ai(reply.text));
+      }
+    });
     _scrollToBottom();
   }
 
   Future<void> _confirmEvent(_ChatItem item, GeminiParsedEvent event) async {
-    // 確認カードを「追加済み」に更新（この特定のカードだけを対象にする）
     setState(() {
       final idx = _messages.indexOf(item);
       if (idx >= 0) _messages[idx] = _ChatItem.ai('「${event.title}」をカレンダーに追加しました ✅');
@@ -92,6 +90,35 @@ class _AiChatScreenState extends State<AiChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${event.title} を追加しました'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmBulk(_ChatItem item) async {
+    final events = item.events!;
+    final batchId = item.batchId;
+
+    setState(() {
+      final idx = _messages.indexOf(item);
+      if (idx >= 0) _messages[idx] = _ChatItem.ai('${events.length}件まとめてカレンダーに追加しました ✅');
+      if (batchId != null) {
+        for (var i = 0; i < _messages.length; i++) {
+          final m = _messages[i];
+          if (m.type == _ChatType.eventPreview && m.batchId == batchId) {
+            _messages[i] = _ChatItem.ai('「${m.event!.title}」を追加しました ✅');
+          }
+        }
+      }
+    });
+
+    await Future.wait(events.map((e) => _eventService.addFromGemini(widget.coupleId, e)));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${events.length}件の予定を追加しました'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -213,6 +240,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
     if (item.type == _ChatType.eventPreview) {
       return _buildEventPreview(item);
     }
+    if (item.type == _ChatType.bulkAdd) {
+      return _buildBulkAdd(item);
+    }
 
     final isAi = item.isAi;
     return Padding(
@@ -240,6 +270,23 @@ class _AiChatScreenState extends State<AiChatScreen> {
               color: isAi ? AppColors.textPrimary : Colors.white,
               height: 1.5,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBulkAdd(_ChatItem item) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, right: 48),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _confirmBulk(item),
+            icon: const Icon(Icons.playlist_add_check, size: 18),
+            label: Text('${item.events!.length}件まとめて追加する', style: const TextStyle(fontSize: 13)),
           ),
         ),
       ),
@@ -351,18 +398,23 @@ class _AiChatScreenState extends State<AiChatScreen> {
 }
 
 // ── チャットアイテムモデル ──────────────────────────
-enum _ChatType { user, ai, eventPreview }
+enum _ChatType { user, ai, eventPreview, bulkAdd }
 
 class _ChatItem {
   final _ChatType type;
   final String? text;
   final GeminiParsedEvent? event;
+  final List<GeminiParsedEvent>? events;
+  final int? batchId;
 
-  _ChatItem._({required this.type, this.text, this.event});
+  _ChatItem._({required this.type, this.text, this.event, this.events, this.batchId});
 
-  factory _ChatItem.user(String t)                   => _ChatItem._(type: _ChatType.user, text: t);
-  factory _ChatItem.ai(String t)                     => _ChatItem._(type: _ChatType.ai, text: t);
-  factory _ChatItem.eventPreview(GeminiParsedEvent e)=> _ChatItem._(type: _ChatType.eventPreview, event: e);
+  factory _ChatItem.user(String t) => _ChatItem._(type: _ChatType.user, text: t);
+  factory _ChatItem.ai(String t)   => _ChatItem._(type: _ChatType.ai, text: t);
+  factory _ChatItem.eventPreview(GeminiParsedEvent e, {int? batchId}) =>
+      _ChatItem._(type: _ChatType.eventPreview, event: e, batchId: batchId);
+  factory _ChatItem.bulkAdd(List<GeminiParsedEvent> events, int batchId) =>
+      _ChatItem._(type: _ChatType.bulkAdd, events: events, batchId: batchId);
 
   bool get isAi => type == _ChatType.ai;
 }

@@ -14,6 +14,7 @@ import '../utils/app_theme.dart';
 import '../utils/japan_holidays.dart';
 import 'event_detail_screen.dart';
 import 'event_form_screen.dart';
+import 'google_event_edit_screen.dart';
 import 'settings_screen.dart';
 
 const _gcalColor = Color(0xFF4285F4);
@@ -185,6 +186,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Future<void> _openGoogleEventEdit(GCalEventSummary event) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GoogleEventEditScreen(
+        coupleId: widget.coupleId, event: event,
+      )),
+    );
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => SettingsScreen(coupleId: widget.coupleId)),
@@ -272,6 +281,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 88), // FAB/下部ナビに最終行が隠れないように
           child: TableCalendar<AimaruEvent>(
           locale: 'ja_JP',
           firstDay: DateTime(2020, 1, 1),
@@ -478,6 +488,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               defaultTextStyle: const TextStyle(fontSize: 12, color: AppColors.textSecond),
               weekendTextStyle: const TextStyle(fontSize: 12, color: _saturdayColor),
               holidayTextStyle: const TextStyle(fontSize: 12, color: _sundayColor),
+              // table_calendarのデフォルトは祝日に丸枠が付くため、文字色だけにする
+              holidayDecoration: const BoxDecoration(),
               todayDecoration: BoxDecoration(color: appAccentSoft(context), shape: BoxShape.circle),
               todayTextStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
               selectedDecoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
@@ -577,39 +589,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                       ),
                     )),
-                    ...selectedGcalEvents.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.navySurface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: _gcalColor.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(children: [
-                          Container(width: 3, height: 34, decoration: const BoxDecoration(
-                            color: _gcalColor, borderRadius: BorderRadius.all(Radius.circular(2)),
-                          )),
-                          const SizedBox(width: 10),
-                          _memberAvatar(context, e.uid),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('📅 ${e.event.title}', style: const TextStyle(
-                                fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
+                    ...selectedGcalEvents.map((e) {
+                      final isMine = e.uid == _selfUid;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: GestureDetector(
+                          onTap: isMine ? () => _openGoogleEventEdit(e.event) : null,
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.navySurface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: _gcalColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(children: [
+                              Container(width: 3, height: 34, decoration: const BoxDecoration(
+                                color: _gcalColor, borderRadius: BorderRadius.all(Radius.circular(2)),
                               )),
-                              const SizedBox(height: 3),
-                              Text(
-                                e.event.allDay
-                                    ? '終日 · Googleカレンダー'
-                                    : '${DateFormat('HH:mm').format(e.event.start)} · Googleカレンダー',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                              const SizedBox(width: 10),
+                              _memberAvatar(context, e.uid),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text('📅 ${e.event.title}', style: const TextStyle(
+                                    fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
+                                  )),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    e.event.allDay
+                                        ? '終日 · Googleカレンダー'
+                                        : '${DateFormat('HH:mm').format(e.event.start)} · Googleカレンダー',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                  ),
+                                ]),
                               ),
+                              if (isMine)
+                                const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
                             ]),
                           ),
-                        ]),
-                      ),
-                    )),
+                        ),
+                      );
+                    }),
                   ],
                 ),
         ),

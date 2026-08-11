@@ -3,6 +3,18 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
 
+enum GeminiReplyKind { events, text }
+
+// ── AIチャットへの応答。予定候補(events)か、通常の文章(text)のどちらか ──
+class GeminiReply {
+  final GeminiReplyKind kind;
+  final List<GeminiParsedEvent> events;
+  final String text;
+
+  const GeminiReply.events(this.events) : kind = GeminiReplyKind.events, text = '';
+  const GeminiReply.text(this.text) : kind = GeminiReplyKind.text, events = const [];
+}
+
 class GeminiService {
   // ビルド時に --dart-define=GEMINI_API_KEY=xxx で渡す（ソースにキーを書かない）。
   // 開発時は android/local.properties や ~/.gradle 等ではなく、
@@ -19,79 +31,53 @@ class GeminiService {
     );
   }
 
-  // ── 自然言語 → 予定データに変換（複数件対応）──────
-  // 「〇〇のメンバー全員の誕生日」のように複数の予定が該当する
-  // 入力にも対応するため、常にJSON配列で返させる。
-  Future<List<GeminiParsedEvent>?> parseEventFromText(String userInput) async {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  // ── ユーザーの入力に対して、予定候補 or 通常の返答を1回のAI呼び出しで返す ──
+  // 会話履歴を渡すことで「今日の予定を追加したい」→「デートの予定」のような
+  // 複数ターンにまたがる予定追加にも対応する。
+  // upcomingEventsを渡すと「来週の予定は？」のような参照質問にも答えられる。
+  Future<GeminiReply> respond(
+    String userMessage,
+    List<Map<String, String>> history, {
+    List<AimaruEvent> upcomingEvents = const [],
+  }) async {
+    final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
+    final eventsContext = upcomingEvents.isEmpty
+        ? 'なし'
+        : upcomingEvents.map((e) {
+            final dateStr = DateFormat('yyyy-MM-dd(E) HH:mm', 'ja').format(e.date);
+            final loc = e.location != null ? ' @ ${e.location}' : '';
+            return '- $dateStr ${e.title}$loc';
+          }).join('\n');
 
-    final prompt = '''
-あなたはカップルの予定管理AIです。
+    final systemPrompt = '''
+あなたは「AIMARU」というカップル向けスケジュール共有アプリ内のAIアシスタント「AIMARU AI」です。
 今日の日付は $today です。
 
-ユーザーの入力から予定情報を抽出し、必ず以下のJSON配列形式のみを返してください。
-余分なテキスト、マークダウン、コードブロックは一切不要です。
-該当する予定が1件だけでも、必ず配列に1つだけ入れて返してください。
-「〇〇のメンバー全員の誕生日」のように複数の人物・予定が該当する場合は、
-配列に複数件のオブジェクトを含めてください。
+## AIMARUの機能（「使い方」を聞かれたら踏まえて案内する）
+- カレンダー画面: 2人の予定を共有。月全体を見渡す表示と、1日ごとの詳細表示を日付タップで切り替えられる
+- このAIチャット: 自然言語で予定を追加したり、今後の予定について質問したりできる
+- カップルチャット: パートナーと直接メッセージ・写真をやり取りできる
+- 思い出アルバム: 予定に添付した写真が自動でまとまる
+- 設定画面: 通知のON/OFF・タイミング、テーマカラー、祝日表示、Googleカレンダー連携などを変更できる
 
-有名人・アーティスト・スポーツ選手などの誕生日を聞かれた場合は、
-あなたの知識から正確な日付を答えてください。
+## 直近の予定（参照質問に答えるための参考情報）
+$eventsContext
 
-JSON配列形式:
-[
-  {
-    "title": "予定のタイトル",
-    "date": "YYYY-MM-DD",
-    "type": "date" | "anniversary" | "celebrity" | "plan",
-    "recurring": true | false,
-    "location": "場所（任意）",
-    "memo": "メモ（任意）"
-  }
-]
+## 応答形式
+ユーザーの入力を解釈し、必ず次のいずれかのJSON形式のみを返してください。
+マークダウンやコードブロックは不要です。
 
-typeの使い分け:
-- date: デートや外出の予定
-- anniversary: 記念日（付き合った日、誕生日など）
-- celebrity: 有名人の誕生日や記念日
-- plan: まだ未確定のプラン
+1. 具体的な予定を追加できる場合（会話の流れ全体から日付・内容が十分に読み取れる場合）:
+{"kind":"events","events":[{"title":"予定のタイトル","date":"YYYY-MM-DD","type":"date|anniversary|celebrity|plan","recurring":true|false,"location":"場所や null","memo":"メモや null"}]}
+「〇〇のメンバー全員の誕生日」のように複数件が該当する場合は配列に複数件含めてください。
+有名人・アーティスト・スポーツ選手などの誕生日は、あなたの知識から正確な日付を答えてください。
 
+2. それ以外（雑談、上記の「直近の予定」を使って答える質問、使い方の質問、
+   予定を追加したそうだが日付や内容が曖昧で確定できない場合など）:
+{"kind":"text","text":"日本語で2〜4文の簡潔な返答。予定が曖昧な場合は『いつ・何をするか』を具体的に聞き返す。実在しないUI要素の案内はしない"}
+
+typeの使い分け: date=デートや外出、anniversary=記念日、celebrity=有名人の誕生日等、plan=未確定のプラン
 recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など）
-
-ユーザー入力に予定情報が含まれない場合（雑談など）は、空配列 [] を返してください。
-
-ユーザー入力: "$userInput"
-''';
-
-    try {
-      final response = await _model.generateContent([Content.text(prompt)]);
-      final text = response.text?.trim() ?? '';
-      if (text.isEmpty) return null;
-
-      // JSONのみ抽出（余分な文字を除去）
-      final jsonStr = text
-          .replaceAll('```json', '')
-          .replaceAll('```', '')
-          .trim();
-
-      final decoded = jsonDecode(jsonStr);
-      final List list = decoded is List ? decoded : [decoded];
-      if (list.isEmpty) return null;
-      return list
-          .map((e) => GeminiParsedEvent.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      return null;
-    }
-  }
-
-  // ── 汎用チャット（プランナーとして会話）─────────
-  Future<String> chat(String userMessage, List<Map<String, String>> history) async {
-    final systemPrompt = '''
-あなたは「AIMARU AI」というカップル専用のアシスタントです。
-予定の追加、デートプランの提案、記念日の管理をサポートします。
-返答は必ず日本語で、2〜3文以内の簡潔な文章にしてください。
-予定を追加したい場合は「予定を追加する」ボタンを案内してください。
 ''';
 
     final contents = [
@@ -104,9 +90,25 @@ recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など�
 
     try {
       final response = await _model.generateContent(contents);
-      return response.text ?? 'うまく聞き取れませんでした。もう一度試してください。';
+      final raw = response.text?.trim() ?? '';
+      final jsonStr = raw.replaceAll('```json', '').replaceAll('```', '').trim();
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! Map<String, dynamic>) {
+        return const GeminiReply.text('うまく聞き取れませんでした。もう一度試してください。');
+      }
+
+      if (decoded['kind'] == 'events') {
+        final list = (decoded['events'] as List? ?? [])
+            .map((e) => GeminiParsedEvent.fromJson(e as Map<String, dynamic>))
+            .toList();
+        if (list.isNotEmpty) return GeminiReply.events(list);
+      }
+
+      return GeminiReply.text(
+        (decoded['text'] as String?) ?? 'うまく聞き取れませんでした。もう一度試してください。',
+      );
     } catch (e) {
-      return 'エラーが発生しました。もう一度試してください。';
+      return const GeminiReply.text('エラーが発生しました。もう一度試してください。');
     }
   }
 }

@@ -46,6 +46,36 @@ class GoogleCalendarService {
     }
   }
 
+  // ── Googleカレンダー上の既存の予定を直接更新（GCalEventSummary起点）──
+  // AimaruEventを介さず、このアプリのカレンダー画面から直接タイトル/日時を
+  // 編集する場合に使う。戻り値は成功可否。
+  Future<bool> updateGoogleEvent({
+    required String eventId,
+    required String title,
+    required DateTime start,
+    required DateTime end,
+    required bool allDay,
+  }) async {
+    final api = await _api();
+    if (api == null) return false;
+
+    final gEvent = gcal.Event()..summary = title;
+    if (allDay) {
+      gEvent.start = gcal.EventDateTime(date: DateTime(start.year, start.month, start.day));
+      gEvent.end   = gcal.EventDateTime(date: DateTime(end.year, end.month, end.day));
+    } else {
+      gEvent.start = gcal.EventDateTime(dateTime: start, timeZone: 'Asia/Tokyo');
+      gEvent.end   = gcal.EventDateTime(dateTime: end, timeZone: 'Asia/Tokyo');
+    }
+
+    try {
+      await api.events.update(gEvent, 'primary', eventId);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Google カレンダーから削除 ──────────────────────
   Future<void> deleteEvent(String googleEventId) async {
     final api = await _api();

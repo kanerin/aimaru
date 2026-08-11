@@ -133,7 +133,10 @@ class _HomeShellState extends State<_HomeShell> {
     ];
 
     return Scaffold(
-      body: pages[_index],
+      // IndexedStackで4画面すべてをマウントしたまま保持する。
+      // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
+      // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
+      body: IndexedStack(index: _index, children: pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
