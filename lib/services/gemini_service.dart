@@ -26,7 +26,9 @@ class GeminiService {
 
   GeminiService() {
     _model = GenerativeModel(
-      model:  'gemini-flash-latest',
+      // gemini-flash-latestは無料枠が1日20リクエストしかなく枯渇しやすいため、
+      // より余裕のあるgemini-flash-lite-latestを使う。
+      model:  'gemini-flash-lite-latest',
       apiKey: _apiKey,
     );
   }
@@ -34,20 +36,14 @@ class GeminiService {
   // ── ユーザーの入力に対して、予定候補 or 通常の返答を1回のAI呼び出しで返す ──
   // 会話履歴を渡すことで「今日の予定を追加したい」→「デートの予定」のような
   // 複数ターンにまたがる予定追加にも対応する。
-  // upcomingEventsを渡すと「来週の予定は？」のような参照質問にも答えられる。
+  // eventsContextを渡すと「来週の予定は？」のような参照質問にも答えられる
+  // （このアプリの予定・Googleカレンダーの予定の両方を含められる。呼び出し側で整形する）。
   Future<GeminiReply> respond(
     String userMessage,
     List<Map<String, String>> history, {
-    List<AimaruEvent> upcomingEvents = const [],
+    String eventsContext = 'なし',
   }) async {
     final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
-    final eventsContext = upcomingEvents.isEmpty
-        ? 'なし'
-        : upcomingEvents.map((e) {
-            final dateStr = DateFormat('yyyy-MM-dd(E) HH:mm', 'ja').format(e.date);
-            final loc = e.location != null ? ' @ ${e.location}' : '';
-            return '- $dateStr ${e.title}$loc';
-          }).join('\n');
 
     final systemPrompt = '''
 あなたは「AIMARU」というカップル向けスケジュール共有アプリ内のAIアシスタント「AIMARU AI」です。

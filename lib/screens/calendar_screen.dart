@@ -477,6 +477,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
             // 縦方向はミニカレンダーの折りたたみ(週表示)には使わず、
             // 全体表示へ戻すジェスチャーに専用させる
             availableGestures: AvailableGestures.horizontalSwipe,
+            // デフォルト(52)だと週が詰まって予定ドットが窮屈に見えるため広げる
+            rowHeight: 58,
             onDaySelected: _handleDaySelected,
             onPageChanged: (focused) {
               _focusedDay = focused;
@@ -497,7 +499,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
               selectedTextStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
               markersAlignment: Alignment.bottomCenter,
               markerSize: 4,
-              markerMargin: const EdgeInsets.only(top: 2),
+              markerMargin: const EdgeInsets.only(top: 6),
+              cellMargin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
             ),
             calendarBuilders: CalendarBuilders(
               markerBuilder: (context, day, events) {

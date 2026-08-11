@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../../models/models.dart';
 import '../../services/gemini_service.dart';
 import '../../services/event_service.dart';
+import '../../services/google_calendar_cache_service.dart';
 import '../../utils/app_theme.dart';
 
 class AiChatScreen extends StatefulWidget {
@@ -15,10 +17,13 @@ class AiChatScreen extends StatefulWidget {
 }
 
 class _AiChatScreenState extends State<AiChatScreen> {
-  final _gemini       = GeminiService();
-  final _eventService = EventService();
-  final _controller   = TextEditingController();
-  final _scrollCtrl   = ScrollController();
+  final _gemini             = GeminiService();
+  final _eventService       = EventService();
+  final _gcalCacheService   = GoogleCalendarCacheService();
+  final _controller         = TextEditingController();
+  final _scrollCtrl         = ScrollController();
+
+  String get _selfUid => FirebaseAuth.instance.currentUser!.uid;
 
   final List<_ChatItem> _messages = [];
   bool _thinking = false;
@@ -58,19 +63,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
       // 直前に送信したユーザー発言は履歴とAI呼び出しの両方に含めないよう除く
       if (history.isNotEmpty) history.removeLast();
 
-      // 予定の参照に使う直近の予定一覧。取得に失敗しても会話自体は続けられるように
+      // 予定の参照に使う直近の予定一覧（このアプリの予定 + Googleカレンダーの
+      // 自分/パートナーの予定）。取得に失敗しても会話自体は続けられるように、
       // ここだけ個別にフォールバックする（例: 通信が不安定な状態から復帰した直後など）。
-      List<AimaruEvent> upcoming = const [];
+      String eventsContext = 'なし';
       try {
-        upcoming = await _eventService
-            .watchUpcomingEvents(widget.coupleId, limit: 30)
-            .first
-            .timeout(const Duration(seconds: 6));
+        eventsContext = await _buildEventsContext().timeout(const Duration(seconds: 6));
       } catch (_) {
-        upcoming = const [];
+        eventsContext = 'なし';
       }
 
-      final reply = await _gemini.respond(text, history, upcomingEvents: upcoming);
+      final reply = await _gemini.respond(text, history, eventsContext: eventsContext);
       if (!mounted) return;
 
       setState(() {
@@ -97,6 +100,41 @@ class _AiChatScreenState extends State<AiChatScreen> {
       });
     }
     _scrollToBottom();
+  }
+
+  // AIに渡す「直近の予定」テキストを組み立てる。
+  // このアプリの予定(Firestore)と、Googleカレンダーの自分・パートナー双方の
+  // 予定をまとめる（このアプリから同期済みのGoogle予定は重複するので除く）。
+  Future<String> _buildEventsContext() async {
+    final aimaru = await _eventService.watchUpcomingEvents(widget.coupleId, limit: 30).first;
+    final syncedIds = {
+      for (final e in aimaru)
+        if (e.googleCalendarEventId != null) e.googleCalendarEventId!,
+    };
+
+    final gcalByUid = await _gcalCacheService.watchAll(widget.coupleId).first;
+
+    final entries = <({DateTime date, String line})>[];
+    for (final e in aimaru) {
+      final dateStr = DateFormat('yyyy-MM-dd(E) HH:mm', 'ja').format(e.date);
+      final loc = e.location != null ? ' @ ${e.location}' : '';
+      entries.add((date: e.date, line: '- $dateStr ${e.title}$loc'));
+    }
+
+    final now = DateTime.now();
+    gcalByUid.forEach((uid, events) {
+      final who = uid == _selfUid ? '自分' : 'パートナー';
+      for (final e in events) {
+        if (syncedIds.contains(e.id)) continue;
+        if (e.start.isBefore(now)) continue;
+        final dateStr = DateFormat('yyyy-MM-dd(E) HH:mm', 'ja').format(e.start);
+        entries.add((date: e.start, line: '- $dateStr ${e.title}（Googleカレンダー・$whoの予定）'));
+      }
+    });
+
+    if (entries.isEmpty) return 'なし';
+    entries.sort((a, b) => a.date.compareTo(b.date));
+    return entries.map((e) => e.line).join('\n');
   }
 
   Future<void> _confirmEvent(_ChatItem item, GeminiParsedEvent event) async {

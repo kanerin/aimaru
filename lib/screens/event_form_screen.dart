@@ -183,7 +183,10 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
         ],
       ),
-      body: ListView(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
@@ -237,12 +240,16 @@ class _EventFormScreenState extends State<EventFormScreen> {
               ),
             ),
           ]),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _recurring,
-            onChanged: (v) => setState(() => _recurring = v),
-            title: const Text('毎年繰り返す', style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
-            activeThumbColor: appAccent(context),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('毎年繰り返す', style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+              Switch(
+                value: _recurring,
+                onChanged: (v) => setState(() => _recurring = v),
+                activeThumbColor: appAccent(context),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
 
@@ -298,16 +305,21 @@ class _EventFormScreenState extends State<EventFormScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.hairline),
             ),
-            child: SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _syncGoogle,
-              onChanged: (v) => setState(() => _syncGoogle = v),
-              title: const Text('Googleカレンダーに同期', style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-              activeThumbColor: appAccent(context),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Googleカレンダーに同期', style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                Switch(
+                  value: _syncGoogle,
+                  onChanged: (v) => setState(() => _syncGoogle = v),
+                  activeThumbColor: appAccent(context),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 32),
         ],
+        ),
       ),
     );
   }

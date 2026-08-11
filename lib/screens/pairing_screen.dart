@@ -281,7 +281,10 @@ class _PairingScreenState extends State<PairingScreen>
 
   // ── 招待コード入力タブ ────────────────────────────
   Widget _buildJoinTab() {
-    return Padding(
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
@@ -332,6 +335,7 @@ class _PairingScreenState extends State<PairingScreen>
 
           const Spacer(),
         ],
+      ),
       ),
     );
   }

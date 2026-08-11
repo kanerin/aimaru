@@ -123,7 +123,10 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
           ),
         ],
       ),
-      body: ListView(
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Container(
@@ -185,6 +188,7 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
             ]),
           ],
         ],
+        ),
       ),
     );
   }

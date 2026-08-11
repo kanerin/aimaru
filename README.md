@@ -36,7 +36,7 @@ flutterfire configure
 
 1. https://aistudio.google.com/apikey → 「APIキーを作成」
 2. **重要**: 課金（Blazeプラン）が有効なGoogle Cloudプロジェクト（Firebase用のプロジェクトなど）を選ぶと、そのプロジェクトのGemini APIは無料枠が使えず「最初のトークンから課金」扱いになる（前払いクレジット¥0だと`prepayment credits are depleted`エラー）。無料枠を使うなら、プルダウンから「＋ プロジェクトを作成」で**課金が紐付いていない新規プロジェクト**を作り、そちらでキーを発行する
-3. 無料枠の対象は Flash / Flash-Lite系のみ（Proモデルは対象外、2026年4月時点）。`gemini_service.dart` は `gemini-flash-latest` を使用
+3. 無料枠の対象は Flash / Flash-Lite系のみ（Proモデルは対象外、2026年4月時点）。`gemini_service.dart` は `gemini-flash-lite-latest` を使用（`gemini-flash-latest`は無料枠が1日20リクエストしかなく枯渇しやすいため避けている。クォータ切れの場合はAPIが`429 RESOURCE_EXHAUSTED`を返す）
 4. **キーはソースコードに書かず、ローカルの `.env.local` に置く**（GitHubにpushされないよう`.gitignore`済み）
 
 ```bash
