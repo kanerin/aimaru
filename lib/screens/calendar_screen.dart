@@ -277,8 +277,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 下限を上げ、極端に小さい画面では(はみ出すより)スクロールさせる。
+        // セル内に入るチップ数はこのrowHeightから逆算するため、
+        // ここが小さすぎるとチップが0件になり得るが、はみ出して被って見えるよりは安全。
         final rowHeight = ((constraints.maxHeight - headerHeight - daysOfWeekHeight - fabReserve) / 6)
-            .clamp(40.0, 140.0);
+            .clamp(64.0, 140.0);
 
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
@@ -305,9 +308,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
           daysOfWeekStyle: _daysOfWeekStyle,
           calendarStyle: const CalendarStyle(outsideDaysVisible: true),
           calendarBuilders: CalendarBuilders(
-            defaultBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds),
-            outsideBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds, isOutside: true),
-            todayBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds, isToday: true),
+            defaultBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds, cellHeight: rowHeight),
+            outsideBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds, cellHeight: rowHeight, isOutside: true),
+            todayBuilder: (context, day, focusedDay) => _dayCell(context, day, eventsMap, syncedIds, cellHeight: rowHeight, isToday: true),
           ),
         ));
       },
@@ -344,6 +347,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     DateTime day,
     Map<DateTime, List<AimaruEvent>> eventsMap,
     Set<String> syncedIds, {
+    required double cellHeight,
     bool isToday = false,
     bool isOutside = false,
   }) {
@@ -355,7 +359,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ...events.map((e) => ('${e.type.emoji} ${e.title}', _dotColor(e.type), e.createdBy)),
       ...gcalEvents.map((e) => ('📅 ${e.event.title}', _gcalColor, e.uid)),
     ];
-    const maxChips = 3;
+
+    // セルの実際の高さから収まるチップ数を逆算する。固定件数を常に表示しようと
+    // すると、画面が小さい端末でセルの高さを超えてはみ出す
+    // （＝見た目が被って見える）ことがあったため、確実に収まる件数に抑える。
+    const chipHeight = 14.5;
+    const dayNumberHeight = 20.0;
+    const holidayChipHeight = 14.0;
+    const overflowLabelReserve = 10.0;
+    const containerChrome = 3.0 * 2 + 1.5 * 2; // padding + margin
+    final usedByHeader = dayNumberHeight + (holidayName != null ? holidayChipHeight : 2.0);
+    final availableForChips = cellHeight - containerChrome - usedByHeader - overflowLabelReserve;
+    final maxChips = (availableForChips / chipHeight).floor().clamp(0, 3);
 
     Color numberColor;
     if (isToday) {
@@ -374,6 +389,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       margin: const EdgeInsets.all(1.5),
       padding: const EdgeInsets.all(3),
       alignment: Alignment.topLeft,
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.hairline),
