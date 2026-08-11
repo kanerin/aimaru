@@ -148,6 +148,17 @@ firebase deploy --only functions,firestore:indexes
 
 ---
 
+## テスト
+
+```bash
+# ユニットテスト・ウィジェットテスト（祝日計算、テーマカラー切り替えなど）
+flutter test
+
+# 結合テスト（実際にFirebaseへ接続してアプリを起動し、画面遷移を確認する。
+# 接続済みの実機/エミュレータが必要）
+flutter test integration_test/app_test.dart -d <device-id>
+```
+
 ## 配布・CI/CD
 
 このリポジトリには2つのデプロイ用ブランチがあり、pushすると自動でCI/CDが走る（`.github/workflows/`）。

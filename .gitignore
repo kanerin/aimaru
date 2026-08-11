@@ -58,8 +58,10 @@ key.properties
 **/play-store-service-account*.json
 firestore-debug.log
 
-# Claude Code のローカル設定（このマシン固有）
+# Claude Code のローカル状態（このマシン固有、別セッション/スケジュールタスクが生成）
 .claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # パートナーのメールアドレス等の個人情報・環境固有情報を含むため、
 # このマシンにのみ残し、リポジトリにはpushしない
