@@ -148,17 +148,46 @@ firebase deploy --only functions,firestore:indexes
 
 ---
 
-## 彼女への配布
+## 配布・CI/CD
 
-### Android（Firebase App Distribution）
+このリポジトリには2つのデプロイ用ブランチがあり、pushすると自動でCI/CDが走る（`.github/workflows/`）。
 
-```bash
-# APKビルド
-flutter build apk --release
+- **`release-stg`** → push すると自動で `flutter build apk --release` → Firebase App Distributionへアップロードし、テスターに通知が届く。**動作確認済み。**
+- **`release`** → push すると自動で `flutter build appbundle --release` → Google Play Store（internalトラック）へアップロード。**Play Console側の準備が必要（下記）。**
 
-# Firebase App Distribution にアップロード
-# → Firebase Console → App Distribution → 彼女のメールを招待
-```
+開発の流れの想定: `main` で作業 → 動作確認用に `release-stg` へマージしてApp Distributionで実機確認 → 問題なければ `release` へマージしてPlay Storeへ。
+
+### 必要なGitHub Secrets
+
+いずれも `main` リポジトリの Settings → Secrets and variables → Actions で登録する。値そのものはコミットしない。
+
+| Secret名 | 用途 | 状態 |
+|---|---|---|
+| `GEMINI_API_KEY` | ビルド時にGemini APIキーを埋め込む | 設定済み |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | App Distributionへのアップロード認証（サービスアカウントJSON） | 設定済み |
+| `FIREBASE_ANDROID_APP_ID` | 対象のFirebase Androidアプリ | 設定済み |
+| `FIREBASE_PROJECT_ID` | Firebaseプロジェクト | 設定済み |
+| `APP_DISTRIBUTION_TESTERS` | 通知するテスターのメール（カンマ区切り） | 設定済み |
+| `ANDROID_KEYSTORE_BASE64` | リリース署名鍵（keystoreをbase64化したもの） | 設定済み |
+| `ANDROID_KEYSTORE_PASSWORD` | 署名鍵のストアパスワード | 設定済み |
+| `ANDROID_KEY_ALIAS` | 署名鍵のエイリアス（`aimaru`） | 設定済み |
+| `ANDROID_KEY_PASSWORD` | 署名鍵のキーパスワード | 設定済み |
+| `PLAY_STORE_SERVICE_ACCOUNT_JSON` | Play Developer APIでのアップロード認証 | **未設定（下記の手順が必要）** |
+
+**リリース署名鍵について（重要）**: `android/app/release.keystore` と `android/key.properties` をこのマシンのローカルに生成済み（`.gitignore`済みでリポジトリには含まれない）。**この鍵を紛失すると、Play Storeに公開したアプリを二度と更新できなくなる**（Googleは同じ鍵での署名を要求するため）。`android/app/release.keystore` を必ず安全な場所（パスワードマネージャーの添付ファイル機能など）にバックアップしておくこと。
+
+### Play Store側の準備（ユーザー側でのみ実施可能）
+
+`release` ブランチのワークフローを動かすには、以下がまだ必要（Google Cloud/Firebaseの権限では代行できず、Play Consoleのデベロッパーアカウント名義でしか行えない作業のため）:
+
+1. [Google Play Console](https://play.google.com/console) でデベロッパーアカウントを作成（登録料 $25、初回のみ）
+2. アプリを新規作成し、**手動で一度だけ**AAB（`flutter build appbundle --release`で作れる）をアップロードする（Play Developer APIは「一度も手動アップロードされていないアプリ」には使えないため）
+3. `applicationId`（現在 `com.example.aimaru`。Play Storeでは`com.example`のような予約語は避けた方がよい）を正式なものに決める場合は、`android/app/build.gradle.kts` の変更に加えて、Firebase Consoleで新しいAndroidアプリとして登録し直す必要がある（`google-services.json`の再取得、SHA-1再登録も必要）
+4. Google Cloud Console → 上記と同じGCPプロジェクトで、Play Developer API用のサービスアカウントを作成し、Play Console →「ユーザーと権限」でそのサービスアカウントに「アプリの管理」権限を付与
+5. サービスアカウントのJSONキーを発行し、`PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットに登録
+6. `.github/workflows/release.yml` の `packageName: com.example.aimaru` を実際のapplicationIdに合わせて修正
+
+**リリース署名でのGoogleログインについて**: 現在Firebase ConsoleにはデバッグキーのSHA-1しか登録されていない。`release`ブランチのビルド（今回生成した署名鍵）でGoogleログインを機能させるには、そのSHA-1もFirebase Console→プロジェクトの設定→Androidアプリ→フィンガープリントを追加、で登録すること。
 
 ### iOS（TestFlight）
 
