@@ -103,6 +103,61 @@ void main() {
     });
   });
 
+  group('終日の切り替え', () {
+    // 終日の予定は「開始日＝最終日」なので、開始も終了も同じ日の0:00になる。
+    // その状態のまま時刻指定へ戻すと end == start になり、Googleは
+    // 時刻指定の予定に end > start を求めるため保存できない。
+    testWidgets('終日を解除すると終了が開始より後へ開く', (tester) async {
+      final sameDay = DateTime(2026, 8, 14);
+      DateTime? newEnd;
+      bool? newAllDay;
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(AppColors.lavender),
+        home: Scaffold(
+          body: EventDateTimeFields(
+            start: sameDay,
+            end: sameDay,
+            allDay: true,
+            onStartChanged: (_) {},
+            onEndChanged: (v) => newEnd = v,
+            onAllDayChanged: (v) => newAllDay = v,
+          ),
+        ),
+      ));
+
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+
+      expect(newAllDay, isFalse);
+      expect(newEnd, isNotNull);
+      expect(newEnd!.isAfter(sameDay), isTrue);
+    });
+
+    testWidgets('終日にするときは終了を動かさない（同日終了は正当）', (tester) async {
+      var endChanged = false;
+
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(AppColors.lavender),
+        home: Scaffold(
+          body: EventDateTimeFields(
+            start: DateTime(2026, 8, 14, 19, 0),
+            end: DateTime(2026, 8, 14, 20, 0),
+            allDay: false,
+            onStartChanged: (_) {},
+            onEndChanged: (_) => endChanged = true,
+            onAllDayChanged: (_) {},
+          ),
+        ),
+      ));
+
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+
+      expect(endChanged, isFalse);
+    });
+  });
+
   group('表示', () {
     Widget wrap({required bool allDay, bool withAllDayToggle = true}) => MaterialApp(
       theme: AppTheme.light(AppColors.lavender),

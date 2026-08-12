@@ -115,8 +115,11 @@ class GoogleCalendarService {
           event.end = gcal.EventDateTime(
               date: allDayEndExclusive(start: start, lastDay: end));
         } else {
+          // 時刻指定の予定にGoogleは end > start を要求する。終日から戻した
+          // 直後は両方が同じ日の0:00になりうるので、ここでも開いておく。
+          final safeEnd = end.isAfter(start) ? end : start.add(const Duration(hours: 1));
           event.start = gcal.EventDateTime(dateTime: start.toUtc(), timeZone: 'Asia/Tokyo');
-          event.end   = gcal.EventDateTime(dateTime: end.toUtc(), timeZone: 'Asia/Tokyo');
+          event.end   = gcal.EventDateTime(dateTime: safeEnd.toUtc(), timeZone: 'Asia/Tokyo');
         }
       }
 

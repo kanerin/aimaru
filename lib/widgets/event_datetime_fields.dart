@@ -91,6 +91,15 @@ class EventDateTimeFields extends StatelessWidget {
     onEndChanged(clampEnd(start: start, end: next, allDay: allDay));
   }
 
+  void _setAllDay(bool next) {
+    onAllDayChanged!(next);
+    if (next) return;
+    // 終日の間は開始も終了も同じ日の0:00になっている（1日だけの予定は
+    // 開始日＝最終日）。そのまま時刻指定へ戻すと end == start になり、
+    // Googleは時刻指定の予定に end > start を求めるため保存できない。
+    onEndChanged(clampEnd(start: start, end: end, allDay: false));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -103,7 +112,7 @@ class EventDateTimeFields extends StatelessWidget {
               const Text('終日', style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
               Switch(
                 value: allDay,
-                onChanged: onAllDayChanged,
+                onChanged: _setAllDay,
                 activeThumbColor: appAccent(context),
               ),
             ],
