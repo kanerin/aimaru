@@ -1,8 +1,8 @@
-name: Publish to Play Store (release)
+name: Publish to Play Store (release-prd)
 
 on:
   push:
-    branches: [release]
+    branches: [release-prd]
   workflow_dispatch: {}
 
 jobs:
