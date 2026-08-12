@@ -45,8 +45,10 @@ class EventDateTimeFields extends StatelessWidget {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
-      // ダイヤル表示だと選択円と数字が重なって見づらいため、入力式にする
-      initialEntryMode: TimePickerEntryMode.input,
+      // 目盛りを回して決めるダイヤル表示。以前は選択円と数字が重なって
+      // 読めなかったため入力式にしていたが、timePickerTheme で色を
+      // 与えて解消したのでダイヤルに戻している（キーボード入力にも切替可）。
+      initialEntryMode: TimePickerEntryMode.dial,
     );
     if (picked == null) return null;
     return DateTime(current.year, current.month, current.day, picked.hour, picked.minute);

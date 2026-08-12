@@ -99,5 +99,29 @@ class AppTheme {
       foregroundColor: Colors.white,
     ),
     dividerTheme: const DividerThemeData(color: AppColors.hairline, space: 1),
+    // ダイヤルの選択円と数字の色を指定しないと、円と数字がほぼ同色になって
+    // 選択中の時刻が読めなくなる。選択中は白抜きにして必ずコントラストを付ける。
+    timePickerTheme: TimePickerThemeData(
+      backgroundColor: AppColors.navyCard,
+      dialBackgroundColor: AppColors.navySurface,
+      dialHandColor: accent,
+      dialTextColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? Colors.white : AppColors.textPrimary),
+      hourMinuteColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected)
+              ? accent.withValues(alpha: 0.18)
+              : AppColors.navySurface),
+      hourMinuteTextColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? accent : AppColors.textPrimary),
+      dayPeriodColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected)
+              ? accent.withValues(alpha: 0.18)
+              : Colors.transparent),
+      dayPeriodTextColor: WidgetStateColor.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? accent : AppColors.textSecond),
+      entryModeIconColor: AppColors.textSecond,
+      helpTextStyle: const TextStyle(fontSize: 12, color: AppColors.textSecond),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    ),
   );
 }
