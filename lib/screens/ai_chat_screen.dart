@@ -40,10 +40,9 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       '2人のスケジュール管理をお手伝いします ✦\n'
       '「来週の土曜デートしたい」のように話しかけたり、「来週の予定は？」と聞いたりしてみてください';
 
-  // アプリを離れてから戻るまでがこれより長ければ、会話を続きとして扱わず新しく始める。
-  // IndexedStackで4画面を保持しているため、放置しておくと何日でも前の会話が残る。
-  static const _staleAfter = Duration(minutes: 30);
-  DateTime? _pausedAt;
+  // IndexedStackで4画面を保持しているため、アプリを閉じてもプロセスが生きていれば
+  // 会話が残り続ける。一度アプリを離れたら、戻ってきた時点で新しい会話から始める。
+  bool _wasPaused = false;
 
   @override
   void initState() {
@@ -55,16 +54,16 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      _pausedAt = DateTime.now();
+      _wasPaused = true;
       return;
     }
     if (state != AppLifecycleState.resumed) return;
 
-    final pausedAt = _pausedAt;
-    _pausedAt = null;
+    final wasPaused = _wasPaused;
+    _wasPaused = false;
+    if (!wasPaused) return;
     // 送信の途中で戻ってきた場合に応答を捨てると混乱するので、そのときは触らない
     if (_thinking) return;
-    if (pausedAt == null || DateTime.now().difference(pausedAt) < _staleAfter) return;
     if (_messages.length <= 1) return;
     _resetConversation();
   }

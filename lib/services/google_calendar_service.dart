@@ -3,6 +3,18 @@ import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sig
 import 'package:googleapis/calendar/v3.dart' as gcal;
 import '../models/models.dart';
 
+const kGCalNotSignedIn = 'Googleアカウントに接続できていません。設定から連携し直してください';
+
+// ── Googleカレンダーへの書き込み結果 ──────────────────
+// 失敗理由を画面まで運ぶ。握り潰すと「消えないのに成功に見える」状態になる。
+class GCalResult {
+  final bool ok;
+  final String? error;
+
+  const GCalResult.success() : ok = true, error = null;
+  const GCalResult.failure(this.error) : ok = false;
+}
+
 // ── Googleカレンダー同期 ──────────────────────────────
 // auth_service.dart の GoogleSignIn と同じスコープ（email + calendar.events）で
 // インスタンス化することで、ログイン時に許可された同一セッションを利用する。
@@ -49,42 +61,76 @@ class GoogleCalendarService {
   // ── Googleカレンダー上の既存の予定を直接更新（GCalEventSummary起点）──
   // AimaruEventを介さず、このアプリのカレンダー画面から直接タイトル/日時を
   // 編集する場合に使う。戻り値は成功可否。
-  Future<bool> updateGoogleEvent({
+  // start/end を省略すると日時は触らない。タイトルだけ変えたいときに日時を
+  // 送り直すと、終日/時刻指定の取り違えで元の予定を壊しうるため。
+  Future<GCalResult> updateGoogleEvent({
     required String eventId,
     required String title,
-    required DateTime start,
-    required DateTime end,
-    required bool allDay,
+    DateTime? start,
+    DateTime? end,
+    bool allDay = false,
   }) async {
     final api = await _api();
-    if (api == null) return false;
+    if (api == null) return const GCalResult.failure(kGCalNotSignedIn);
 
     final gEvent = gcal.Event()..summary = title;
-    if (allDay) {
-      gEvent.start = gcal.EventDateTime(date: DateTime(start.year, start.month, start.day));
-      gEvent.end   = gcal.EventDateTime(date: DateTime(end.year, end.month, end.day));
+    if (start == null || end == null) {
+      // 日時は据え置き
+    } else if (allDay) {
+      // 終日予定の end.date は「翌日」を指す排他的な値。取得時の end をそのまま
+      // 使うと1日短くなるため、start と同じ日なら翌日へ送る。
+      final startDay = DateTime(start.year, start.month, start.day);
+      var endDay     = DateTime(end.year, end.month, end.day);
+      if (!endDay.isAfter(startDay)) endDay = startDay.add(const Duration(days: 1));
+      gEvent.start = gcal.EventDateTime(date: startDay);
+      gEvent.end   = gcal.EventDateTime(date: endDay);
     } else {
-      gEvent.start = gcal.EventDateTime(dateTime: start, timeZone: 'Asia/Tokyo');
-      gEvent.end   = gcal.EventDateTime(dateTime: end, timeZone: 'Asia/Tokyo');
+      gEvent.start = gcal.EventDateTime(dateTime: start.toUtc(), timeZone: 'Asia/Tokyo');
+      gEvent.end   = gcal.EventDateTime(dateTime: end.toUtc(), timeZone: 'Asia/Tokyo');
     }
 
     try {
-      await api.events.update(gEvent, 'primary', eventId);
-      return true;
-    } catch (_) {
-      return false;
+      // events.update はリソース全体の置き換えなので、ここで送っていない
+      // description / location / recurrence / attendees が消える。
+      // 送ったフィールドだけを変える patch を使う。
+      await api.events.patch(gEvent, 'primary', eventId);
+      return const GCalResult.success();
+    } catch (e) {
+      return GCalResult.failure(_describe(e));
     }
   }
 
   // ── Google カレンダーから削除 ──────────────────────
-  Future<void> deleteEvent(String googleEventId) async {
+  // 失敗を黙って握り潰すと、消えていないのに成功したように見えるため理由を返す。
+  Future<GCalResult> deleteEvent(String googleEventId) async {
     final api = await _api();
-    if (api == null) return;
+    if (api == null) return const GCalResult.failure(kGCalNotSignedIn);
     try {
       await api.events.delete('primary', googleEventId);
-    } catch (_) {
-      // すでに削除済み・権限なしなどは無視
+      return const GCalResult.success();
+    } catch (e) {
+      // 相手が主催の予定や、すでに消えている予定はここに来る
+      if (_isAlreadyGone(e)) return const GCalResult.success();
+      return GCalResult.failure(_describe(e));
     }
+  }
+
+  bool _isAlreadyGone(Object error) {
+    final s = error.toString();
+    return s.contains('404') || s.contains('410') || s.contains('notFound') ||
+        s.contains('deleted');
+  }
+
+  String _describe(Object error) {
+    final s = error.toString();
+    if (s.contains('403') || s.contains('forbidden') || s.contains('insufficient')) {
+      return 'この予定を変更する権限がありません（主催者が別の人の可能性があります）';
+    }
+    if (s.contains('401') || s.contains('invalid_grant') || s.contains('unauthenticated')) {
+      return 'Googleの認証が切れています。設定から連携し直してください';
+    }
+    // 原因を絞り込めないときは、そのまま見せたほうが次の手を打てる
+    return s.length > 160 ? '${s.substring(0, 160)}…' : s;
   }
 
   // ── 指定期間のGoogleカレンダーの予定を取得（表示用）──
@@ -107,19 +153,29 @@ class GoogleCalendarService {
 
       final items = result.items ?? [];
       return items.where((e) => e.status != 'cancelled').map((e) {
-        final startDt = e.start?.dateTime ?? e.start?.date;
-        final endDt   = e.end?.dateTime ?? e.end?.date;
+        final isAllDay = e.start?.dateTime == null;
+        final startDt = _normalize(e.start?.dateTime ?? e.start?.date, isAllDay);
+        final endDt   = _normalize(e.end?.dateTime ?? e.end?.date, isAllDay);
         return GCalEventSummary(
           id:     e.id ?? '',
           title:  e.summary ?? '(無題の予定)',
           start:  startDt ?? start,
           end:    endDt ?? (startDt ?? start),
-          allDay: e.start?.dateTime == null,
+          allDay: isAllDay,
         );
       }).toList();
     } catch (_) {
       return [];
     }
+  }
+
+  // googleapis が返す dateTime は RFC3339 をパースしたUTC値なので、そのまま
+  // 表示すると9時間ずれる。終日予定の date は「日付だけ」を表すUTC値で、
+  // toLocal() するとタイムゾーンによって前日へずれるため年月日をそのまま使う。
+  static DateTime? _normalize(DateTime? value, bool isAllDay) {
+    if (value == null) return null;
+    if (isAllDay) return DateTime(value.year, value.month, value.day);
+    return value.toLocal();
   }
 
   gcal.Event _toGoogleEvent(AimaruEvent event) {

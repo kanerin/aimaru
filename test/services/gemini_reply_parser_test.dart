@@ -165,8 +165,11 @@ void main() {
       expect(describeGeminiFailure(Exception('Connection timed out')), kGeminiNetworkMessage);
     });
 
-    test('判別できない失敗は既定の文言に倒す', () {
-      expect(describeGeminiFailure(Exception('何か想定外')), kGeminiErrorMessage);
+    test('判別できない失敗は、パース失敗とは別の文言に倒す', () {
+      expect(describeGeminiFailure(Exception('何か想定外')), kGeminiUnknownErrorMessage);
+      // 画面の文言から「応答を読めなかった」のか「呼び出しが落ちた」のかを
+      // 切り分けられる必要があるので、両者は必ず異なる
+      expect(kGeminiUnknownErrorMessage, isNot(kGeminiErrorMessage));
     });
   });
 }

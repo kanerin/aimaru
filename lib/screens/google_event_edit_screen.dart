@@ -77,19 +77,24 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
     }
     setState(() => _saving = true);
 
-    final ok = await _calendarService.updateGoogleEvent(
+    // 日時を触っていないなら送らない。送り直すと終日/時刻指定を取り違えたときに
+    // 元の予定を壊してしまうため、変更したときだけ差し替える。
+    final dateChanged = !_start.isAtSameMomentAs(widget.event.start) ||
+        !_end.isAtSameMomentAs(widget.event.end);
+
+    final result = await _calendarService.updateGoogleEvent(
       eventId: widget.event.id,
       title: _titleCtrl.text.trim(),
-      start: _start,
-      end: _end,
+      start: dateChanged ? _start : null,
+      end: dateChanged ? _end : null,
       allDay: widget.event.allDay,
     );
 
-    if (!ok) {
+    if (!result.ok) {
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('更新に失敗しました。もう一度お試しください')),
+          SnackBar(content: Text('更新できませんでした: ${result.error}')),
         );
       }
       return;
@@ -130,7 +135,15 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
 
     setState(() => _deleting = true);
     try {
-      await _calendarService.deleteEvent(widget.event.id);
+      final result = await _calendarService.deleteEvent(widget.event.id);
+      if (!result.ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('削除できませんでした: ${result.error}')),
+          );
+        }
+        return;
+      }
       // 削除は元の日付の周辺を再取得しないとキャッシュに残り続ける
       await _resyncCache(widget.event.start);
       if (mounted) Navigator.of(context).pop(true);

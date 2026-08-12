@@ -24,6 +24,9 @@ const kGeminiQuotaMessage       = 'AIの利用上限に達しました。しば�
 const kGeminiApiKeyMessage      = 'AIの認証に失敗しました。APIキーの設定を確認してください。';
 const kGeminiNetworkMessage     = '通信に失敗しました。電波状況を確認してもう一度お試しください。';
 const kGeminiNoApiKeyMessage    = 'AIのAPIキーが設定されていないため利用できません。';
+// 上のkGeminiErrorMessageは「応答をJSONとして読めなかった」場合に使う。
+// 呼び出し自体が例外で落ちた場合と区別できるよう、文言を分けている。
+const kGeminiUnknownErrorMessage = 'AIとの通信でエラーが発生しました。もう一度試してください。';
 
 // ── AIの生の応答文字列を GeminiReply へ変換する ─────────
 // GenerativeModel に依存しない純粋関数なので単体テストできる。
@@ -73,6 +76,11 @@ class GeminiService {
       // より余裕のあるgemini-flash-lite-latestを使う。
       model:  'gemini-flash-lite-latest',
       apiKey: _apiKey,
+      // プロンプトで「JSONのみ」と指示しても、モデルは平文や
+      // ```json 囲みで返してくることがある。そうなると parseGeminiReply が
+      // JSONとして読めず「エラーが発生しました」に落ちて会話が成立しない。
+      // APIレベルでJSON出力を強制して、この失敗経路自体を無くす。
+      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
     );
   }
 
@@ -156,5 +164,5 @@ String describeGeminiFailure(Object error) {
       s.contains('network') || s.contains('connection')) {
     return kGeminiNetworkMessage;
   }
-  return kGeminiErrorMessage;
+  return kGeminiUnknownErrorMessage;
 }
