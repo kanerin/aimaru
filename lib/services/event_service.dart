@@ -103,6 +103,17 @@ class EventService {
         .map((snap) => snap.docs.map(AimaruEvent.fromDoc).toList());
   }
 
+  // ── 毎年繰り返す予定（リアルタイム）─────────────
+  // 誕生日や記念日は生年月日など過去の日付で登録されるため、
+  // watchUpcomingEvents の「date >= now」では拾えない。発生日の算出は
+  // 呼び出し側（utils/recurring_events.dart）で行う。
+  Stream<List<AimaruEvent>> watchRecurringEvents(String coupleId) {
+    return _eventsRef(coupleId)
+        .where('recurring', isEqualTo: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(AimaruEvent.fromDoc).toList());
+  }
+
   // ── 全予定をMapで取得（カレンダー用）────────────
   Stream<Map<DateTime, List<AimaruEvent>>> watchEventsAsMap(String coupleId) {
     return _eventsRef(coupleId)
