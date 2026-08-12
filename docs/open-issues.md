@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-12 / 基準コミット `a5ae070`）
+# 残課題（最終更新: 2026-08-12 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 `notion-audit` スキルが棚卸しのたびにここを更新する。Notion の各 DB が詳細の正で、
@@ -12,16 +12,17 @@
 |---|---|---|
 | Cloud Functions | `cd functions && npm test` | **17件すべて通過** |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| Flutter 単体・ウィジェット | `flutter test` | **92件**（別セッションが実 SDK で通過を確認済み。この作業環境には Flutter SDK が無く再確認はしていない） |
+| Flutter 単体・ウィジェット | `flutter test` | **106件**（別セッションが実 SDK で通過を確認済み。この作業環境には Flutter SDK が無く再確認はしていない） |
 
 テストの内訳:
 
 ```
-test/services/gemini_reply_parser_test.dart     17   AI応答パース・失敗分類
-test/services/event_service_test.dart           14   予定CRUD・終日・期間クエリ
-test/services/couple_service_test.dart          13   ペアリング・招待コード
-test/utils/japan_holidays_test.dart             13   祝日計算
-test/widgets/event_datetime_fields_test.dart    13   日時入力ウィジェット
+test/services/gemini_reply_parser_test.dart      17   AI応答パース・失敗分類
+test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
+test/services/event_service_test.dart            14   予定CRUD・終日・期間クエリ
+test/services/couple_service_test.dart           13   ペアリング・招待コード
+test/utils/japan_holidays_test.dart              13   祝日計算
+test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/theme_controller_test.dart          4   テーマ
@@ -38,7 +39,7 @@ functions/src/reminder_logic.test.ts             17   リマインダー判定
 
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|
-| 1 | **CI が GitHub の必須チェックになっていない** | REQ-027 / FEAT-052 / TC-094 | Settings → Branches → main → Require status checks の設定が要る。**リポジトリ管理者権限が必要でエージェントからは実施できない** |
+| 1 | **CI が GitHub の必須チェックになっていない** | REQ-027 / FEAT-052 / TC-094 | Settings → Branches → develop → Require status checks の設定が要る。**リポジトリ管理者権限が必要でエージェントからは実施できない** |
 | 2 | **Firestore / Storage セキュリティルールのテストが無い** | REQ-025 / REQ-027 / TC-068〜TC-079 | README にある `rules_test/` が実在しない。`@firebase/rules-unit-testing` での構築が必要 |
 | 3 | **`storage.rules` がリポジトリに無い** | REQ-025 / FEAT-034 / TC-077 | README に内容の記載があるだけで、ファイル化もデプロイ対象化もされていない |
 | 4 | **Gemini API キーがビルド成果物に埋まる** | REQ-026 / FEAT-046 / TC-087 | `--dart-define` はソースへの直書きを防ぐだけで、APK からは抽出できる。Cloud Functions の `onCall` へ移して Secret Manager に置く必要がある |
@@ -73,7 +74,7 @@ functions/src/reminder_logic.test.ts             17   リマインダー判定
 
 エージェントが着手しても完了できないもの。ここが詰まると後続が止まる。
 
-- [ ] **CI を必須チェックに設定**（Settings → Branches → main）— 課題1
+- [ ] **CI を必須チェックに設定**（Settings → Branches → develop）— 課題1
 - [ ] リリース署名鍵の SHA-1 を Firebase Console に登録 — 課題8
 - [ ] Play Console でデベロッパーアカウント作成、手動で1度 AAB をアップロード — REQ-029
 - [ ] `PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットの登録 — REQ-029
@@ -89,14 +90,19 @@ functions/src/reminder_logic.test.ts             17   リマインダー判定
 - **「国民の休日」（祝日に挟まれた平日）が未対応** — 発生頻度が低いため
 - **全面 E2E 暗号化は採用しない** — AI 機能と両立しないため。COUPPLY が訴求している点だが追従しない判断
 
-## ブランチの状態
+## ブランチ運用
 
-| ブランチ | 位置 | 備考 |
+2026-08-12 に `main` / `release` を廃止し、3ブランチモデルへ移行した。
+
+```
+作業ブランチ → develop → release-stg → release-prd
+```
+
+| ブランチ | 役割 | 自動で走るもの |
 |---|---|---|
-| `main` | `31d4f3c` | `claude/notion-pending-updates-5wc725` の内容が**未マージ** |
-| `claude/notion-pending-updates-5wc725` | `a5ae070` | すべてを含む最新。`main` も他ブランチもこの祖先 |
-| `release-stg` | `a5ae070` | analyze / test を通してから配布するようゲート済み |
-| `release` | `25e8a1b` | 初期コミットのまま。Play Store 側の準備待ち |
+| `develop` | 開発の起点。ここからブランチを切り、ここへマージする（デフォルトブランチ） | PR / push で CI（analyze・test・Cloud Functions の検査） |
+| `release-stg` | テスター配布 | analyze / test を通してから App Distribution へ配布 |
+| `release-prd` | 本番 | Play Store（internal）へアップロード。Play Console 側の準備待ち |
 
-**`main` を `a5ae070` まで進める作業が未了。** ここが揃っていないと、CI を必須チェックにしても
-守っている対象が古いままになる。
+エージェントが作業するときは `develop` から切って `develop` へ PR を出す。
+`release-stg` / `release-prd` へ直接触らない。

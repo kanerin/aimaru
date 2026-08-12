@@ -61,10 +61,10 @@ Notion のコネクタが使えるか最初に確かめる。使えないなら*
 ```bash
 git fetch --all --prune
 git branch -r -v --sort=-committerdate | head -10
-git log --oneline HEAD..origin/main
+git log --oneline HEAD..origin/develop
 ```
 
-- `main` より先に進んでいるブランチがあれば、**そちらが実質の最新**。基準をそこへ
+- `develop` より先に進んでいるブランチがあれば、**そちらが実質の最新**。基準をそこへ
   合わせてから続ける
 - 直近1時間以内のコミットがあれば、他のセッションが動いている可能性が高い。
   **書き込まずに報告して終わる**
