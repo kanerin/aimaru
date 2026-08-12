@@ -4,6 +4,14 @@ import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
+import {
+  CHECK_INTERVAL_MINUTES,
+  formatRelative,
+  isStale,
+  nextOccurrence,
+  resolveMinutesBefore,
+  shouldRemindNow,
+} from "./reminder_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -38,12 +46,6 @@ async function sendFcm(
   } catch (err) {
     logger.warn("FCM送信に失敗しました", err);
   }
-}
-
-function formatRelative(minutesBefore: number): string {
-  if (minutesBefore >= 1440) return `${Math.round(minutesBefore / 1440)}日後`;
-  if (minutesBefore >= 60) return `${Math.round(minutesBefore / 60)}時間後`;
-  return `${minutesBefore}分後`;
 }
 
 // ── 予定登録通知: パートナーが予定を追加したら通知 ──────────
@@ -88,13 +90,7 @@ export const onEventCreated = onDocumentCreated(
 // ── リマインダー通知: 予定の開始前に通知 ────────────────────
 // CHECK_INTERVAL_MINUTES間隔で実行し、各メンバーの reminderMinutesBefore
 // 設定に応じて「今まさに通知すべき予定」を判定する。
-// 実行タイミングのずれを吸収するため、判定に幅（WINDOW_MINUTES）を持たせる。
-const CHECK_INTERVAL_MINUTES = 15;
-const WINDOW_MINUTES = 8; // 実行間隔(15分)を切れ目なくカバーできる幅
-
-function isWithinWindow(targetMs: number, nowMs: number): boolean {
-  return Math.abs(targetMs - nowMs) / 60000 <= WINDOW_MINUTES;
-}
+// 判定そのものは reminder_logic.ts の純粋関数に寄せてある。
 
 // 単発の予定（recurring != true）のリマインダー
 async function processOneTimeEvents(nowMs: number): Promise<void> {
@@ -107,7 +103,7 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
     const eventMs = data.date.toDate().getTime();
 
     // 大きく過ぎた予定はクエリ肥大化を防ぐため片付ける
-    if (eventMs < nowMs - 24 * 60 * 60 * 1000) {
+    if (isStale(eventMs, nowMs)) {
       await doc.ref.update({ reminded: true });
       continue;
     }
@@ -123,9 +119,8 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
       const user = userSnap.data() as UserDoc | undefined;
       if (!user || user.remindersEnabled === false) continue;
 
-      const minutesBefore = user.reminderMinutesBefore ?? 60;
-      const targetMs = eventMs - minutesBefore * 60000;
-      if (!isWithinWindow(targetMs, nowMs)) continue;
+      const minutesBefore = resolveMinutesBefore(user.reminderMinutesBefore);
+      if (!shouldRemindNow(eventMs, minutesBefore, nowMs)) continue;
 
       await sendFcm(
         user.fcmToken,
@@ -142,26 +137,12 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
 // 毎年繰り返す予定（記念日など、recurring == true）のリマインダー
 async function processRecurringEvents(nowMs: number): Promise<void> {
   const snap = await db.collectionGroup("events").where("recurring", "==", true).get();
-  const now = new Date(nowMs);
 
   for (const doc of snap.docs) {
     const data = doc.data() as EventDoc;
-    const original = data.date.toDate();
 
     // 今年 or 来年のうち、直近の発生日を採用する
-    const candidates = [now.getFullYear(), now.getFullYear() + 1].map(
-      (year) =>
-        new Date(
-          year,
-          original.getMonth(),
-          original.getDate(),
-          original.getHours(),
-          original.getMinutes(),
-        ),
-    );
-    const occurrence =
-      candidates.find((d) => d.getTime() >= nowMs - 24 * 60 * 60 * 1000) ??
-      candidates[candidates.length - 1];
+    const occurrence = nextOccurrence(data.date.toDate(), nowMs);
     const occurrenceYear = occurrence.getFullYear();
 
     if (data.remindedYear === occurrenceYear) continue;
@@ -177,9 +158,8 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
       const user = userSnap.data() as UserDoc | undefined;
       if (!user || user.remindersEnabled === false) continue;
 
-      const minutesBefore = user.reminderMinutesBefore ?? 60;
-      const targetMs = occurrence.getTime() - minutesBefore * 60000;
-      if (!isWithinWindow(targetMs, nowMs)) continue;
+      const minutesBefore = resolveMinutesBefore(user.reminderMinutesBefore);
+      if (!shouldRemindNow(occurrence.getTime(), minutesBefore, nowMs)) continue;
 
       await sendFcm(
         user.fcmToken,

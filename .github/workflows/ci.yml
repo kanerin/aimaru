@@ -1,0 +1,63 @@
+name: CI
+
+# 変更が既存の挙動を壊していないことを機械的に確かめるためのワークフロー。
+# AIエージェントによる自律開発は「壊れたことに気づける仕組み」が前提になるため、
+# このワークフローをPRの必須チェックに設定すること
+# （Settings → Branches → main → Require status checks to pass）。
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  flutter:
+    name: Flutter (analyze & test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      # 単体・ウィジェットテスト。結合テスト(integration_test/)は実機が要るため
+      # ここでは走らせない。
+      - name: Test
+        run: flutter test
+
+  functions:
+    name: Cloud Functions (typecheck & test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+
+      # テストコードも含めて型を通す（デプロイ成果物からは除外される）
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # デプロイされる形にビルドできることまで確かめる
+      - name: Build
+        run: npm run build

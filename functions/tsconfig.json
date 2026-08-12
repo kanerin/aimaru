@@ -11,5 +11,7 @@
     "esModuleInterop": true
   },
   "compileOnSave": true,
-  "include": ["src"]
+  "include": ["src"],
+  "//": "テストはデプロイ成果物に含めない。型チェックは tsconfig.test.json 側で行う",
+  "exclude": ["src/**/*.test.ts"]
 }

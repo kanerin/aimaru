@@ -1,13 +1,21 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 
 class CoupleService {
-  final _db   = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  // 引数なしで生成すると本番のFirebaseを使う（既存の呼び出しはそのまま）。
+  // テストからは firestore / uid を差し込んでFirebaseに触れずに検証する。
+  CoupleService({FirebaseFirestore? firestore, String? uid})
+      : _db = firestore ?? FirebaseFirestore.instance,
+        _overrideUid = uid;
 
-  String get _uid => _auth.currentUser!.uid;
+  final FirebaseFirestore _db;
+  final String? _overrideUid;
+
+  String get _uid => _overrideUid ?? FirebaseAuth.instance.currentUser!.uid;
 
   // ── 自分がペアに属しているか確認 ─────────────────
   Future<CoupleModel?> getMyCouple() async {
@@ -99,11 +107,14 @@ class CoupleService {
   }
 
   // ── 6桁コード生成 ─────────────────────────────────
+  // 以前は現在時刻(マイクロ秒)にインデックスを足して文字を選んでいたため、
+  // 6文字が文字表の連番（例: ABCDEF）になり、コードが推測可能だった。
+  // 招待コードは「まだ相手が決まっていないペア」への参加キーなので、
+  // 推測できると第三者が横から参加できてしまう。暗号論的乱数を使う。
+  static final _random = Random.secure();
+
   String _generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 紛らわしい文字を除外
-    final rand  = List.generate(6, (_) {
-      return chars[(DateTime.now().microsecondsSinceEpoch + _.hashCode) % chars.length];
-    });
-    return rand.join();
+    return List.generate(6, (_) => chars[_random.nextInt(chars.length)]).join();
   }
 }

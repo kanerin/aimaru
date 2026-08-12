@@ -3,10 +3,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/models.dart';
 
 class EventService {
-  final _db   = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  // 引数なしで生成すると本番のFirebaseを使う（既存の呼び出しはそのまま）。
+  // テストからは firestore / uid を差し込んでFirebaseに触れずに検証する。
+  EventService({FirebaseFirestore? firestore, String? uid})
+      : _db = firestore ?? FirebaseFirestore.instance,
+        _overrideUid = uid;
 
-  String get _uid => _auth.currentUser!.uid;
+  final FirebaseFirestore _db;
+  final String? _overrideUid;
+
+  String get _uid => _overrideUid ?? FirebaseAuth.instance.currentUser!.uid;
 
   CollectionReference _eventsRef(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('events');

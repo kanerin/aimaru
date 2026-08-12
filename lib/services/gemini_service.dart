@@ -15,6 +15,45 @@ class GeminiReply {
   const GeminiReply.text(this.text) : kind = GeminiReplyKind.text, events = const [];
 }
 
+// ── AIの応答を解釈できなかったときの定型文 ──────────────
+// 予定の取り違えは共有カレンダーだと相手にも通知が飛ぶため、
+// 解釈できないときは「何も作らずに聞き返す」を貫く。
+const kGeminiUnparseableMessage = 'うまく聞き取れませんでした。もう一度試してください。';
+const kGeminiErrorMessage       = 'エラーが発生しました。もう一度試してください。';
+
+// ── AIの生の応答文字列を GeminiReply へ変換する ─────────
+// GenerativeModel に依存しない純粋関数なので単体テストできる。
+// どの失敗経路でも例外を外へ出さず、予定は決して作らない。
+GeminiReply parseGeminiReply(String rawResponse) {
+  try {
+    final jsonStr = rawResponse
+        .trim()
+        .replaceAll('```json', '')
+        .replaceAll('```', '')
+        .trim();
+    final decoded = jsonDecode(jsonStr);
+    if (decoded is! Map<String, dynamic>) {
+      return const GeminiReply.text(kGeminiUnparseableMessage);
+    }
+
+    if (decoded['kind'] == 'events') {
+      final list = (decoded['events'] as List? ?? [])
+          .map((e) => GeminiParsedEvent.fromJson(e as Map<String, dynamic>))
+          .toList();
+      // 空配列で返ってきた場合は予定として扱わず、通常の返答へ倒す
+      if (list.isNotEmpty) return GeminiReply.events(list);
+    }
+
+    return GeminiReply.text(
+      (decoded['text'] as String?) ?? kGeminiUnparseableMessage,
+    );
+  } catch (_) {
+    // JSONとして壊れている / dateがパースできない / eventsの要素が
+    // オブジェクトでない、などはすべてここに落ちる
+    return const GeminiReply.text(kGeminiErrorMessage);
+  }
+}
+
 class GeminiService {
   // ビルド時に --dart-define=GEMINI_API_KEY=xxx で渡す（ソースにキーを書かない）。
   // 開発時は android/local.properties や ~/.gradle 等ではなく、
@@ -86,25 +125,10 @@ recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など�
 
     try {
       final response = await _model.generateContent(contents);
-      final raw = response.text?.trim() ?? '';
-      final jsonStr = raw.replaceAll('```json', '').replaceAll('```', '').trim();
-      final decoded = jsonDecode(jsonStr);
-      if (decoded is! Map<String, dynamic>) {
-        return const GeminiReply.text('うまく聞き取れませんでした。もう一度試してください。');
-      }
-
-      if (decoded['kind'] == 'events') {
-        final list = (decoded['events'] as List? ?? [])
-            .map((e) => GeminiParsedEvent.fromJson(e as Map<String, dynamic>))
-            .toList();
-        if (list.isNotEmpty) return GeminiReply.events(list);
-      }
-
-      return GeminiReply.text(
-        (decoded['text'] as String?) ?? 'うまく聞き取れませんでした。もう一度試してください。',
-      );
-    } catch (e) {
-      return const GeminiReply.text('エラーが発生しました。もう一度試してください。');
+      return parseGeminiReply(response.text ?? '');
+    } catch (_) {
+      // 通信断・レート制限・APIキー不正など。パース失敗と同じ文言に倒す
+      return const GeminiReply.text(kGeminiErrorMessage);
     }
   }
 }

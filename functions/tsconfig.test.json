@@ -1,0 +1,6 @@
+{
+  "//": "テストコードも含めて型チェックするための設定。emit はしない（npm run typecheck）",
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": []
+}

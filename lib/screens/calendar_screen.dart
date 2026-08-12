@@ -232,6 +232,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
     weekendStyle: TextStyle(fontSize: 10, color: AppColors.textMuted),
   );
 
+  // ── 選択表示のミニカレンダーの寸法 ───────────────────
+  // table_calendarは日付の丸(today/selected)を「セル - cellMargin」の領域に
+  // 描き、マーカーは Stack(alignment: markersAlignment) の子として置く。
+  // 下端揃えのマーカーと丸が同じ領域を奪い合うため、cellMarginの下側に
+  // ドット専用の帯を確保して丸を上へ逃がす。
+  static const double _dotSize = 4;
+  // ドットのために空ける帯の高さ。丸はこの分だけ小さく・上寄りになる。
+  static const double _dotBandHeight = 14;
+  // 帯の中でドットをセル下端から浮かせる量。
+  static const double _dotBottomInset = 3;
+  static const EdgeInsets _miniCellMargin = EdgeInsets.only(
+    top: 4, left: 6, right: 6, bottom: _dotBandHeight,
+  );
+
   StartingDayOfWeek get _startingDayOfWeek =>
       _weekStartsMonday ? StartingDayOfWeek.monday : StartingDayOfWeek.sunday;
 
@@ -509,35 +523,42 @@ class _CalendarScreenState extends State<CalendarScreen> {
               holidayTextStyle: const TextStyle(fontSize: 12, color: _sundayColor),
               // table_calendarのデフォルトは祝日に丸枠が付くため、文字色だけにする
               holidayDecoration: const BoxDecoration(),
+              // 日付の丸は「セル - cellMargin」いっぱいに描かれるため、下側に
+              // ドット用の帯を空けておかないと丸の下端とドットが重なる。
+              cellMargin: _miniCellMargin,
               todayDecoration: BoxDecoration(color: appAccentSoft(context), shape: BoxShape.circle),
               todayTextStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
               selectedDecoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
               selectedTextStyle: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w700),
               markersAlignment: Alignment.bottomCenter,
-              markerSize: 4,
-              markerMargin: const EdgeInsets.only(top: 6),
-              cellMargin: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
             ),
             calendarBuilders: CalendarBuilders(
               markerBuilder: (context, day, events) {
                 final hasGcal = _gcalFor(day, syncedIds).isNotEmpty;
                 if (events.isEmpty && !hasGcal) return null;
                 final types = events.map((e) => e.type).toSet().take(3);
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ...types.map((t) => Container(
-                      width: 4, height: 4,
-                      margin: const EdgeInsets.symmetric(horizontal: 1),
-                      decoration: BoxDecoration(color: _dotColor(t), shape: BoxShape.circle),
-                    )),
-                    if (hasGcal)
-                      Container(
-                        width: 4, height: 4,
+                // markerBuilderを渡すと、返したWidgetがそのまま
+                // Stack(alignment: markersAlignment) の子になる。
+                // CalendarStyleのmarkerSize/markerMargin/markersAnchorは
+                // 一切参照されないので、位置はここで自分で決める。
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: _dotBottomInset),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ...types.map((t) => Container(
+                        width: _dotSize, height: _dotSize,
                         margin: const EdgeInsets.symmetric(horizontal: 1),
-                        decoration: const BoxDecoration(color: _gcalColor, shape: BoxShape.circle),
-                      ),
-                  ],
+                        decoration: BoxDecoration(color: _dotColor(t), shape: BoxShape.circle),
+                      )),
+                      if (hasGcal)
+                        Container(
+                          width: _dotSize, height: _dotSize,
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          decoration: const BoxDecoration(color: _gcalColor, shape: BoxShape.circle),
+                        ),
+                    ],
+                  ),
                 );
               },
             ),
