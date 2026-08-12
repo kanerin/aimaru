@@ -161,16 +161,24 @@ flutter test integration_test/app_test.dart -d <device-id>
 
 ## 配布・CI/CD
 
-このリポジトリには2つのデプロイ用ブランチがあり、pushすると自動でCI/CDが走る（`.github/workflows/`）。
+このリポジトリは3つのブランチで運用する。`release-stg` / `release-prd` は push すると自動でCI/CDが走る（`.github/workflows/`）。
+
+- **`develop`** → 開発の起点。ここからブランチを切り、ここへマージする。PR で `flutter analyze` / `flutter test` とCloud Functionsの検査が走る。
 
 - **`release-stg`** → push すると自動で `flutter build apk --release` → Firebase App Distributionへアップロードし、テスターに通知が届く。**動作確認済み。**
 - **`release-prd`** → push すると自動で `flutter build appbundle --release` → Google Play Store（internalトラック）へアップロード。**Play Console側の準備が必要（下記）。**
 
-開発の流れの想定: `main` で作業 → 動作確認用に `release-stg` へマージしてApp Distributionで実機確認 → 問題なければ `release-prd` へマージしてPlay Storeへ。
+開発の流れ:
+
+```
+作業ブランチ → develop → release-stg → release-prd
+```
+
+`develop` から作業ブランチを切って `develop` へマージ → `release-stg` へマージして App Distribution で実機確認 → 問題なければ `release-prd` へマージして Play Store へ。
 
 ### 必要なGitHub Secrets
 
-いずれも `main` リポジトリの Settings → Secrets and variables → Actions で登録する。値そのものはコミットしない。
+いずれもリポジトリの Settings → Secrets and variables → Actions で登録する。値そのものはコミットしない。
 
 | Secret名 | 用途 | 状態 |
 |---|---|---|
