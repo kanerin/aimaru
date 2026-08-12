@@ -64,6 +64,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _showHolidays = true;
   bool _weekStartsMonday = false;
 
+  // build()の中で watchEventsAsMap() を呼ぶと、再ビルドのたびに snapshots() を
+  // 購読し直すことになり、最初のスナップショットが届くまで snap.data が null に
+  // 戻る。月を送ると予定が一瞬消えてから出てくるのはこれが原因なので、
+  // ストリームはこの画面で1本だけ作って使い回す。
+  late final Stream<Map<DateTime, List<AimaruEvent>>> _eventsStream =
+      _eventService.watchEventsAsMap(widget.coupleId);
+
   StreamSubscription<Map<String, List<GCalEventSummary>>>? _gcalSub;
   Map<DateTime, List<_GcalEntry>> _gcalByDate = {};
   DateTime? _gcalSyncedMonth;
@@ -245,6 +252,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const EdgeInsets _miniCellMargin = EdgeInsets.only(
     top: 4, left: 6, right: 6, bottom: _dotBandHeight,
   );
+  // 最終週のドットはセル下端の _dotBottomInset 上にあるだけなので、
+  // カレンダーの直下に区切り線が来ると予定リストと近接して見える。
+  // ドットを上げると日付の丸と重なるため、下に余白を足して離す。
+  static const double _miniBottomGap = 10;
 
   StartingDayOfWeek get _startingDayOfWeek =>
       _weekStartsMonday ? StartingDayOfWeek.monday : StartingDayOfWeek.sunday;
@@ -264,7 +275,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ],
       ),
       body: StreamBuilder<Map<DateTime, List<AimaruEvent>>>(
-        stream: _eventService.watchEventsAsMap(widget.coupleId),
+        stream: _eventsStream,
         builder: (context, snap) {
           final eventsMap = snap.data ?? {};
           final syncedIds = _syncedGoogleIds(eventsMap);
@@ -564,6 +575,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
         ),
+        const SizedBox(height: _miniBottomGap),
         const Divider(height: 1, color: AppColors.hairline),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),

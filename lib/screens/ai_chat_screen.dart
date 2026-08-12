@@ -16,7 +16,7 @@ class AiChatScreen extends StatefulWidget {
   State<AiChatScreen> createState() => _AiChatScreenState();
 }
 
-class _AiChatScreenState extends State<AiChatScreen> {
+class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver {
   final _gemini             = GeminiService();
   final _eventService       = EventService();
   final _gcalCacheService   = GoogleCalendarCacheService();
@@ -36,13 +36,72 @@ class _AiChatScreenState extends State<AiChatScreen> {
     '来週の予定を教えて',
   ];
 
+  static const _greeting =
+      '2人のスケジュール管理をお手伝いします ✦\n'
+      '「来週の土曜デートしたい」のように話しかけたり、「来週の予定は？」と聞いたりしてみてください';
+
+  // アプリを離れてから戻るまでがこれより長ければ、会話を続きとして扱わず新しく始める。
+  // IndexedStackで4画面を保持しているため、放置しておくと何日でも前の会話が残る。
+  static const _staleAfter = Duration(minutes: 30);
+  DateTime? _pausedAt;
+
   @override
   void initState() {
     super.initState();
-    _messages.add(_ChatItem.ai(
-      '2人のスケジュール管理をお手伝いします ✦\n'
-      '「来週の土曜デートしたい」のように話しかけたり、「来週の予定は？」と聞いたりしてみてください',
-    ));
+    WidgetsBinding.instance.addObserver(this);
+    _messages.add(_ChatItem.ai(_greeting));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _pausedAt = DateTime.now();
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+
+    final pausedAt = _pausedAt;
+    _pausedAt = null;
+    // 送信の途中で戻ってきた場合に応答を捨てると混乱するので、そのときは触らない
+    if (_thinking) return;
+    if (pausedAt == null || DateTime.now().difference(pausedAt) < _staleAfter) return;
+    if (_messages.length <= 1) return;
+    _resetConversation();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('会話をリセットしますか？'),
+        content: const Text(
+          'これまでのやり取りを消して最初から始めます。追加済みの予定はそのまま残ります。',
+          style: TextStyle(color: AppColors.textSecond, fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('リセット')),
+        ],
+      ),
+    );
+    if (confirmed == true) _resetConversation();
+  }
+
+  void _resetConversation() {
+    setState(() {
+      _messages
+        ..clear()
+        ..add(_ChatItem.ai(_greeting));
+      _thinking = false;
+    });
   }
 
   Future<void> _send(String text) async {
@@ -218,6 +277,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
             Text('オンライン', style: TextStyle(fontSize: 10, color: AppColors.success)),
           ]),
         ]),
+        actions: [
+          IconButton(
+            tooltip: '会話をリセット',
+            icon: const Icon(Icons.refresh, color: AppColors.textSecond),
+            onPressed: _messages.length <= 1 ? null : _confirmReset,
+          ),
+        ],
       ),
       body: Column(
         children: [

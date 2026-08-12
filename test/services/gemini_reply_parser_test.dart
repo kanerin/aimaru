@@ -145,4 +145,28 @@ void main() {
       expect(reply.text, '返答だけ');
     });
   });
+
+  group('describeGeminiFailure', () {
+    test('利用上限は上限として案内する', () {
+      expect(describeGeminiFailure(Exception('[429] Resource has been exhausted')),
+          kGeminiQuotaMessage);
+      expect(describeGeminiFailure(Exception('RESOURCE_EXHAUSTED: quota exceeded')),
+          kGeminiQuotaMessage);
+    });
+
+    test('認証まわりはAPIキーの確認を促す', () {
+      expect(describeGeminiFailure(Exception('API key not valid')), kGeminiApiKeyMessage);
+      expect(describeGeminiFailure(Exception('[403] PERMISSION_DENIED')), kGeminiApiKeyMessage);
+    });
+
+    test('通信断は電波状況の確認を促す', () {
+      expect(describeGeminiFailure(Exception('SocketException: Failed host lookup')),
+          kGeminiNetworkMessage);
+      expect(describeGeminiFailure(Exception('Connection timed out')), kGeminiNetworkMessage);
+    });
+
+    test('判別できない失敗は既定の文言に倒す', () {
+      expect(describeGeminiFailure(Exception('何か想定外')), kGeminiErrorMessage);
+    });
+  });
 }

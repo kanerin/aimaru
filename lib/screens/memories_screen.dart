@@ -25,13 +25,18 @@ class _MemoriesScreenState extends State<MemoriesScreen> {
   final _eventService = EventService();
   EventType? _filter;
 
+  // build()の中で作ると、フィルタ切替などの再ビルドのたびに購読し直して
+  // 一覧が一瞬空になる。ストリームは1本だけ作って使い回す。
+  late final Stream<Map<DateTime, List<AimaruEvent>>> _eventsStream =
+      _eventService.watchEventsAsMap(widget.coupleId);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.navy,
       appBar: AppBar(title: const Text('思い出')),
       body: StreamBuilder<Map<DateTime, List<AimaruEvent>>>(
-        stream: _eventService.watchEventsAsMap(widget.coupleId),
+        stream: _eventsStream,
         builder: (context, snap) {
           final eventsMap = snap.data ?? {};
           final withPhotos = eventsMap.values

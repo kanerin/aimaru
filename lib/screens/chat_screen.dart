@@ -30,6 +30,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller      = TextEditingController();
   final _scrollCtrl      = ScrollController();
 
+  // build()の中で作ると、入力のたびの再ビルドで購読し直して履歴が一瞬消える。
+  // ストリームは1本だけ作って使い回す。
+  late final Stream<List<ChatMessage>> _messagesStream =
+      _chatService.watchMessages(widget.coupleId);
+
   String get _myUid => FirebaseAuth.instance.currentUser!.uid;
   String? _partnerName;
   bool _sendingImage = false;
@@ -142,7 +147,7 @@ class _ChatScreenState extends State<ChatScreen> {
               behavior: HitTestBehavior.translucent,
               onTap: () => FocusScope.of(context).unfocus(),
               child: StreamBuilder<List<ChatMessage>>(
-                stream: _chatService.watchMessages(widget.coupleId),
+                stream: _messagesStream,
                 builder: (context, snap) {
                   final messages = snap.data ?? [];
                   if (!snap.hasData) {

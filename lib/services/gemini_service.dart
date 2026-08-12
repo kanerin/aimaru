@@ -20,6 +20,10 @@ class GeminiReply {
 // 解釈できないときは「何も作らずに聞き返す」を貫く。
 const kGeminiUnparseableMessage = 'うまく聞き取れませんでした。もう一度試してください。';
 const kGeminiErrorMessage       = 'エラーが発生しました。もう一度試してください。';
+const kGeminiQuotaMessage       = 'AIの利用上限に達しました。しばらく時間をおいてからお試しください。';
+const kGeminiApiKeyMessage      = 'AIの認証に失敗しました。APIキーの設定を確認してください。';
+const kGeminiNetworkMessage     = '通信に失敗しました。電波状況を確認してもう一度お試しください。';
+const kGeminiNoApiKeyMessage    = 'AIのAPIキーが設定されていないため利用できません。';
 
 // ── AIの生の応答文字列を GeminiReply へ変換する ─────────
 // GenerativeModel に依存しない純粋関数なので単体テストできる。
@@ -82,6 +86,8 @@ class GeminiService {
     List<Map<String, String>> history, {
     String eventsContext = 'なし',
   }) async {
+    if (_apiKey.isEmpty) return const GeminiReply.text(kGeminiNoApiKeyMessage);
+
     final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
 
     final systemPrompt = '''
@@ -126,9 +132,29 @@ recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など�
     try {
       final response = await _model.generateContent(contents);
       return parseGeminiReply(response.text ?? '');
-    } catch (_) {
-      // 通信断・レート制限・APIキー不正など。パース失敗と同じ文言に倒す
-      return const GeminiReply.text(kGeminiErrorMessage);
+    } catch (e) {
+      // 「エラーが発生しました」だけだと、上限切れなのか通信断なのか
+      // APIキーの問題なのかが画面から一切判別できないので切り分ける
+      return GeminiReply.text(describeGeminiFailure(e));
     }
   }
+}
+
+// ── 呼び出しが例外で落ちた理由を、利用者が次に取れる行動へ翻訳する ──
+// 例外の型は google_generative_ai の実装に依存するため、文字列で判定する。
+String describeGeminiFailure(Object error) {
+  final s = error.toString().toLowerCase();
+  if (s.contains('429') || s.contains('quota') || s.contains('resource_exhausted') ||
+      s.contains('rate limit')) {
+    return kGeminiQuotaMessage;
+  }
+  if (s.contains('api key') || s.contains('api_key') || s.contains('unauthenticated') ||
+      s.contains('permission_denied') || s.contains('401') || s.contains('403')) {
+    return kGeminiApiKeyMessage;
+  }
+  if (s.contains('socket') || s.contains('timeout') || s.contains('timed out') ||
+      s.contains('network') || s.contains('connection')) {
+    return kGeminiNetworkMessage;
+  }
+  return kGeminiErrorMessage;
 }

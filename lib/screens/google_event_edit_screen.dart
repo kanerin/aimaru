@@ -24,7 +24,10 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
   late final _titleCtrl = TextEditingController(text: widget.event.title);
   late DateTime _start = widget.event.start;
   late DateTime _end   = widget.event.end;
-  bool _saving = false;
+  bool _saving   = false;
+  bool _deleting = false;
+
+  bool get _busy => _saving || _deleting;
 
   @override
   void dispose() {
@@ -92,13 +95,48 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
       return;
     }
 
-    // カップル間で共有しているキャッシュにも反映されるよう、周辺期間を再同期
-    final rangeStart = DateTime(_start.year, _start.month - 1, 1);
-    final rangeEnd   = DateTime(_start.year, _start.month + 2, 0, 23, 59);
-    final refreshed  = await _calendarService.fetchEvents(start: rangeStart, end: rangeEnd);
-    await _cacheService.pushMyEvents(widget.coupleId, refreshed);
+    await _resyncCache(_start);
 
     if (mounted) Navigator.of(context).pop(true);
+  }
+
+  // カップル間で共有しているキャッシュにも反映されるよう、周辺期間を再同期
+  Future<void> _resyncCache(DateTime around) async {
+    final rangeStart = DateTime(around.year, around.month - 1, 1);
+    final rangeEnd   = DateTime(around.year, around.month + 2, 0, 23, 59);
+    final refreshed  = await _calendarService.fetchEvents(start: rangeStart, end: rangeEnd);
+    await _cacheService.pushMyEvents(widget.coupleId, refreshed);
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('この予定を削除しますか？'),
+        content: Text(
+          '「${widget.event.title}」をGoogleカレンダーから削除します。この操作は取り消せません。',
+          style: const TextStyle(color: AppColors.textSecond, fontSize: 13),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('削除する', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _deleting = true);
+    try {
+      await _calendarService.deleteEvent(widget.event.id);
+      // 削除は元の日付の周辺を再取得しないとキャッシュに残り続ける
+      await _resyncCache(widget.event.start);
+      if (mounted) Navigator.of(context).pop(true);
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
   }
 
   @override
@@ -113,7 +151,7 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
         title: const Text('Googleカレンダーの予定を編集'),
         actions: [
           TextButton(
-            onPressed: _saving ? null : _save,
+            onPressed: _busy ? null : _save,
             child: _saving
                 ? SizedBox(
                     width: 16, height: 16,
@@ -187,6 +225,17 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
               ),
             ]),
           ],
+
+          const SizedBox(height: 28),
+          Center(
+            child: TextButton(
+              onPressed: _busy ? null : _delete,
+              child: _deleting
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.redAccent))
+                  : const Text('この予定を削除', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+            ),
+          ),
         ],
         ),
       ),
