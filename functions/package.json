@@ -5,10 +5,11 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test": "node --import tsx --test src/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 src/*.test.ts",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test:integration": "firebase emulators:exec --project aimaru-test --only firestore \"node --import tsx --test --test-concurrency=1 src/*.integration.test.ts\""
   },
   "engines": {
     "node": "22"
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.20.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "firebase-tools": "^13.29.1"
   }
 }

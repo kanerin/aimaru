@@ -66,3 +66,9 @@ firestore-debug.log
 # パートナーのメールアドレス等の個人情報・環境固有情報を含むため、
 # このマシンにのみ残し、リポジトリにはpushしない
 CLAUDE.md
+
+# セキュリティルールのテスト
+rules_test/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

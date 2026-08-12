@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// カップルの写真は、このアプリで最もプライベートなデータ。
+// couples/{coupleId}/ 配下は、そのカップルのメンバーだけが読み書きできる。
+//
+// メンバー判定は Firestore の couples ドキュメントを参照して行う。
+// Storage 単体では「誰がどのカップルか」を知る手段が無いため。
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /couples/{coupleId}/{allPaths=**} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid in firestore.get(
+          /databases/(default)/documents/couples/$(coupleId)
+        ).data.memberIds;
+    }
+
+    // 上記以外のパスは誰も触れない。書き込み先を couples/ 配下に限定することで、
+    // アプリの外から任意の場所へファイルを置かれるのを防ぐ。
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

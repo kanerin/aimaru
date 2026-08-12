@@ -37,6 +37,18 @@ jobs:
       - name: Test
         run: flutter test
 
+      # セキュリティルールはアプリを経由しない直接アクセスに対する最後の砦。
+      # 配布物そのものには含まれないが、ルールが緩んだ状態でテスターに
+      # 配ると、その端末から実データを触られる余地が残る。
+      - name: Test security rules
+        working-directory: rules_test
+        run: npm ci && npm test
+
+      # 通知はCloud Functions側で動くので、APKだけ緑でも壊れていることがある
+      - name: Test Cloud Functions
+        working-directory: functions
+        run: npm ci && npm run typecheck && npm test && npm run test:integration
+
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
