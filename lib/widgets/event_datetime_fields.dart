@@ -2,6 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/app_theme.dart';
 
+// ── 開始を動かしたときの終了の追従先 ────────────────────
+// 長さを保つほうが直感に合う。元の長さが負（壊れた状態）なら1時間に正す。
+// ウィジェットから切り出してあるのは、ここが単体テストの対象になるため。
+DateTime followStart({
+  required DateTime oldStart,
+  required DateTime oldEnd,
+  required DateTime newStart,
+}) {
+  final span = oldEnd.difference(oldStart);
+  return newStart.add(span.isNegative ? const Duration(hours: 1) : span);
+}
+
+// ── 終了として受け付ける値 ──────────────────────────
+// 終了が開始より前になる入力は通さない。終日は「同じ日に終わる」＝1日だけの
+// 予定として正当なので、日付単位で比較する。
+DateTime clampEnd({
+  required DateTime start,
+  required DateTime end,
+  required bool allDay,
+}) {
+  if (allDay) {
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay   = DateTime(end.year, end.month, end.day);
+    return endDay.isBefore(startDay) ? startDay : endDay;
+  }
+  return end.isAfter(start) ? end : start.add(const Duration(hours: 1));
+}
+
 // ── 予定の日時入力（開始・終了・終日）────────────────────
 // 新規作成フォームとGoogleカレンダーの予定編集で同じ見た目・同じ操作にするため、
 // 両画面からこのウィジェットを使う。
@@ -54,22 +82,13 @@ class EventDateTimeFields extends StatelessWidget {
     return DateTime(current.year, current.month, current.day, picked.hour, picked.minute);
   }
 
-  // 開始を動かしたぶんだけ終了もずらす。長さを保つほうが直感に合う。
   void _moveStart(DateTime next) {
-    final span = end.difference(start);
     onStartChanged(next);
-    onEndChanged(next.add(span.isNegative ? const Duration(hours: 1) : span));
+    onEndChanged(followStart(oldStart: start, oldEnd: end, newStart: next));
   }
 
   void _setEnd(DateTime next) {
-    if (allDay) {
-      // 終日は同日終了を許す（1日だけの予定）
-      final startDay = DateTime(start.year, start.month, start.day);
-      final nextDay  = DateTime(next.year, next.month, next.day);
-      onEndChanged(nextDay.isBefore(startDay) ? startDay : next);
-      return;
-    }
-    onEndChanged(next.isAfter(start) ? next : start.add(const Duration(hours: 1)));
+    onEndChanged(clampEnd(start: start, end: next, allDay: allDay));
   }
 
   @override

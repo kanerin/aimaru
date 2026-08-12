@@ -23,8 +23,10 @@ void main() {
   AimaruEvent buildEvent({
     String title = 'デート',
     DateTime? date,
+    DateTime? endDate,
     EventType type = EventType.date,
     bool recurring = false,
+    bool allDay = false,
     String? location,
     String? memo,
   }) =>
@@ -33,11 +35,13 @@ void main() {
         coupleId: coupleId,
         title: title,
         date: date ?? DateTime(2026, 8, 22, 19, 0),
+        endDate: endDate,
         type: type,
         location: location,
         memo: memo,
         createdBy: '',
         recurring: recurring,
+        allDay: allDay,
       );
 
   setUp(() {
@@ -96,6 +100,47 @@ void main() {
       expect(data['recurring'], true);
       expect(data['reminded'], false);
       expect(data['remindedYear'], isNull);
+    });
+
+    test('AI追加の記念日・有名人の誕生日は終日として保存される', () async {
+      final parsed = GeminiParsedEvent(
+        title: 'miwaの誕生日',
+        date: DateTime(2026, 6, 15),
+        type: EventType.celebrity,
+        recurring: true,
+        location: null,
+        memo: null,
+      );
+
+      final created = await service.addFromGemini(coupleId, parsed);
+
+      expect(created.allDay, isTrue);
+      expect((await eventsRef().doc(created.id).get()).data()!['allDay'], true);
+    });
+
+    test('終了日時と終日が保存され、日をまたぐ予定を作れる', () async {
+      final created = await service.addEvent(
+        coupleId,
+        buildEvent(
+          date: DateTime(2026, 8, 14, 22, 0),
+          endDate: DateTime(2026, 8, 15, 2, 0),
+        ),
+      );
+
+      expect(created.endDate, DateTime(2026, 8, 15, 2, 0));
+
+      final data = (await eventsRef().doc(created.id).get()).data()!;
+      expect((data['endDate'] as Timestamp).toDate(), DateTime(2026, 8, 15, 2, 0));
+    });
+
+    test('終日フラグが保存される', () async {
+      final created = await service.addEvent(
+        coupleId,
+        buildEvent(allDay: true),
+      );
+
+      expect(created.allDay, isTrue);
+      expect((await eventsRef().doc(created.id).get()).data()!['allDay'], true);
     });
   });
 

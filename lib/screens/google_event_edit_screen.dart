@@ -175,7 +175,7 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
           ),
           const SizedBox(height: 20),
 
-          SectionLabel('日時'),
+          const SectionLabel('日時'),
           EventDateTimeFields(
             start: _start,
             end: _end,

@@ -176,7 +176,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          SectionLabel('種類'),
+          const SectionLabel('種類'),
           Wrap(
             spacing: 8,
             children: EventType.values.map((t) => ChoiceChip(
@@ -194,7 +194,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          SectionLabel('日時'),
+          const SectionLabel('日時'),
           EventDateTimeFields(
             start: _date,
             end: _endDate,
@@ -216,7 +216,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 8),
 
-          SectionLabel('場所（任意）'),
+          const SectionLabel('場所（任意）'),
           TextField(
             controller: _locationCtrl,
             style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
@@ -224,7 +224,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          SectionLabel('メモ（任意）'),
+          const SectionLabel('メモ（任意）'),
           TextField(
             controller: _memoCtrl,
             maxLines: 3,
@@ -233,7 +233,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          SectionLabel('写真'),
+          const SectionLabel('写真'),
           Wrap(
             spacing: 8, runSpacing: 8,
             children: [

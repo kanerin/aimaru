@@ -5,6 +5,27 @@ import '../models/models.dart';
 
 const kGCalNotSignedIn = 'Googleアカウントに接続できていません。設定から連携し直してください';
 
+// ── googleapis が返す日時をアプリで扱う値へ直す ──────────
+// EventDateTime.fromJson は DateTime.parse を使うため、オフセット付きRFC3339は
+// UTCとして返る。そのまま表示すると9時間ずれる。終日の date は「日付だけ」を
+// 表すUTC値で、toLocal() するとタイムゾーンによって前日へずれるため、
+// 年月日をそのままローカルの日付として扱う。
+// ウィジェットから切り出してあるのは、ここが単体テストの対象になるため。
+DateTime? normalizeGCalDateTime(DateTime? value, {required bool isAllDay}) {
+  if (value == null) return null;
+  if (isAllDay) return DateTime(value.year, value.month, value.day);
+  return value.toLocal();
+}
+
+// ── 終日予定の end.date（排他的）を求める ────────────────
+// アプリ内は「最終日（その日を含む）」で扱い、Googleへ送るときだけ翌日にする。
+DateTime allDayEndExclusive({required DateTime start, required DateTime lastDay}) {
+  final startDay = DateTime(start.year, start.month, start.day);
+  final next = DateTime(lastDay.year, lastDay.month, lastDay.day)
+      .add(const Duration(days: 1));
+  return next.isAfter(startDay) ? next : startDay.add(const Duration(days: 1));
+}
+
 // ── Googleカレンダーへの書き込み結果 ──────────────────
 // 失敗理由を画面まで運ぶ。握り潰すと「消えないのに成功に見える」状態になる。
 class GCalResult {
@@ -77,13 +98,11 @@ class GoogleCalendarService {
     if (start == null || end == null) {
       // 日時は据え置き
     } else if (allDay) {
-      // 呼び出し側は end に「最終日（その日を含む）」を渡す。Google の end.date は
-      // 排他的なので翌日へ送る。
-      final startDay = DateTime(start.year, start.month, start.day);
-      var endDay     = DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
-      if (!endDay.isAfter(startDay)) endDay = startDay.add(const Duration(days: 1));
-      gEvent.start = gcal.EventDateTime(date: startDay);
-      gEvent.end   = gcal.EventDateTime(date: endDay);
+      // 呼び出し側は end に「最終日（その日を含む）」を渡す
+      gEvent.start = gcal.EventDateTime(
+          date: DateTime(start.year, start.month, start.day));
+      gEvent.end = gcal.EventDateTime(
+          date: allDayEndExclusive(start: start, lastDay: end));
     } else {
       gEvent.start = gcal.EventDateTime(dateTime: start.toUtc(), timeZone: 'Asia/Tokyo');
       gEvent.end   = gcal.EventDateTime(dateTime: end.toUtc(), timeZone: 'Asia/Tokyo');
@@ -154,8 +173,10 @@ class GoogleCalendarService {
       final items = result.items ?? [];
       return items.where((e) => e.status != 'cancelled').map((e) {
         final isAllDay = e.start?.dateTime == null;
-        final startDt = _normalize(e.start?.dateTime ?? e.start?.date, isAllDay);
-        final endDt   = _normalize(e.end?.dateTime ?? e.end?.date, isAllDay);
+        final startDt = normalizeGCalDateTime(
+            e.start?.dateTime ?? e.start?.date, isAllDay: isAllDay);
+        final endDt = normalizeGCalDateTime(
+            e.end?.dateTime ?? e.end?.date, isAllDay: isAllDay);
         return GCalEventSummary(
           id:     e.id ?? '',
           title:  e.summary ?? '(無題の予定)',
@@ -169,15 +190,6 @@ class GoogleCalendarService {
     }
   }
 
-  // googleapis が返す dateTime は RFC3339 をパースしたUTC値なので、そのまま
-  // 表示すると9時間ずれる。終日予定の date は「日付だけ」を表すUTC値で、
-  // toLocal() するとタイムゾーンによって前日へずれるため年月日をそのまま使う。
-  static DateTime? _normalize(DateTime? value, bool isAllDay) {
-    if (value == null) return null;
-    if (isAllDay) return DateTime(value.year, value.month, value.day);
-    return value.toLocal();
-  }
-
   gcal.Event _toGoogleEvent(AimaruEvent event) {
     final gEvent = gcal.Event()
       ..summary = '${event.type.emoji} ${event.title}'
@@ -186,13 +198,9 @@ class GoogleCalendarService {
 
     if (event.allDay) {
       final day = DateTime(event.date.year, event.date.month, event.date.day);
-      // 終日の end.date は排他的なので、終了日の翌日を送る
-      final lastDay = event.endDate ?? event.date;
-      var next = DateTime(lastDay.year, lastDay.month, lastDay.day)
-          .add(const Duration(days: 1));
-      if (!next.isAfter(day)) next = day.add(const Duration(days: 1));
       gEvent.start = gcal.EventDateTime(date: day);
-      gEvent.end   = gcal.EventDateTime(date: next);
+      gEvent.end = gcal.EventDateTime(date: allDayEndExclusive(
+          start: event.date, lastDay: event.endDate ?? event.date));
       if (event.recurring) {
         gEvent.recurrence = ['RRULE:FREQ=YEARLY'];
       }
