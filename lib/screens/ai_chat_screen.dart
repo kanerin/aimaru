@@ -271,7 +271,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
             child: const Center(child: Text('✦', style: TextStyle(fontSize: 14))),
           ),
           const SizedBox(width: 10),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+          const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('AIMARU AI', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
             Text('オンライン', style: TextStyle(fontSize: 10, color: AppColors.success)),
           ]),
@@ -520,11 +520,11 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
               bottomLeft: const Radius.circular(4),
             ),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
             _Dot(delay: 0),
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
             _Dot(delay: 200),
-            const SizedBox(width: 4),
+            SizedBox(width: 4),
             _Dot(delay: 400),
           ]),
         ),

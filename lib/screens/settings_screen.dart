@@ -108,7 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _SectionLabel('プロフィール'),
+          const _SectionLabel('プロフィール'),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -154,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           const SizedBox(height: 28),
-          _SectionLabel('表示'),
+          const _SectionLabel('表示'),
           if (_loadingPrefs)
             const _LoadingRow()
           else ...[
@@ -165,14 +165,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.hairline),
               ),
-              child: Column(
+              child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('テーマカラー', style: TextStyle(
+                  Text('テーマカラー', style: TextStyle(
                     fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
                   )),
-                  const SizedBox(height: 10),
-                  const _AccentColorPicker(),
+                  SizedBox(height: 10),
+                  _AccentColorPicker(),
                 ],
               ),
             ),
@@ -199,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
 
           const SizedBox(height: 28),
-          _SectionLabel('カレンダー連携'),
+          const _SectionLabel('カレンダー連携'),
           if (_loadingPrefs)
             const _LoadingRow()
           else ...[
@@ -229,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
 
           const SizedBox(height: 28),
-          _SectionLabel('通知'),
+          const _SectionLabel('通知'),
           if (_loadingPrefs)
             const _LoadingRow()
           else ...[
@@ -296,7 +296,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
 
           const SizedBox(height: 28),
-          _SectionLabel('アカウント'),
+          const _SectionLabel('アカウント'),
           Center(
             child: TextButton.icon(
               onPressed: _signOut,

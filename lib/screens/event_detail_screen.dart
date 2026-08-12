@@ -160,6 +160,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.hairline),
             ),
+            height: 48,
             child: Row(children: [
               Container(
                 width: 26, height: 26,
@@ -181,7 +182,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
               const SizedBox(width: 10),
             ]),
-            height: 48,
           ),
 
           const SizedBox(height: 28),

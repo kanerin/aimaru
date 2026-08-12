@@ -1,5 +1,9 @@
 name: Distribute to testers (release-stg)
 
+# ci.yml は PR と main だけが対象なので、release-stg へ直接pushすると
+# analyze も test も走らないままテスターへ配布されてしまう。
+# 配布物が壊れているほうが検査の数分より高くつくため、ビルドの前に検査する。
+
 on:
   push:
     branches: [release-stg]
@@ -22,6 +26,16 @@ jobs:
           channel: stable
 
       - run: flutter pub get
+
+      # 検査は署名鍵を展開する前・APKを組む前に置く。壊れているときに
+      # 6分かけてビルドしてから落ちるより早く分かり、鍵にも触らずに済む。
+      - name: Analyze
+        run: flutter analyze
+
+      # 単体・ウィジェットテスト。結合テスト(integration_test/)は実機が要るため
+      # ここでは走らせない。
+      - name: Test
+        run: flutter test
 
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
