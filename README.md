@@ -161,16 +161,24 @@ flutter test integration_test/app_test.dart -d <device-id>
 
 ## 配布・CI/CD
 
-このリポジトリには2つのデプロイ用ブランチがあり、pushすると自動でCI/CDが走る（`.github/workflows/`）。
+このリポジトリは3つのブランチで運用する。`release-stg` / `release-prd` は push すると自動でCI/CDが走る（`.github/workflows/`）。
+
+- **`develop`** → 開発の起点。ここからブランチを切り、ここへマージする。PR で `flutter analyze` / `flutter test` とCloud Functionsの検査が走る。
 
 - **`release-stg`** → push すると自動で `flutter build apk --release` → Firebase App Distributionへアップロードし、テスターに通知が届く。**動作確認済み。**
-- **`release`** → push すると自動で `flutter build appbundle --release` → Google Play Store（internalトラック）へアップロード。**Play Console側の準備が必要（下記）。**
+- **`release-prd`** → push すると自動で `flutter build appbundle --release` → Google Play Store（internalトラック）へアップロード。**Play Console側の準備が必要（下記）。**
 
-開発の流れの想定: `main` で作業 → 動作確認用に `release-stg` へマージしてApp Distributionで実機確認 → 問題なければ `release` へマージしてPlay Storeへ。
+開発の流れ:
+
+```
+作業ブランチ → develop → release-stg → release-prd
+```
+
+`develop` から作業ブランチを切って `develop` へマージ → `release-stg` へマージして App Distribution で実機確認 → 問題なければ `release-prd` へマージして Play Store へ。
 
 ### 必要なGitHub Secrets
 
-いずれも `main` リポジトリの Settings → Secrets and variables → Actions で登録する。値そのものはコミットしない。
+いずれもリポジトリの Settings → Secrets and variables → Actions で登録する。値そのものはコミットしない。
 
 | Secret名 | 用途 | 状態 |
 |---|---|---|
@@ -189,7 +197,7 @@ flutter test integration_test/app_test.dart -d <device-id>
 
 ### Play Store側の準備（ユーザー側でのみ実施可能）
 
-`release` ブランチのワークフローを動かすには、以下がまだ必要（Google Cloud/Firebaseの権限では代行できず、Play Consoleのデベロッパーアカウント名義でしか行えない作業のため）:
+`release-prd` ブランチのワークフローを動かすには、以下がまだ必要（Google Cloud/Firebaseの権限では代行できず、Play Consoleのデベロッパーアカウント名義でしか行えない作業のため）:
 
 1. [Google Play Console](https://play.google.com/console) でデベロッパーアカウントを作成（登録料 $25、初回のみ）
 2. アプリを新規作成し、**手動で一度だけ**AAB（`flutter build appbundle --release`で作れる）をアップロードする（Play Developer APIは「一度も手動アップロードされていないアプリ」には使えないため）
@@ -198,7 +206,7 @@ flutter test integration_test/app_test.dart -d <device-id>
 5. サービスアカウントのJSONキーを発行し、`PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットに登録
 6. `.github/workflows/release.yml` の `packageName: com.example.aimaru` を実際のapplicationIdに合わせて修正
 
-**リリース署名でのGoogleログインについて**: 現在Firebase ConsoleにはデバッグキーのSHA-1しか登録されていない。`release`ブランチのビルド（今回生成した署名鍵）でGoogleログインを機能させるには、そのSHA-1もFirebase Console→プロジェクトの設定→Androidアプリ→フィンガープリントを追加、で登録すること。
+**リリース署名でのGoogleログインについて**: 現在Firebase ConsoleにはデバッグキーのSHA-1しか登録されていない。`release-prd`ブランチのビルド（今回生成した署名鍵）でGoogleログインを機能させるには、そのSHA-1もFirebase Console→プロジェクトの設定→Androidアプリ→フィンガープリントを追加、で登録すること。
 
 ### iOS（TestFlight）
 

@@ -94,25 +94,36 @@ class GoogleCalendarService {
     final api = await _api();
     if (api == null) return const GCalResult.failure(kGCalNotSignedIn);
 
-    final gEvent = gcal.Event()..summary = title;
-    if (start == null || end == null) {
-      // 日時は据え置き
-    } else if (allDay) {
-      // 呼び出し側は end に「最終日（その日を含む）」を渡す
-      gEvent.start = gcal.EventDateTime(
-          date: DateTime(start.year, start.month, start.day));
-      gEvent.end = gcal.EventDateTime(
-          date: allDayEndExclusive(start: start, lastDay: end));
-    } else {
-      gEvent.start = gcal.EventDateTime(dateTime: start.toUtc(), timeZone: 'Asia/Tokyo');
-      gEvent.end   = gcal.EventDateTime(dateTime: end.toUtc(), timeZone: 'Asia/Tokyo');
-    }
-
     try {
-      // events.update はリソース全体の置き換えなので、ここで送っていない
-      // description / location / recurrence / attendees が消える。
-      // 送ったフィールドだけを変える patch を使う。
-      await api.events.patch(gEvent, 'primary', eventId);
+      // 既存のリソースを取ってから必要な箇所だけ差し替えて全体を送る。
+      //
+      // patch はネストしたオブジェクトをマージするため、時刻指定の予定へ
+      // start.date だけを送ると既存の start.dateTime が残って date と同居し、
+      // Google が「Invalid start time」(400) を返す。両者は排他なので、
+      // 片方を消すには null を明示的に送る必要があるが、googleapis の
+      // toJson は null のフィールドを落とすため patch では表現できない。
+      // update（全体の置き換え）なら曖昧さが無く、取得した現物を土台にする
+      // ことで description / location / recurrence / attendees も保たれる。
+      final event = await api.events.get('primary', eventId);
+      event.summary = title;
+
+      if (start != null && end != null) {
+        if (allDay) {
+          // 呼び出し側は end に「最終日（その日を含む）」を渡す
+          event.start = gcal.EventDateTime(
+              date: DateTime(start.year, start.month, start.day));
+          event.end = gcal.EventDateTime(
+              date: allDayEndExclusive(start: start, lastDay: end));
+        } else {
+          // 時刻指定の予定にGoogleは end > start を要求する。終日から戻した
+          // 直後は両方が同じ日の0:00になりうるので、ここでも開いておく。
+          final safeEnd = end.isAfter(start) ? end : start.add(const Duration(hours: 1));
+          event.start = gcal.EventDateTime(dateTime: start.toUtc(), timeZone: 'Asia/Tokyo');
+          event.end   = gcal.EventDateTime(dateTime: safeEnd.toUtc(), timeZone: 'Asia/Tokyo');
+        }
+      }
+
+      await api.events.update(event, 'primary', eventId);
       return const GCalResult.success();
     } catch (e) {
       return GCalResult.failure(_describe(e));

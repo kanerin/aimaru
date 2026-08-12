@@ -7,6 +7,7 @@ import '../../services/gemini_service.dart';
 import '../../services/event_service.dart';
 import '../../services/google_calendar_cache_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/recurring_events.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String coupleId;
@@ -165,6 +166,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   // 予定をまとめる（このアプリから同期済みのGoogle予定は重複するので除く）。
   Future<String> _buildEventsContext() async {
     final aimaru = await _eventService.watchUpcomingEvents(widget.coupleId, limit: 30).first;
+    final recurring = await _eventService.watchRecurringEvents(widget.coupleId).first;
     final syncedIds = {
       for (final e in aimaru)
         if (e.googleCalendarEventId != null) e.googleCalendarEventId!,
@@ -173,10 +175,23 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     final gcalByUid = await _gcalCacheService.watchAll(widget.coupleId).first;
 
     final entries = <({DateTime date, String line})>[];
+    final seen = <String>{};
     for (final e in aimaru) {
+      seen.add(e.id);
       final dateStr = DateFormat('yyyy-MM-dd(E) HH:mm', 'ja').format(e.date);
       final loc = e.location != null ? ' @ ${e.location}' : '';
       entries.add((date: e.date, line: '- $dateStr ${e.title}$loc'));
+    }
+
+    // 誕生日や記念日は生年月日など過去の日付で登録されるため、
+    // 「今後の予定」には出てこない。次の発生日を足しておかないと、
+    // 「◯◯の誕生日は登録されている?」に答えられず、AIが推測で答えてしまう。
+    final now0 = DateTime.now();
+    for (final e in recurring) {
+      if (seen.contains(e.id)) continue;
+      final next = nextOccurrence(e.date, from: now0);
+      final dateStr = DateFormat('yyyy-MM-dd(E)', 'ja').format(next);
+      entries.add((date: next, line: '- $dateStr ${e.title}（毎年繰り返し）'));
     }
 
     final now = DateTime.now();

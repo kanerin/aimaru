@@ -12,6 +12,7 @@ import '../services/google_calendar_cache_service.dart';
 import '../services/settings_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/japan_holidays.dart';
+import '../utils/recurring_events.dart';
 import 'event_detail_screen.dart';
 import 'event_form_screen.dart';
 import 'google_event_edit_screen.dart';
@@ -277,7 +278,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: StreamBuilder<Map<DateTime, List<AimaruEvent>>>(
         stream: _eventsStream,
         builder: (context, snap) {
-          final eventsMap = snap.data ?? {};
+          // 毎年繰り返す予定は1件しか保存されていないので、表示する年の
+          // 発生日へ展開する。前後の月が別の年に食い込むため±1年を含める。
+          final eventsMap = expandRecurringEvents(
+            snap.data ?? {},
+            years: [_focusedDay.year - 1, _focusedDay.year, _focusedDay.year + 1],
+          );
           final syncedIds = _syncedGoogleIds(eventsMap);
           return _expandedView
               ? _buildExpandedCalendar(eventsMap, syncedIds)

@@ -1,6 +1,6 @@
 name: Distribute to testers (release-stg)
 
-# ci.yml は PR と main だけが対象なので、release-stg へ直接pushすると
+# ci.yml は PR と develop だけが対象なので、release-stg へ直接pushすると
 # analyze も test も走らないままテスターへ配布されてしまう。
 # 配布物が壊れているほうが検査の数分より高くつくため、ビルドの前に検査する。
 
