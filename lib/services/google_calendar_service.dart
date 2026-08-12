@@ -77,10 +77,10 @@ class GoogleCalendarService {
     if (start == null || end == null) {
       // 日時は据え置き
     } else if (allDay) {
-      // 終日予定の end.date は「翌日」を指す排他的な値。取得時の end をそのまま
-      // 使うと1日短くなるため、start と同じ日なら翌日へ送る。
+      // 呼び出し側は end に「最終日（その日を含む）」を渡す。Google の end.date は
+      // 排他的なので翌日へ送る。
       final startDay = DateTime(start.year, start.month, start.day);
-      var endDay     = DateTime(end.year, end.month, end.day);
+      var endDay     = DateTime(end.year, end.month, end.day).add(const Duration(days: 1));
       if (!endDay.isAfter(startDay)) endDay = startDay.add(const Duration(days: 1));
       gEvent.start = gcal.EventDateTime(date: startDay);
       gEvent.end   = gcal.EventDateTime(date: endDay);
@@ -179,16 +179,18 @@ class GoogleCalendarService {
   }
 
   gcal.Event _toGoogleEvent(AimaruEvent event) {
-    final isAllDay = event.recurring || event.type == EventType.anniversary || event.type == EventType.celebrity;
-
     final gEvent = gcal.Event()
       ..summary = '${event.type.emoji} ${event.title}'
       ..description = event.memo
       ..location = event.location;
 
-    if (isAllDay) {
+    if (event.allDay) {
       final day = DateTime(event.date.year, event.date.month, event.date.day);
-      final next = day.add(const Duration(days: 1));
+      // 終日の end.date は排他的なので、終了日の翌日を送る
+      final lastDay = event.endDate ?? event.date;
+      var next = DateTime(lastDay.year, lastDay.month, lastDay.day)
+          .add(const Duration(days: 1));
+      if (!next.isAfter(day)) next = day.add(const Duration(days: 1));
       gEvent.start = gcal.EventDateTime(date: day);
       gEvent.end   = gcal.EventDateTime(date: next);
       if (event.recurring) {

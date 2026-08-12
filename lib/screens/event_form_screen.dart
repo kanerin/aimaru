@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/event_service.dart';
 import '../services/storage_service.dart';
 import '../services/google_calendar_service.dart';
 import '../services/settings_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/event_datetime_fields.dart';
+import '../widgets/section_label.dart';
 
 // ── 予定の新規作成・編集フォーム（共用）───────────────
 class EventFormScreen extends StatefulWidget {
@@ -37,8 +38,11 @@ class _EventFormScreenState extends State<EventFormScreen> {
   late final _memoCtrl     = TextEditingController(text: widget.existing?.memo ?? '');
 
   late DateTime  _date       = widget.existing?.date ?? widget.initialDate ?? DateTime.now();
+  late DateTime  _endDate    = widget.existing?.endDate ??
+      (widget.existing?.date ?? widget.initialDate ?? DateTime.now()).add(const Duration(hours: 1));
   late EventType _type       = widget.existing?.type ?? EventType.date;
   late bool      _recurring  = widget.existing?.recurring ?? false;
+  late bool      _allDay     = widget.existing?.allDay ?? false;
   bool _syncGoogle = false;
   late final List<String> _existingImages = List.from(widget.existing?.imageUrls ?? []);
 
@@ -68,28 +72,6 @@ class _EventFormScreenState extends State<EventFormScreen> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context, initialDate: _date,
-      firstDate: DateTime(2020), lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      setState(() => _date = DateTime(picked.year, picked.month, picked.day, _date.hour, _date.minute));
-    }
-  }
-
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_date),
-      // ダイヤル表示だと選択円と数字が重なって見づらいため、入力式にする
-      initialEntryMode: TimePickerEntryMode.input,
-    );
-    if (picked != null) {
-      setState(() => _date = DateTime(_date.year, _date.month, _date.day, picked.hour, picked.minute));
-    }
-  }
-
   Future<void> _pickImages() async {
     final files = await _picker.pickMultiImage();
     if (files.isNotEmpty) {
@@ -115,18 +97,19 @@ class _EventFormScreenState extends State<EventFormScreen> {
         final e = widget.existing!;
         event = AimaruEvent(
           id: e.id, coupleId: e.coupleId,
-          title: _titleCtrl.text.trim(), date: _date, endDate: e.endDate,
+          title: _titleCtrl.text.trim(), date: _date, endDate: _endDate,
           type: _type, location: location, memo: memo,
           imageUrls: _existingImages, createdBy: e.createdBy,
-          recurring: _recurring, googleCalendarEventId: e.googleCalendarEventId,
+          recurring: _recurring, allDay: _allDay,
+          googleCalendarEventId: e.googleCalendarEventId,
         );
         await _eventService.updateEvent(event);
       } else {
         event = await _eventService.addEvent(widget.coupleId, AimaruEvent(
           id: '', coupleId: widget.coupleId,
-          title: _titleCtrl.text.trim(), date: _date,
+          title: _titleCtrl.text.trim(), date: _date, endDate: _endDate,
           type: _type, location: location, memo: memo,
-          createdBy: '', recurring: _recurring,
+          createdBy: '', recurring: _recurring, allDay: _allDay,
         ));
       }
 
@@ -164,9 +147,6 @@ class _EventFormScreenState extends State<EventFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('M月d日（E）', 'ja').format(_date);
-    final timeStr = DateFormat('HH:mm').format(_date);
-
     return Scaffold(
       backgroundColor: AppColors.navy,
       appBar: AppBar(
@@ -196,7 +176,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          _SectionLabel('種類'),
+          SectionLabel('種類'),
           Wrap(
             spacing: 8,
             children: EventType.values.map((t) => ChoiceChip(
@@ -214,32 +194,15 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          _SectionLabel('日時'),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickDate,
-                icon: const Icon(Icons.calendar_today, size: 14),
-                label: Text(dateStr),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.hairlineStrong),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _pickTime,
-                icon: const Icon(Icons.access_time, size: 14),
-                label: Text(timeStr),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.hairlineStrong),
-                ),
-              ),
-            ),
-          ]),
+          SectionLabel('日時'),
+          EventDateTimeFields(
+            start: _date,
+            end: _endDate,
+            allDay: _allDay,
+            onStartChanged: (v) => setState(() => _date = v),
+            onEndChanged: (v) => setState(() => _endDate = v),
+            onAllDayChanged: (v) => setState(() => _allDay = v),
+          ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -253,7 +216,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 8),
 
-          _SectionLabel('場所（任意）'),
+          SectionLabel('場所（任意）'),
           TextField(
             controller: _locationCtrl,
             style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
@@ -261,7 +224,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          _SectionLabel('メモ（任意）'),
+          SectionLabel('メモ（任意）'),
           TextField(
             controller: _memoCtrl,
             maxLines: 3,
@@ -270,7 +233,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           ),
           const SizedBox(height: 16),
 
-          _SectionLabel('写真'),
+          SectionLabel('写真'),
           Wrap(
             spacing: 8, runSpacing: 8,
             children: [
@@ -323,19 +286,6 @@ class _EventFormScreenState extends State<EventFormScreen> {
       ),
     );
   }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Text(text, style: const TextStyle(
-      fontSize: 11, letterSpacing: 1, color: AppColors.textMuted, fontWeight: FontWeight.w600,
-    )),
-  );
 }
 
 class _ImageThumb extends StatelessWidget {

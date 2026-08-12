@@ -37,6 +37,7 @@ class EventService {
       imageUrls:  event.imageUrls,
       createdBy:  _uid,
       recurring:  event.recurring,
+      allDay:     event.allDay,
     );
     await ref.set({...newEvent.toMap(), ..._freshReminderFields});
     return newEvent;
@@ -55,6 +56,11 @@ class EventService {
       memo:      parsed.memo,
       createdBy: _uid,
       recurring: parsed.recurring,
+      // 記念日・有名人の誕生日・毎年繰り返しは時刻に意味が無いので終日扱い。
+      // 従来Googleへ送るときに適用していた判定をここへ移した。
+      allDay:    parsed.recurring ||
+          parsed.type == EventType.anniversary ||
+          parsed.type == EventType.celebrity,
     );
     await ref.set({...event.toMap(), ..._freshReminderFields});
     return event;

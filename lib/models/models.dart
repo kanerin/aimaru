@@ -73,6 +73,7 @@ class AimaruEvent {
   final List<String> imageUrls;
   final String createdBy;         // userId
   final bool recurring;           // 毎年繰り返し
+  final bool allDay;              // 終日（時刻を持たない）
   final String? googleCalendarEventId;
 
   AimaruEvent({
@@ -87,6 +88,7 @@ class AimaruEvent {
     this.imageUrls = const [],
     required this.createdBy,
     this.recurring = false,
+    this.allDay = false,
     this.googleCalendarEventId,
   });
 
@@ -107,6 +109,12 @@ class AimaruEvent {
       imageUrls:             List<String>.from(d['imageUrls'] ?? []),
       createdBy:             d['createdBy'] ?? '',
       recurring:             d['recurring'] ?? false,
+      // 既存の予定にはこのフィールドが無い。記念日・有名人の誕生日・毎年繰り返しは
+      // 以前から終日としてGoogleへ送っていたので、その扱いを引き継ぐ。
+      allDay:                d['allDay'] ??
+          (d['recurring'] ?? false) ||
+          d['type'] == 'anniversary' ||
+          d['type'] == 'celebrity',
       googleCalendarEventId: d['googleCalendarEventId'],
     );
   }
@@ -122,24 +130,29 @@ class AimaruEvent {
     'imageUrls':             imageUrls,
     'createdBy':             createdBy,
     'recurring':             recurring,
+    'allDay':                allDay,
     'googleCalendarEventId': googleCalendarEventId,
   };
 
   AimaruEvent copyWith({
-    String? title, DateTime? date, EventType? type,
+    String? title, DateTime? date, DateTime? endDate, EventType? type,
     String? location, String? memo, List<String>? imageUrls,
-    bool? recurring, String? googleCalendarEventId,
+    bool? recurring, bool? allDay, String? googleCalendarEventId,
   }) => AimaruEvent(
     id:                    id,
     coupleId:              coupleId,
     title:                 title ?? this.title,
     date:                  date ?? this.date,
+    // endDateを引き継がないと、画像アップロードやGoogle同期のcopyWithを
+    // 経由するたびに終了日時が消える
+    endDate:               endDate ?? this.endDate,
     type:                  type ?? this.type,
     location:              location ?? this.location,
     memo:                  memo ?? this.memo,
     imageUrls:             imageUrls ?? this.imageUrls,
     createdBy:             createdBy,
     recurring:             recurring ?? this.recurring,
+    allDay:                allDay ?? this.allDay,
     googleCalendarEventId: googleCalendarEventId ?? this.googleCalendarEventId,
   );
 }

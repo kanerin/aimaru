@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/google_calendar_service.dart';
 import '../services/google_calendar_cache_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/event_datetime_fields.dart';
+import '../widgets/section_label.dart';
 
 // ── Googleカレンダー由来の自分の予定を編集する画面 ──
 // AimaruEventではなく、Google Calendar上の実データ(GCalEventSummary)を直接編集する。
@@ -23,49 +24,26 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
 
   late final _titleCtrl = TextEditingController(text: widget.event.title);
   late DateTime _start = widget.event.start;
-  late DateTime _end   = widget.event.end;
+  // 終日予定の end は「翌日」を指す排他的な値で届くので、表示上は最終日へ戻す
+  late final DateTime _initialEnd = widget.event.allDay
+      ? _exclusiveEndToLastDay(widget.event.start, widget.event.end)
+      : widget.event.end;
+  late DateTime _end = _initialEnd;
+  late bool _allDay = widget.event.allDay;
   bool _saving   = false;
   bool _deleting = false;
 
   bool get _busy => _saving || _deleting;
 
+  static DateTime _exclusiveEndToLastDay(DateTime start, DateTime end) {
+    final last = end.subtract(const Duration(days: 1));
+    return last.isBefore(start) ? start : last;
+  }
+
   @override
   void dispose() {
     _titleCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context, initialDate: _start,
-      firstDate: DateTime(2020), lastDate: DateTime(2100),
-    );
-    if (picked == null) return;
-    setState(() {
-      final duration = _end.difference(_start);
-      _start = DateTime(picked.year, picked.month, picked.day, _start.hour, _start.minute);
-      _end   = _start.add(duration.isNegative ? const Duration(hours: 1) : duration);
-    });
-  }
-
-  Future<void> _pickTime(bool isStart) async {
-    final target = isStart ? _start : _end;
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(target),
-      // ダイヤル表示だと選択円と数字が重なって見づらいため、入力式にする
-      initialEntryMode: TimePickerEntryMode.input,
-    );
-    if (picked == null) return;
-    setState(() {
-      final updated = DateTime(target.year, target.month, target.day, picked.hour, picked.minute);
-      if (isStart) {
-        _start = updated;
-        if (!_end.isAfter(_start)) _end = _start.add(const Duration(hours: 1));
-      } else {
-        _end = updated;
-      }
-    });
   }
 
   Future<void> _save() async {
@@ -80,14 +58,15 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
     // 日時を触っていないなら送らない。送り直すと終日/時刻指定を取り違えたときに
     // 元の予定を壊してしまうため、変更したときだけ差し替える。
     final dateChanged = !_start.isAtSameMomentAs(widget.event.start) ||
-        !_end.isAtSameMomentAs(widget.event.end);
+        !_end.isAtSameMomentAs(_initialEnd) ||
+        _allDay != widget.event.allDay;
 
     final result = await _calendarService.updateGoogleEvent(
       eventId: widget.event.id,
       title: _titleCtrl.text.trim(),
       start: dateChanged ? _start : null,
       end: dateChanged ? _end : null,
-      allDay: widget.event.allDay,
+      allDay: _allDay,
     );
 
     if (!result.ok) {
@@ -154,10 +133,6 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr  = DateFormat('M月d日（E）', 'ja').format(_start);
-    final startStr = DateFormat('HH:mm').format(_start);
-    final endStr   = DateFormat('HH:mm').format(_end);
-
     return Scaffold(
       backgroundColor: AppColors.navy,
       appBar: AppBar(
@@ -200,44 +175,15 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
           ),
           const SizedBox(height: 20),
 
-          OutlinedButton.icon(
-            onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_today, size: 14),
-            label: Text(dateStr),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.hairlineStrong),
-            ),
+          SectionLabel('日時'),
+          EventDateTimeFields(
+            start: _start,
+            end: _end,
+            allDay: _allDay,
+            onStartChanged: (v) => setState(() => _start = v),
+            onEndChanged: (v) => setState(() => _end = v),
+            onAllDayChanged: (v) => setState(() => _allDay = v),
           ),
-
-          if (!widget.event.allDay) ...[
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _pickTime(true),
-                  icon: const Icon(Icons.access_time, size: 14),
-                  label: Text('開始 $startStr'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.hairlineStrong),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _pickTime(false),
-                  icon: const Icon(Icons.access_time, size: 14),
-                  label: Text('終了 $endStr'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.hairlineStrong),
-                  ),
-                ),
-              ),
-            ]),
-          ],
 
           const SizedBox(height: 28),
           Center(
