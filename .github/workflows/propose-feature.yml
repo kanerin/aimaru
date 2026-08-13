@@ -70,4 +70,4 @@ jobs:
           # 通常より探索・実装のターン数がかかる想定でmax-turnsを引き上げている。
           # allowedToolsの値はスペースを含む（Bash(git commit:*)等）ため、
           # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
-          claude_args: --max-turns 60 --allowedTools "Read,Grep,Glob,Edit,Write,WebSearch,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
+          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,WebSearch,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
