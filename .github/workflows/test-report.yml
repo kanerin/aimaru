@@ -108,6 +108,4 @@ jobs:
             - flutter_test.log
             - functions_test.log
             - rules_test.log
-          claude_args: >-
-            --allowedTools
-            Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue comment:*)
+          claude_args: --allowedTools "Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue comment:*)"
