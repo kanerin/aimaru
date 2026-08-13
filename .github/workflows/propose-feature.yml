@@ -20,6 +20,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      id-token: write # claude-code-action がOIDCトークン取得に使う
     steps:
       - uses: actions/checkout@v5
 
