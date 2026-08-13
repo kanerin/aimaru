@@ -231,6 +231,47 @@ class GeminiParsedEvent {
   }
 }
 
+// ── TodoItem（共有TODO・やりたいことリスト）───────────
+// 日付が決まっていないアイデアの置き場。予定に確定したら
+// 別途カレンダーへ登録してもらう想定で、日付フィールドは持たない。
+class TodoItem {
+  final String id;
+  final String coupleId;
+  final String text;
+  final bool done;
+  final String createdBy;
+  final DateTime createdAt;
+
+  TodoItem({
+    required this.id,
+    required this.coupleId,
+    required this.text,
+    this.done = false,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory TodoItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return TodoItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      text:      d['text'] ?? '',
+      done:      d['done'] ?? false,
+      createdBy: d['createdBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'text':      text,
+    'done':      done,
+    'createdBy': createdBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── GCalEventSummary（Googleカレンダーの予定の要約）───
 // 自分/パートナーのGoogleカレンダーをカレンダー画面に重ねて
 // 表示するための軽量なキャッシュ用モデル。

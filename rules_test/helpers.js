@@ -90,3 +90,15 @@ export async function seedChat(testEnv, msgId = "msg-1") {
     });
   });
 }
+
+export async function seedTodo(testEnv, todoId = "todo-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/todos/${todoId}`).set({
+      coupleId: COUPLE_ID,
+      text: "水族館に行く",
+      done: false,
+      createdBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}

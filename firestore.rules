@@ -27,6 +27,11 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
+      match /todos/{todoId} {
+        allow read, write: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
+
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。
       // メンバーなら誰でも読めるが、書き込みは自分の分のみ。
       match /googleCalendarCache/{uid} {
