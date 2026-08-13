@@ -72,10 +72,6 @@ firestore-debug.log
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 
-# パートナーのメールアドレス等の個人情報・環境固有情報を含むため、
-# このマシンにのみ残し、リポジトリにはpushしない
-CLAUDE.md
-
 # セキュリティルールのテスト
 rules_test/node_modules/
 firebase-debug.log

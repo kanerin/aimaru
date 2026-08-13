@@ -1,0 +1,119 @@
+name: Backmerge release-prd to develop
+
+# release-prd への push（本番反映）をトリガーに、release-prd → develop の
+# 戻しマージPRを自動作成する。develop への直接pushは絶対にしない
+# （PRを経由し、コンフリクトが無ければそのPRをマージする、という形を取る）。
+# マージ判定自体はGitHubのmergeable判定とgh CLIだけで完結させ、
+# コンフリクト時のみClaudeを起動して人間向けの分析コメントを書かせる。
+
+on:
+  push:
+    branches: [release-prd]
+
+# release-prdへの連続pushでbackmergeが多重起動し、developへの自動マージが
+# 競合するのを防ぐため直列化する（キャンセルはせず、順番に処理する）
+concurrency:
+  group: backmerge
+  cancel-in-progress: false
+
+jobs:
+  backmerge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      pr_number: ${{ steps.create_pr.outputs.pr_number }}
+      mergeable: ${{ steps.check.outputs.mergeable }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # develop → release-stg → release-prd は基本的にfast-forward昇格なので、
+      # release-prdがdevelopに対して先行しているコミットが無いケースが多い
+      # （通常のリリースではここで正常終了する）。release-prd への直接コミット
+      # （緊急ホットフィックス等）があった場合だけ、以降のステップが動く。
+      - name: Check if release-prd is ahead of develop
+        id: diff_check
+        run: |
+          ahead=$(git log origin/develop..origin/release-prd --oneline | wc -l | tr -d ' ')
+          if [ "$ahead" = "0" ]; then
+            echo "release-prd はdevelopに対して先行コミットが無いため、戻しマージは不要です"
+          fi
+          echo "ahead=$ahead" >> "$GITHUB_OUTPUT"
+
+      - name: Create backmerge PR (or reuse existing one)
+        id: create_pr
+        if: steps.diff_check.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing=$(gh pr list --base develop --head release-prd --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "既存の戻しマージPR #$existing を使用します"
+            echo "pr_number=$existing" >> "$GITHUB_OUTPUT"
+          else
+            url=$(gh pr create --base develop --head release-prd \
+              --title "chore: release-prd を develop へ戻しマージ" \
+              --body "release-prd への反映内容を develop に取り込むための自動PR（backmerge.yml、run #${{ github.run_number }}）。コンフリクトが無ければ自動マージされます。")
+            number=$(basename "$url")
+            echo "pr_number=$number" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for GitHub's mergeable computation
+        id: check
+        if: steps.diff_check.outputs.ahead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status="UNKNOWN"
+          for i in $(seq 1 10); do
+            status=$(gh pr view "${{ steps.create_pr.outputs.pr_number }}" --json mergeable --jq '.mergeable')
+            [ "$status" != "UNKNOWN" ] && break
+            sleep 3
+          done
+          echo "mergeable=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-merge (no conflict)
+        if: steps.check.outputs.mergeable == 'MERGEABLE'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr merge "${{ steps.create_pr.outputs.pr_number }}" --merge --delete-branch=false
+
+      # GitHubのmergeable判定が規定回数のリトライでもUNKNOWNのままだった場合、
+      # 自動マージもClaudeによるコンフリクト分析も走らずPRが放置されてしまう。
+      # サイレントに埋もれさせず、PRへコメントして人間に気付けるようにする。
+      - name: Notify if mergeable status could not be determined
+        if: steps.check.outputs.mergeable == 'UNKNOWN'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ steps.create_pr.outputs.pr_number }}" --body \
+            "⚠️ GitHubのマージ可否判定がタイムアウトしたため、自動マージ・コンフリクト分析のどちらも実行されませんでした。手動で内容を確認してください。"
+
+  analyze-conflict:
+    needs: backmerge
+    if: needs.backmerge.outputs.mergeable == 'CONFLICTING'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            .claude/commands/backmerge.md の指示に従ってください。
+            対象PR: #${{ needs.backmerge.outputs.pr_number }}（release-prd → develop）
+            このPRはGitHub上でコンフリクトと判定されています。
+            コンフリクトの内容を再現して確認するには、develop をチェックアウトした上で
+            `git merge --no-commit --no-ff origin/release-prd` を実行し、
+            発生したコンフリクトマーカーを読んでください（分析後は `git merge --abort` で元に戻すこと）。
+          claude_args: >-
+            --allowedTools
+            Read,Grep,Glob,Bash(git *),Bash(gh pr view:*),Bash(gh pr comment:*)
