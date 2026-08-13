@@ -15,6 +15,7 @@ import '../utils/japan_holidays.dart';
 import '../utils/recurring_events.dart';
 import 'event_detail_screen.dart';
 import 'event_form_screen.dart';
+import 'free_time_screen.dart';
 import 'google_event_edit_screen.dart';
 import 'settings_screen.dart';
 
@@ -202,6 +203,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  Future<void> _openFreeTime() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => FreeTimeScreen(coupleId: widget.coupleId)),
+    );
+  }
+
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => SettingsScreen(coupleId: widget.coupleId)),
@@ -268,6 +275,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(
         title: const Text('カレンダー'),
         actions: [
+          IconButton(
+            tooltip: '2人の空き時間',
+            icon: const Icon(Icons.free_breakfast_outlined, color: AppColors.textSecond),
+            onPressed: _openFreeTime,
+          ),
           IconButton(
             tooltip: '設定',
             icon: const Icon(Icons.settings_outlined, color: AppColors.textSecond),
