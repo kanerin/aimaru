@@ -81,7 +81,10 @@ jobs:
       - name: Distribute to testers via Firebase App Distribution
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-          RELEASE_NOTES: ${{ github.event.head_commit.message }}
+          # push起動（人間が直接pushした場合）はコミットメッセージを、
+          # workflow_dispatch起動（promote-to-stg.ymlからの自動昇格を含む）は
+          # head_commitが無いのでフォールバック文言を使う
+          RELEASE_NOTES: ${{ github.event.head_commit.message || format('release-stg 昇格ビルド（{0}）', github.sha) }}
         run: |
           firebase appdistribution:distribute build/app/outputs/flutter-apk/app-release.apk \
             --app "${{ secrets.FIREBASE_ANDROID_APP_ID }}" \

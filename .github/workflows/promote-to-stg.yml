@@ -8,6 +8,13 @@ name: Promote develop to release-stg
 # 「人間によるレビュー」の代わりに「CIが通ったこと」を唯一の関門とする前提のため、
 # ci.ymlをdevelopの必須チェックに設定しておくこと。
 # release-stg → release-prd（本番公開）は引き続き必ず人間が判断する。
+#
+# 注意: このジョブのgit pushはデフォルトのGITHUB_TOKENで行っている。
+# GitHub Actionsの仕様上、GITHUB_TOKENによるpushは他のワークフローの
+# push トリガーを起動しない（無限ループ防止のため）。そのため
+# release-stg.yml（テスター配布）は素直にpushトリガーだけに任せると
+# 一生起動しない。fast-forward成功時は明示的にworkflow_dispatchで
+# release-stg.ymlを起動する。
 
 on:
   workflow_run:
@@ -25,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write # release-stg.yml をworkflow_dispatchで起動するために要る
     steps:
       - uses: actions/checkout@v5
         with:
@@ -32,16 +40,27 @@ jobs:
           fetch-depth: 0
 
       - name: Fast-forward release-stg to develop
+        id: ff
         run: |
           git fetch origin develop
           if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
             echo "release-stg は既にdevelopと同じ地点です。何もしません"
+            echo "promoted=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if git merge-base --is-ancestor HEAD origin/develop; then
             git merge --ff-only origin/develop
             git push origin release-stg
+            echo "promoted=true" >> "$GITHUB_OUTPUT"
           else
             echo "release-stg が develop に対して分岐/先行しているためfast-forwardできません。手動確認が必要です" >&2
             exit 1
           fi
+
+      # 上記の理由でpushトリガーが発火しないため、fast-forwardが実際に
+      # 進んだ時だけ明示的にテスター配布ワークフローを起動する
+      - name: Trigger tester distribution
+        if: steps.ff.outputs.promoted == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-stg.yml --ref release-stg

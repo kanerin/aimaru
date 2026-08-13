@@ -64,11 +64,13 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 | ワークフロー | トリガー | 何をするか | 権限 |
 |---|---|---|---|
 | `propose-feature.yml` | 1日2回cron | WebSearchで市場動向・競合を調査した上で、競合差分の解消につながる改善（中規模を含む）を1つ選んで実装。`develop`へPRを作成し、CIが通れば自動マージ（人間レビューなし） | `contents: write`, `pull-requests: write`, `issues: write` |
-| `promote-to-stg.yml` | `CI`ワークフローが`develop`上で成功完了 | `develop`の内容を`release-stg`へfast-forwardで自動昇格 | `contents: write` |
+| `promote-to-stg.yml` | `CI`ワークフローが`develop`上で成功完了 | `develop`の内容を`release-stg`へfast-forwardで自動昇格し、`release-stg.yml`（テスター配布）を明示的に起動 | `contents: write`, `actions: write` |
 | `test-report.yml` | 週2-3回cron | テストスイートを実行し、失敗があれば原因分析してIssueにレポート（成功時はClaudeを起動しない） | `issues: write`のみ |
 | `backmerge.yml` | `release-prd`へのpush | `release-prd`→`develop`の戻しマージPRを作成。コンフリクトが無ければ自動マージ、あればClaudeが差分を分析してPRにコメントし、人間の判断を待つ | `contents: write`, `pull-requests: write` |
 | `claude-mention.yml` | Issue/PRコメントで`@claude`メンション（書き込み権限者のみ） | 良い提案Issueを人間が明示的に指示して実装させ、`develop`向けPRを作成する | `contents: write`, `pull-requests: write`, `issues: write` |
 
 `propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。CIをdevelopの必須チェックに設定していない場合、この安全装置が機能しないので必ず設定すること（Settings → Branches → develop → Require status checks to pass）。
+
+**GITHUB_TOKENによるpushはpushトリガーを起動しない**（GitHub Actionsの無限ループ防止仕様）。`promote-to-stg.yml`は`GITHUB_TOKEN`で`release-stg`へpushするため、`release-stg.yml`（テスター配布、`push: branches: [release-stg]`）は自動発火せず、`promote-to-stg.yml`側から`workflow_dispatch`で明示的に起動している。`release-stg`へのpush起点のワークフローを新設する場合はこの制約を踏まえること。
 
 いずれも認証は `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`で発行、GitHub Secretsに登録）を使う。`ANTHROPIC_API_KEY`は使わない。
