@@ -115,6 +115,4 @@ jobs:
             コンフリクトの内容を再現して確認するには、develop をチェックアウトした上で
             `git merge --no-commit --no-ff origin/release-prd` を実行し、
             発生したコンフリクトマーカーを読んでください（分析後は `git merge --abort` で元に戻すこと）。
-          claude_args: >-
-            --allowedTools
-            Read,Grep,Glob,Bash(git *),Bash(gh pr view:*),Bash(gh pr comment:*)
+          claude_args: --allowedTools "Read,Grep,Glob,Bash(git *),Bash(gh pr view:*),Bash(gh pr comment:*)"

@@ -29,6 +29,6 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             .claude/commands/propose-feature.md の指示を読み、その通りに実行してください。
-          claude_args: >-
-            --allowedTools
-            Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*)
+          # allowedToolsの値はスペースを含む（Bash(gh issue create:*)等）ため、
+          # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
+          claude_args: --allowedTools "Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*)"
