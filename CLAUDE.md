@@ -75,4 +75,6 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 **GITHUB_TOKENによるpushはpushトリガーを起動しない**（GitHub Actionsの無限ループ防止仕様）。`promote-to-stg.yml`は`GITHUB_TOKEN`で`release-stg`へpushするため、`release-stg.yml`（テスター配布、`push: branches: [release-stg]`）は自動発火せず、`promote-to-stg.yml`側から`workflow_dispatch`で明示的に起動している。`release-stg`へのpush起点のワークフローを新設する場合はこの制約を踏まえること。
 
+**`release-stg.yml`の`Deploy Firestore rules`ステップは現状 `continue-on-error: true` で失敗を許容している**（2026-08-13時点）。`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールをデプロイする権限（GCP側のIAMロール）がまだ付与されていないため。IAMロールを付与すれば自動デプロイが機能するようになる（対応は人間の作業として保留中）。それまでは`firestore.rules`を変更したら`firebase deploy --only firestore:rules --project aimaru-7eb2e`をローカルから手動で実行すること。
+
 いずれも認証は `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`で発行、GitHub Secretsに登録）を使う。`ANTHROPIC_API_KEY`は使わない。

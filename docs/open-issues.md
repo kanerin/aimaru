@@ -98,6 +98,7 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 - [ ] Apple Developer 登録、APNs 認証鍵の作成 — 課題13
 - [ ] OAuth 同意画面のテストユーザー登録（上限100人）または審査申請
 - [ ] `android/app/release.keystore` のバックアップ（**紛失するとアプリを二度と更新できない**）
+- [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロール（例: Firebase Rules Admin）をGCPコンソールで付与 — 未付与のため`release-stg.yml`の`Deploy Firestore rules`が403で失敗し続けている（`continue-on-error: true`でビルド・配布はブロックしていない）。それまでは`firestore.rules`変更時に`firebase deploy --only firestore:rules --project aimaru-7eb2e`をローカルから手動実行すること
 
 ## 既知だが直さない判断をしたもの
 

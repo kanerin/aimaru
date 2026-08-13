@@ -67,7 +67,14 @@ jobs:
       # 追加したコレクション（例: todos）が本番では権限エラーになり、
       # アプリ側が無限ローディングのまま固まる不具合が実際に発生した。
       # テストを通過した内容だけを、ビルドの前にここでデプロイする。
+      #
+      # continue-on-error: FIREBASE_SERVICE_ACCOUNT_KEY のサービスアカウントに
+      # Firestoreルールのデプロイ権限（serviceusage等）がまだ付与されておらず、
+      # 現状は403で失敗する（IAM設定は後日人間が対応）。ここを必須にすると
+      # 権限が直るまでテスター配布そのものが止まってしまうため、失敗しても
+      # ビルド・配布は続行する。ルールは当面ローカルから手動デプロイすること。
       - name: Deploy Firestore rules
+        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
