@@ -15,10 +15,11 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 ```
 
 - 開発は `develop` からブランチを切り、`develop` へPRでマージする
-- `develop` → `release-stg`（ステージング反映） / `release-stg` → `release-prd`（本番反映）は、レビュー済みのコミットをそのまま昇格させるfast-forwardマージ
+- `develop` → `release-stg`（ステージング反映）は、CIが通ったコミットをそのまま昇格させるfast-forwardマージ。`propose-feature.yml`が実装した変更を含め、`promote-to-stg.yml`がCI成功をトリガーに自動で行う
+- `release-stg` → `release-prd`（本番反映）は、レビュー済みのコミットを人間の判断でfast-forward昇格させる
 - `release-prd` → `develop`（本番の変更を開発に戻す）は、`release-prd`へのpushをトリガーに自動起票される戻しマージPR（詳細は`.github/workflows/backmerge.yml`）
 
-**自動化エージェントの権限範囲**: 定期実行エージェントは `develop` → `release-stg` までの昇格（マージ）を行ってよい。`release-stg` → `release-prd`（本番公開）は必ず人間が判断する。
+**自動化エージェントの権限範囲**: 定期実行エージェントは実装からCI成功を条件とした `develop` → `release-stg` までの昇格（マージ）を無人で行ってよい（人間レビューを介さない分、CIが唯一の関門になる）。`release-stg` → `release-prd`（本番公開）は必ず人間が判断する。
 
 ## 作業ブランチ命名
 
@@ -30,7 +31,9 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 
 ## 直接コミット禁止
 
-`develop` / `release-stg` / `release-prd` への直接コミットは禁止。必ずPR経由でマージすること（`release-stg`/`release-prd`への昇格はfast-forwardマージであり、新規コミットの直接追加ではない）。
+`release-prd` への直接コミットは禁止。`release-stg`からのfast-forward昇格（本番公開）を経由し、必ず人間が判断すること。
+
+`develop` / `release-stg` への直接コミットは許可する。ユーザーが対話的にClaude Codeへ依頼した変更を直接反映する場合や、`promote-to-stg.yml`が`develop`→`release-stg`へfast-forward昇格する場合はこれに当たる。ただし通常の実装作業（`propose-feature.yml`の自動実装を含む）は作業ブランチ→`develop`へのPR経由を基本とする（CIによる検証を経るため）。
 
 ## 禁止操作
 
@@ -56,13 +59,16 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 ## 自動化の構成
 
-`.github/workflows/` 配下に4種類の定期実行・イベント駆動エージェントがある：
+`.github/workflows/` 配下に5種類の定期実行・イベント駆動エージェントがある：
 
 | ワークフロー | トリガー | 何をするか | 権限 |
 |---|---|---|---|
-| `propose-feature.yml` | 週1回cron | コードベースを分析し、改善提案をGitHub Issueとして1件起票（PR化しない） | `issues: write`のみ |
+| `propose-feature.yml` | 1日2回cron | コードベースを分析し、改善提案を1つ選んで実装。`develop`へPRを作成し、CIが通れば自動マージ（人間レビューなし） | `contents: write`, `pull-requests: write`, `issues: write` |
+| `promote-to-stg.yml` | `CI`ワークフローが`develop`上で成功完了 | `develop`の内容を`release-stg`へfast-forwardで自動昇格 | `contents: write` |
 | `test-report.yml` | 週2-3回cron | テストスイートを実行し、失敗があれば原因分析してIssueにレポート（成功時はClaudeを起動しない） | `issues: write`のみ |
 | `backmerge.yml` | `release-prd`へのpush | `release-prd`→`develop`の戻しマージPRを作成。コンフリクトが無ければ自動マージ、あればClaudeが差分を分析してPRにコメントし、人間の判断を待つ | `contents: write`, `pull-requests: write` |
 | `claude-mention.yml` | Issue/PRコメントで`@claude`メンション（書き込み権限者のみ） | 良い提案Issueを人間が明示的に指示して実装させ、`develop`向けPRを作成する | `contents: write`, `pull-requests: write`, `issues: write` |
+
+`propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。CIをdevelopの必須チェックに設定していない場合、この安全装置が機能しないので必ず設定すること（Settings → Branches → develop → Require status checks to pass）。
 
 いずれも認証は `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`で発行、GitHub Secretsに登録）を使う。`ANTHROPIC_API_KEY`は使わない。

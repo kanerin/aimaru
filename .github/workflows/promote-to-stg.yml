@@ -1,0 +1,47 @@
+name: Promote develop to release-stg
+
+# CI（developへのpush直後に走るCIワークフロー）が成功するたびに、
+# developの内容をrelease-stgへfast-forwardで自動昇格する。
+# propose-feature.yml が実装しauto-mergeした変更を含め、developへの
+# 全ての変更がこの経路でrelease-stgに反映される。
+#
+# 「人間によるレビュー」の代わりに「CIが通ったこと」を唯一の関門とする前提のため、
+# ci.ymlをdevelopの必須チェックに設定しておくこと。
+# release-stg → release-prd（本番公開）は引き続き必ず人間が判断する。
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [develop]
+    types: [completed]
+
+concurrency:
+  group: promote-to-stg
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: release-stg
+          fetch-depth: 0
+
+      - name: Fast-forward release-stg to develop
+        run: |
+          git fetch origin develop
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
+            echo "release-stg は既にdevelopと同じ地点です。何もしません"
+            exit 0
+          fi
+          if git merge-base --is-ancestor HEAD origin/develop; then
+            git merge --ff-only origin/develop
+            git push origin release-stg
+          else
+            echo "release-stg が develop に対して分岐/先行しているためfast-forwardできません。手動確認が必要です" >&2
+            exit 1
+          fi

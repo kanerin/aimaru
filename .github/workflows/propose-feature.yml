@@ -1,12 +1,16 @@
-name: Propose feature (weekly)
+name: Propose & implement feature (2x/day)
 
-# コードベースを分析し、改善提案をGitHub Issueとして1件起票する。
-# コードは変更せずPRも作らないので、権限は issues: write のみに絞っている
-# （プロンプトインジェクションが起きても書き込める範囲をIssue起票だけに限定するため）。
+# コードベースを分析し、改善提案を1つ選んで実装し、developへPRを作成してauto-mergeする。
+# developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
+# CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
+#
+# 人間レビューを介さない自動実装のため、安全装置はCIのみ。
+# ci.yml（CIワークフロー）をdevelopの必須チェックに設定しておくこと
+# （Settings → Branches → develop → Require status checks to pass）。
 
 on:
   schedule:
-    - cron: '0 0 * * 1' # 毎週月曜 00:00 UTC = 09:00 JST
+    - cron: '0 0,12 * * *' # 毎日 00:00, 12:00 UTC = 09:00, 21:00 JST
   workflow_dispatch: {}
 
 # workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
@@ -18,17 +22,49 @@ jobs:
   propose:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       issues: write
       id-token: write # claude-code-action がOIDCトークン取得に使う
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # firebase_options.dart は公開リポジトリに含めていないため、
+      # flutter test の実行（main.dart がimportしている）にはSecretsからの復元が要る
+      - name: Restore firebase_options.dart
+        run: echo "${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}" | base64 -d > lib/firebase_options.dart
+
+      - name: Configure git identity for automated commits
+        run: |
+          git config user.name "aimaru-bot"
+          git config user.email "actions@users.noreply.github.com"
 
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             .claude/commands/propose-feature.md の指示を読み、その通りに実行してください。
-          # allowedToolsの値はスペースを含む（Bash(gh issue create:*)等）ため、
+          # display_report: Claudeが何を分析し何を実装・マージしたかをGitHub Actionsの
+          # Step Summaryに表示する。
+          display_report: true
+          # allowedToolsの値はスペースを含む（Bash(git commit:*)等）ため、
           # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
-          claude_args: --allowedTools "Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*)"
+          claude_args: --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
