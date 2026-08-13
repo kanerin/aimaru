@@ -13,13 +13,14 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **17件すべて通過** |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **8件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **28件すべて通過**（エミュレータ上） |
-| Flutter 単体・ウィジェット | `flutter test` | **106件**（別セッションが実 SDK で通過を確認済み。この作業環境には Flutter SDK が無く再確認はしていない） |
+| セキュリティルール | `cd rules_test && npm test` | **33件すべて通過**（エミュレータ上、CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **129件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
 ```
 test/services/gemini_reply_parser_test.dart      17   AI応答パース・失敗分類
+test/utils/free_time_finder_test.dart            15   2人の空き時間検出・提案
 test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
 test/services/event_service_test.dart            14   予定CRUD・終日・期間クエリ
 test/services/couple_service_test.dart           13   ペアリング・招待コード
@@ -27,12 +28,14 @@ test/utils/japan_holidays_test.dart              13   祝日計算
 test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
+test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
+test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             17   リマインダー判定
 functions/src/reminders.integration.test.ts       8   Firestoreを読んで判定し書き戻す経路
-rules_test/firestore.test.js                     22   Firestoreルールのメンバー境界
+rules_test/firestore.test.js                     27   Firestoreルールのメンバー境界（todos含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 

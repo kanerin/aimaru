@@ -8,18 +8,25 @@ import '../utils/app_theme.dart';
 // 確定していない「今度やりたいこと」を、ペアで持ち寄って眺められるようにする。
 class TodosScreen extends StatefulWidget {
   final String coupleId;
-  const TodosScreen({super.key, required this.coupleId});
+  // テストからエラー/データを直接流し込むための注入ポイント。
+  // 未指定時は本番のFirestoreストリームを使う。
+  final Stream<List<TodoItem>>? todosStreamOverride;
+  const TodosScreen({super.key, required this.coupleId, this.todosStreamOverride});
 
   @override
   State<TodosScreen> createState() => _TodosScreenState();
 }
 
 class _TodosScreenState extends State<TodosScreen> {
-  final _todoService = TodoService();
-  final _controller   = TextEditingController();
+  // TodoService() は生成時にFirebaseFirestore.instanceへ即座に触れるため、
+  // todosStreamOverrideを使うテストではFirebase初期化なしに動けるよう
+  // 実際に使うときまで生成を遅らせる。
+  TodoService? _todoServiceInstance;
+  TodoService get _todoService => _todoServiceInstance ??= TodoService();
+  final _controller = TextEditingController();
 
   late final Stream<List<TodoItem>> _todosStream =
-      _todoService.watchTodos(widget.coupleId);
+      widget.todosStreamOverride ?? _todoService.watchTodos(widget.coupleId);
 
   @override
   void dispose() {
@@ -49,6 +56,16 @@ class _TodosScreenState extends State<TodosScreen> {
             child: StreamBuilder<List<TodoItem>>(
               stream: _todosStream,
               builder: (context, snap) {
+                // hasDataだけを見ていると、権限エラー等でストリームがエラーに
+                // 落ちたときに無限ローディングのまま固まる
+                // （本番でFirestoreルール未反映のまま実際に発生した）。
+                if (snap.hasError) {
+                  return const Center(
+                    child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+                  );
+                }
                 if (!snap.hasData) {
                   return Center(child: CircularProgressIndicator(color: appAccent(context)));
                 }
@@ -119,24 +136,34 @@ class _TodosScreenState extends State<TodosScreen> {
       onDismissed: (_) => _delete(todo),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(
-          color: AppColors.navySurface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.hairline),
         ),
-        child: CheckboxListTile(
-          value: todo.done,
-          onChanged: (v) => _todoService.setDone(todo, v ?? false),
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-          activeColor: appAccent(context),
-          title: Text(
-            todo.text,
-            style: TextStyle(
-              fontSize: 14,
-              color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
-              decoration: todo.done ? TextDecoration.lineThrough : null,
+        // CheckboxListTile（ListTile系）はMaterial祖先の上でないと
+        // タップ時のインクスプラッシュが描画されない
+        // （Containerの背景色に隠れて見えなくなるとFlutterが警告する）ため、
+        // 背景色はここではなくMaterialに持たせる。
+        child: Material(
+          color: AppColors.navySurface,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: CheckboxListTile(
+              value: todo.done,
+              onChanged: (v) => _todoService.setDone(todo, v ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: appAccent(context),
+              title: Text(
+                todo.text,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
+                  decoration: todo.done ? TextDecoration.lineThrough : null,
+                ),
+              ),
             ),
           ),
         ),

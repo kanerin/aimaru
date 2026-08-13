@@ -56,6 +56,25 @@ jobs:
         working-directory: functions
         run: npm ci && npm run typecheck && npm test && npm run test:integration
 
+      - name: Write Firebase service account key
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > "$RUNNER_TEMP/firebase-service-account.json"
+
+      - run: npm install -g firebase-tools
+
+      # firestore.rules はリポジトリでは正だが、ここまでは
+      # rules_test（エミュレータ）で検証しているだけで本番Firestoreには
+      # 反映されない。以前はこのデプロイ手順が無く、firestore.rulesに
+      # 追加したコレクション（例: todos）が本番では権限エラーになり、
+      # アプリ側が無限ローディングのまま固まる不具合が実際に発生した。
+      # テストを通過した内容だけを、ビルドの前にここでデプロイする。
+      - name: Deploy Firestore rules
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          firebase deploy --only firestore:rules \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --non-interactive
+
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
@@ -72,11 +91,6 @@ jobs:
       # 「同じリリースの上書き」と判定され、テスターに通知が飛ばない。
       - name: Build release APK
         run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-
-      - name: Write Firebase service account key
-        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > "$RUNNER_TEMP/firebase-service-account.json"
-
-      - run: npm install -g firebase-tools
 
       - name: Distribute to testers via Firebase App Distribution
         env:

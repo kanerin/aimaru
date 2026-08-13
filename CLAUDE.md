@@ -51,7 +51,9 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 | Cloud Functions（結合、Firestoreエミュレータ） | `cd functions && npm run test:integration` |
 | セキュリティルール（Firestore/Storage、エミュレータ） | `cd rules_test && npm test` |
 
-テストファイルは対象ファイルと対称の場所に置く（`test/services/foo_service_test.dart` は `lib/services/foo_service.dart` に対応、`functions/src/*.test.ts`、`rules_test/*.test.js`）。
+テストファイルは対象ファイルと対称の場所に置く（`test/services/foo_service_test.dart` は `lib/services/foo_service.dart` に対応、`functions/src/*.test.ts`、`rules_test/*.test.js`、画面は`test/screens/foo_screen_test.dart`）。
+
+**StreamBuilder/FutureBuilderを使う画面は、必ずエラー状態を明示的にハンドリングし、テストでも確認すること。** `hasData`だけを見て`hasError`を見ていないと、権限エラーや通信エラーでストリームが失敗したときに無限ローディングのまま固まる（実際に`todos_screen.dart`で発生し、原因は`firestore.rules`の変更が本番Firestoreへデプロイされていなかったことだった。デプロイは`release-stg.yml`で自動化済みだが、rules_testやflutter testはエミュレータ上でしか検証しないため、「エミュレータでは通る」ことと「本番で動く」ことは別問題だと意識すること）。画面に注入可能なStream/Future（テスト用のoverrideパラメータなど）を用意し、`test/screens/todos_screen_test.dart`のようにローディング・エラー・データ表示の3状態を最低限テストする。
 
 ## プロンプトインジェクションへの注意
 

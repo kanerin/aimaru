@@ -19,8 +19,10 @@ AIMARUはカップル向けの共有カレンダーアプリ（競合: TimeTree�
    - 良い改善が本当に見つからない場合のみ「今回は見送り」で終了してよい。ただしこれは最終手段であり、まず中規模な改善を積極的に検討すること。
 5. `feature/auto-<概要>` という名前の作業ブランチを `develop` から切る。
 6. CLAUDE.mdのコミット規約・テスト規約に従って実装する。**対応するテストも必ず書く**（テストファイルは対象ファイルと対称の場所に置く）。
+   - **StreamBuilder/FutureBuilderを使う画面を新規作成・変更する場合は、`hasError`を必ずハンドリングする**（`hasData`だけを見ていると、権限エラーや通信エラーで無限ローディングのまま固まる。実際に`todos_screen.dart`で発生した不具合であり、`test/screens/todos_screen_test.dart`が再発防止のテストパターンの実例）。テストからストリーム/フューチャーを注入できるようにし、ローディング・エラー・データ表示の最低3状態を確認すること。
+   - `firestore.rules` / `storage.rules` を変更する場合、CI/rules_testはエミュレータ上でしか検証しない。本番Firestoreへの反映は`release-stg.yml`が自動デプロイするので追加作業は不要だが、「エミュレータで通る」ことと「本番で動く」ことは別問題だと意識し、ルール変更の影響範囲（既存のread/write経路を壊していないか）を`rules_test`にきちんと反映すること。
 7. 変更に対応するテストを実行し、パスすることを確認する:
-   - Flutterの変更: `flutter test`
+   - Flutterの変更: `flutter analyze && flutter test`
    - Cloud Functionsの変更: `cd functions && npm run typecheck && npm test`
    - セキュリティルールの変更: `cd rules_test && npm test`
    - テストが書けない、または通らない変更は実装しない。中規模な変更ほどテストで担保する重要性が高い。
