@@ -1,6 +1,7 @@
 name: Propose & implement feature (2x/day)
 
-# コードベースを分析し、改善提案を1つ選んで実装し、developへPRを作成してauto-mergeする。
+# 市場動向・競合を調査した上で、競合差分の解消につながる改善（中規模なものを含む）を
+# 1つ選んで実装し、developへPRを作成してauto-mergeする。
 # developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
 # CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
 #
@@ -65,6 +66,8 @@ jobs:
           # display_report: Claudeが何を分析し何を実装・マージしたかをGitHub Actionsの
           # Step Summaryに表示する。
           display_report: true
+          # WebSearchで市場動向・競合調査を行い、中規模な改善まで積極的に検討するため
+          # 通常より探索・実装のターン数がかかる想定でmax-turnsを引き上げている。
           # allowedToolsの値はスペースを含む（Bash(git commit:*)等）ため、
           # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
-          claude_args: --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
+          claude_args: --max-turns 60 --allowedTools "Read,Grep,Glob,Edit,Write,WebSearch,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"

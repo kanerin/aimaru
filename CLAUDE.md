@@ -63,7 +63,7 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 | ワークフロー | トリガー | 何をするか | 権限 |
 |---|---|---|---|
-| `propose-feature.yml` | 1日2回cron | コードベースを分析し、改善提案を1つ選んで実装。`develop`へPRを作成し、CIが通れば自動マージ（人間レビューなし） | `contents: write`, `pull-requests: write`, `issues: write` |
+| `propose-feature.yml` | 1日2回cron | WebSearchで市場動向・競合を調査した上で、競合差分の解消につながる改善（中規模を含む）を1つ選んで実装。`develop`へPRを作成し、CIが通れば自動マージ（人間レビューなし） | `contents: write`, `pull-requests: write`, `issues: write` |
 | `promote-to-stg.yml` | `CI`ワークフローが`develop`上で成功完了 | `develop`の内容を`release-stg`へfast-forwardで自動昇格 | `contents: write` |
 | `test-report.yml` | 週2-3回cron | テストスイートを実行し、失敗があれば原因分析してIssueにレポート（成功時はClaudeを起動しない） | `issues: write`のみ |
 | `backmerge.yml` | `release-prd`へのpush | `release-prd`→`develop`の戻しマージPRを作成。コンフリクトが無ければ自動マージ、あればClaudeが差分を分析してPRにコメントし、人間の判断を待つ | `contents: write`, `pull-requests: write` |
