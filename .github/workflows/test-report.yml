@@ -1,0 +1,112 @@
+name: Test report (2-3x/week)
+
+# テスト自体は毎回プレーンなshellコマンドで実行する（コストゼロ）。
+# 全部greenなら analyze ジョブは走らずClaudeは一切呼ばれない。
+# 失敗があった場合だけ analyze ジョブが起動し、ログを分析してIssueへレポートする。
+# これが月間コストを抑える最大のポイント：テストが安定していれば
+# このワークフローのClaude利用料は実質ゼロになる。
+
+on:
+  schedule:
+    - cron: '0 0 * * 2,4,6' # 火・木・土 00:00 UTC = 09:00 JST
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-report
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    outputs:
+      failed: ${{ steps.summary.outputs.failed }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # firebase_options.dart は公開リポジトリに含めていないため、
+      # flutter test の実行（main.dart がimportしている）にはSecretsからの復元が要る
+      - name: Restore firebase_options.dart
+        run: echo "${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}" | base64 -d > lib/firebase_options.dart
+
+      - run: flutter pub get
+
+      - name: Flutter test
+        id: flutter_test
+        continue-on-error: true
+        run: flutter test > flutter_test.log 2>&1
+
+      - name: Cloud Functions test
+        id: functions_test
+        continue-on-error: true
+        working-directory: functions
+        run: (npm ci && npm run typecheck && npm test && npm run test:integration) > ../functions_test.log 2>&1
+
+      - name: Security rules test
+        id: rules_test
+        continue-on-error: true
+        working-directory: rules_test
+        run: (npm ci && npm test) > ../rules_test.log 2>&1
+
+      - name: Summarize
+        id: summary
+        if: always()
+        run: |
+          failed=false
+          [ "${{ steps.flutter_test.outcome }}" = "success" ] || failed=true
+          [ "${{ steps.functions_test.outcome }}" = "success" ] || failed=true
+          [ "${{ steps.rules_test.outcome }}" = "success" ] || failed=true
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.summary.outputs.failed == 'true'
+        with:
+          name: test-logs
+          path: |
+            flutter_test.log
+            functions_test.log
+            rules_test.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  analyze:
+    needs: test
+    if: needs.test.outputs.failed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-logs
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            .claude/commands/run-tests.md の指示に従ってください。
+            テスト実行結果のログは以下のファイルにあります（このジョブでは
+            テストの再実行はしていません。既に実行済みの結果です）:
+            - flutter_test.log
+            - functions_test.log
+            - rules_test.log
+          claude_args: >-
+            --allowedTools
+            Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh issue comment:*)

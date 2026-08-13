@@ -1,0 +1,33 @@
+name: Propose feature (weekly)
+
+# コードベースを分析し、改善提案をGitHub Issueとして1件起票する。
+# コードは変更せずPRも作らないので、権限は issues: write のみに絞っている
+# （プロンプトインジェクションが起きても書き込める範囲をIssue起票だけに限定するため）。
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # 毎週月曜 00:00 UTC = 09:00 JST
+  workflow_dispatch: {}
+
+# workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
+concurrency:
+  group: propose-feature
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            .claude/commands/propose-feature.md の指示を読み、その通りに実行してください。
+          claude_args: >-
+            --allowedTools
+            Read,Grep,Glob,Bash(gh issue create:*),Bash(gh issue list:*)

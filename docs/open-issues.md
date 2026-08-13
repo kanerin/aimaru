@@ -1,8 +1,8 @@
-# 残課題（最終更新: 2026-08-12 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-14 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
-`notion-audit` スキルが棚卸しのたびにここを更新する。Notion の各 DB が詳細の正で、
-ここはその要約という位置づけ。
+2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
+このファイルを手動またはエージェントが都度更新する。
 
 ## 検証できていること
 
@@ -106,29 +106,24 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 ## 自動化の構成
 
+2026-08-14 に、実際には呼び出されていなかったNotion連携の`.claude/skills/`（scheduled-run /
+notion-audit / notion-implement / market-brief / pr-review）を廃止し、GitHub Actions +
+`claude-code-action`（`CLAUDE_CODE_OAUTH_TOKEN`認証、Claude Pro/Maxプランの利用枠を使う）
+ベースの構成へ移行した。月間コストを抑えるため、Claudeを呼ぶのは「何か対応が要る時」だけに
+絞っている（テストが全部greenの週やコンフリクトが無いリリースでは、Claude起動コストは
+実質ゼロ）。
+
 ```
-scheduled-run  ← 定期実行の入口。安全確認して、やるかやらないかを決める
-   ├─ notion-audit      棚卸し（Notion のみ書込・コード読取のみ）      日次
-   ├─ notion-implement  要件1件 → PR（develop へ）                   週次
-   └─ market-brief      市場調査 + 要件を最大3件起票                   月次
-
-pr-review      ← PR をレビュー・修正・Approve → develop → release-stg   5時間おき
+propose-feature.yml  週1回cron    コードベース分析 → Issue起票のみ（PR化しない）
+test-report.yml      週2-3回cron  テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
+backmerge.yml         release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
+claude-mention.yml    @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼
 ```
 
-要件の起票から実装、レビュー、マージ、テスター配布までを AI が回す。人間が能動的に
-やることは `release-prd` への昇格（本番公開）と、権限が要る作業だけ。
+詳細は`CLAUDE.md`の「自動化の構成」、各ワークフローファイル、`.claude/commands/`を参照。
 
-**独立性が薄いことは承知のうえで、次の3つで担保している。**
-
-| 仕組み | 何を防ぐか |
-|---|---|
-| `pr-review` は PR 本文ではなく Notion の `受入基準` から読み直す | 実装者の自己申告を鵜呑みにすること |
-| マージのブロック条件を4つに固定（ランタイムエラー / セキュリティ / 受入基準の不足 / CI 赤） | 判断が周回ごとにブレて、レビューが儀式になること |
-| `pr-review` は3ラウンドで収束しなければエスカレーションして止まる | 無限に直し続けて PR が肥大化すること |
-
-`market-brief` が起票した要件には**本文冒頭に AI 起票の印**が入る。優先度は既定で
-`P2`（実装ループが拾わない）、`P1` にするのは競合が実装済みで比較検討の土俵から
-落ちる場合のみ、`P0` にはしない。**たまに見直して直す前提**の設計。
+人間が能動的にやることは、良い提案Issueへの`@claude`での実装依頼、コンフリクト発生時の
+最終判断、`release-stg` → `release-prd`への昇格（本番公開）、権限が要る作業。
 
 ## ブランチ運用
 
@@ -145,4 +140,5 @@ pr-review      ← PR をレビュー・修正・Approve → develop → release
 | `release-prd` | 本番 | Play Store（internal）へアップロード。Play Console 側の準備待ち |
 
 エージェントが作業するときは `develop` から切って `develop` へ PR を出す。
-`release-stg` / `release-prd` へ直接触らない。
+定期実行エージェント（backmerge等）は `develop` → `release-stg` の昇格までは自動で行ってよいが、
+`release-stg` → `release-prd`（本番公開）は必ず人間が判断する。
