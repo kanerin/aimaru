@@ -32,6 +32,13 @@ flutterfire configure
 # → firebase_options.dart が自動生成される
 ```
 
+### Firebase設定ファイルの非公開化
+
+`android/app/google-services.json` / `ios/Runner/GoogleService-Info.plist` / `lib/firebase_options.dart` はAPIキーを含むため`.gitignore`済みで、リポジトリにはコミットしない（`flutterfire configure`で毎回ローカルに生成される想定）。
+
+- **ローカル開発**: 上記の `flutterfire configure` を実行すれば3ファイルとも自動生成される。`GoogleService-Info.plist`（iOS）はCIでは使わないため、他の開発者と共有する場合は署名鍵（後述）と同様にパスワードマネージャーの添付ファイル機能などで安全にコピーすること。
+- **CI/CD**: `firebase_options.dart` と `google-services.json` はGitHub Secrets（`FIREBASE_OPTIONS_DART_BASE64` / `GOOGLE_SERVICES_JSON_BASE64`、それぞれ`base64 -i <file> | tr -d '\n'`で生成）から復元してビルドする（`.github/workflows/`の各workflow参照）。値を更新した場合はSecretsも再登録すること。
+
 ## 3. Gemini APIキー取得
 
 1. https://aistudio.google.com/apikey → 「APIキーを作成」
@@ -182,6 +189,8 @@ flutter test integration_test/app_test.dart -d <device-id>
 
 | Secret名 | 用途 | 状態 |
 |---|---|---|
+| `FIREBASE_OPTIONS_DART_BASE64` | `lib/firebase_options.dart` をbase64化したもの（CIで復元） | 設定済み |
+| `GOOGLE_SERVICES_JSON_BASE64` | `android/app/google-services.json` をbase64化したもの（CIで復元） | 設定済み |
 | `GEMINI_API_KEY` | ビルド時にGemini APIキーを埋め込む | 設定済み |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | App Distributionへのアップロード認証（サービスアカウントJSON） | 設定済み |
 | `FIREBASE_ANDROID_APP_ID` | 対象のFirebase Androidアプリ | 設定済み |

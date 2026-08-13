@@ -58,6 +58,15 @@ key.properties
 **/play-store-service-account*.json
 firestore-debug.log
 
+# Firebase設定ファイル（APIキーを含むため公開リポジトリに置かない）。
+# CIでは FIREBASE_OPTIONS_DART_BASE64 / GOOGLE_SERVICES_JSON_BASE64 という
+# GitHub Secretsから復元する（README「Firebase設定ファイルの非公開化」参照）。
+# ローカルでは `flutterfire configure` を再実行するか、安全な方法（パスワード
+# マネージャーの添付ファイル機能など）でコピーして入手すること。
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+/lib/firebase_options.dart
+
 # Claude Code のローカル状態（このマシン固有、別セッション/スケジュールタスクが生成）
 .claude/settings.local.json
 .claude/worktrees/

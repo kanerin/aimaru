@@ -35,6 +35,10 @@ jobs:
 
       - run: flutter pub get
 
+      # firebase_options.dart は公開リポジトリに含めず Secrets から復元する（下記「Firebase設定ファイルの非公開化」参照）
+      - name: Restore firebase_options.dart
+        run: echo "${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}" | base64 -d > lib/firebase_options.dart
+
       - name: Analyze
         run: flutter analyze
 

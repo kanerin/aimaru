@@ -27,6 +27,13 @@ jobs:
 
       - run: flutter pub get
 
+      # firebase_options.dart / google-services.json は公開リポジトリに含めず
+      # Secrets から復元する（下記「Firebase設定ファイルの非公開化」参照）
+      - name: Restore Firebase config files
+        run: |
+          echo "${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}" | base64 -d > lib/firebase_options.dart
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > android/app/google-services.json
+
       # 検査は署名鍵を展開する前・APKを組む前に置く。壊れているときに
       # 6分かけてビルドしてから落ちるより早く分かり、鍵にも触らずに済む。
       - name: Analyze
