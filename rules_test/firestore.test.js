@@ -12,6 +12,7 @@ import {
   seedChat,
   seedCouple,
   seedEvent,
+  seedTodo,
 } from "./helpers.js";
 
 // Firestore セキュリティルールのテスト。
@@ -105,6 +106,48 @@ describe("chats — メンバー境界", () => {
     await assertFails(
       asC().doc(`couples/${COUPLE_ID}/chats/msg-3`).set({ text: "割り込み", senderId: USER_C }),
     );
+  });
+});
+
+describe("todos — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedTodo(testEnv);
+  });
+
+  it("メンバーはTODOを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
+  });
+
+  it("メンバー以外はTODOを読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
+  });
+
+  it("メンバーはTODOを作成・完了切り替え・削除できる", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/todos/todo-2`).set({
+        coupleId: COUPLE_ID,
+        text: "水族館に行く",
+        done: false,
+        createdBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/todos/todo-1`).update({ done: true }));
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/todos/todo-1`).delete());
+  });
+
+  it("メンバー以外はTODOを作成・更新・削除できない", async () => {
+    const ref = asC().doc(`couples/${COUPLE_ID}/todos/todo-3`);
+    await assertFails(ref.set({ text: "勝手なTODO" }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/todos/todo-1`).update({ done: true }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/todos/todo-1`).delete());
+  });
+
+  it("未認証はTODOに一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-4`).set({ text: "x" }));
   });
 });
 
