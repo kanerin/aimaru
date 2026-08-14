@@ -11,6 +11,7 @@ import {
   nextOccurrence,
   occurrenceInYear,
   resolveMinutesBefore,
+  resolveReminderTargets,
   shouldRemindNow,
 } from "./reminder_logic";
 
@@ -163,5 +164,74 @@ describe("nextOccurrence", () => {
     assert.equal(occurrence.getFullYear(), 2026);
     assert.equal(occurrence.getMonth(), 11);
     assert.equal(occurrence.getDate(), 31);
+  });
+});
+
+describe("resolveReminderTargets", () => {
+  const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+  const eventMs = nowMs + 60 * MINUTE;
+
+  it("タイミングが来たメンバーだけを送信対象にする", () => {
+    const result = resolveReminderTargets(
+      [
+        { uid: "a", alreadyReminded: false, remindersEnabled: true, minutesBefore: 60 },
+        { uid: "b", alreadyReminded: false, remindersEnabled: true, minutesBefore: 1440 },
+      ],
+      eventMs,
+      nowMs,
+    );
+
+    assert.deepEqual(result.toRemind, ["a"], "60分前設定のaだけがタイミング");
+    assert.equal(result.fullySettled, false, "1日前設定のbはまだ待ち");
+  });
+
+  it("全員のタイミングが来ていればfullySettledになる", () => {
+    const result = resolveReminderTargets(
+      [
+        { uid: "a", alreadyReminded: false, remindersEnabled: true, minutesBefore: 60 },
+        { uid: "b", alreadyReminded: false, remindersEnabled: true, minutesBefore: 60 },
+      ],
+      eventMs,
+      nowMs,
+    );
+
+    assert.deepEqual(result.toRemind.sort(), ["a", "b"]);
+    assert.equal(result.fullySettled, true);
+  });
+
+  it("送信済みのメンバーは対象から除く", () => {
+    const result = resolveReminderTargets(
+      [
+        { uid: "a", alreadyReminded: true, remindersEnabled: true, minutesBefore: 60 },
+        { uid: "b", alreadyReminded: false, remindersEnabled: true, minutesBefore: 60 },
+      ],
+      eventMs,
+      nowMs,
+    );
+
+    assert.deepEqual(result.toRemind, ["b"]);
+    assert.equal(result.fullySettled, true, "残る未送信メンバーもタイミングが来ていれば完了扱い");
+  });
+
+  it("remindersEnabledがfalseのメンバーは待ち扱いにしない（永久に保留させない）", () => {
+    const result = resolveReminderTargets(
+      [{ uid: "a", alreadyReminded: false, remindersEnabled: false, minutesBefore: 60 }],
+      eventMs,
+      nowMs,
+    );
+
+    assert.deepEqual(result.toRemind, []);
+    assert.equal(result.fullySettled, true);
+  });
+
+  it("誰も送信済みでなく誰のタイミングも来ていなければ保留のまま", () => {
+    const result = resolveReminderTargets(
+      [{ uid: "a", alreadyReminded: false, remindersEnabled: true, minutesBefore: 1440 }],
+      eventMs,
+      nowMs,
+    );
+
+    assert.deepEqual(result.toRemind, []);
+    assert.equal(result.fullySettled, false);
   });
 });

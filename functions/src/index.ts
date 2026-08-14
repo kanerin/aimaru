@@ -10,7 +10,7 @@ import {
   isStale,
   nextOccurrence,
   resolveMinutesBefore,
-  shouldRemindNow,
+  resolveReminderTargets,
 } from "./reminder_logic";
 
 initializeApp();
@@ -22,8 +22,15 @@ interface EventDoc {
   date: Timestamp;
   createdBy: string;
   recurring?: boolean;
+  // reminded / remindedYear は「全メンバーへの送信が完了したか」を表す。
+  // メンバーごとの送信済み状態は remindedUids で管理する（片方だけ送って
+  // フラグが立ち、もう片方の通知が永久に失われるのを防ぐため）。
   reminded?: boolean;
+  remindedUids?: string[];
   remindedYear?: number | null;
+  // remindedUids は「年ごと」にリセットする必要がある繰り返し予定でも
+  // 使い回すため、どの年についての集計かをここで持つ。
+  remindedUidsYear?: number | null;
 }
 
 interface UserDoc {
@@ -112,25 +119,40 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
     if (!coupleId) continue;
     const coupleSnap = await db.collection("couples").doc(coupleId).get();
     const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+    const alreadyRemindedUids = new Set(data.remindedUids ?? []);
 
-    let anySent = false;
-    for (const uid of memberIds) {
-      const userSnap = await db.collection("users").doc(uid).get();
-      const user = userSnap.data() as UserDoc | undefined;
-      if (!user || user.remindersEnabled === false) continue;
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const userSnap = await db.collection("users").doc(uid).get();
+        const user = userSnap.data() as UserDoc | undefined;
+        return {
+          uid,
+          fcmToken: user?.fcmToken,
+          alreadyReminded: alreadyRemindedUids.has(uid),
+          remindersEnabled: !!user && user.remindersEnabled !== false,
+          minutesBefore: resolveMinutesBefore(user?.reminderMinutesBefore),
+        };
+      }),
+    );
 
-      const minutesBefore = resolveMinutesBefore(user.reminderMinutesBefore);
-      if (!shouldRemindNow(eventMs, minutesBefore, nowMs)) continue;
+    const { toRemind, fullySettled } = resolveReminderTargets(members, eventMs, nowMs);
 
+    for (const uid of toRemind) {
+      const member = members.find((m) => m.uid === uid)!;
       await sendFcm(
-        user.fcmToken,
+        member.fcmToken,
         "まもなく予定です",
-        `「${data.title}」が${formatRelative(minutesBefore)}にあります`,
+        `「${data.title}」が${formatRelative(member.minutesBefore)}にあります`,
         { type: "reminder", coupleId, eventId: doc.id },
       );
-      anySent = true;
     }
-    if (anySent) await doc.ref.update({ reminded: true });
+
+    if (toRemind.length > 0 || fullySettled) {
+      await doc.ref.update({
+        remindedUids: [...alreadyRemindedUids, ...toRemind],
+        reminded: fullySettled,
+      });
+    }
   }
 }
 
@@ -152,24 +174,44 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
     const coupleSnap = await db.collection("couples").doc(coupleId).get();
     const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
 
-    let anySent = false;
-    for (const uid of memberIds) {
-      const userSnap = await db.collection("users").doc(uid).get();
-      const user = userSnap.data() as UserDoc | undefined;
-      if (!user || user.remindersEnabled === false) continue;
+    // remindedUids は発生年が変わったらリセットする（去年の送信済み記録を
+    // 今年の判定に持ち越さない）
+    const alreadyRemindedUids =
+      data.remindedUidsYear === occurrenceYear ? new Set(data.remindedUids ?? []) : new Set<string>();
 
-      const minutesBefore = resolveMinutesBefore(user.reminderMinutesBefore);
-      if (!shouldRemindNow(occurrence.getTime(), minutesBefore, nowMs)) continue;
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const userSnap = await db.collection("users").doc(uid).get();
+        const user = userSnap.data() as UserDoc | undefined;
+        return {
+          uid,
+          fcmToken: user?.fcmToken,
+          alreadyReminded: alreadyRemindedUids.has(uid),
+          remindersEnabled: !!user && user.remindersEnabled !== false,
+          minutesBefore: resolveMinutesBefore(user?.reminderMinutesBefore),
+        };
+      }),
+    );
 
+    const { toRemind, fullySettled } = resolveReminderTargets(members, occurrence.getTime(), nowMs);
+
+    for (const uid of toRemind) {
+      const member = members.find((m) => m.uid === uid)!;
       await sendFcm(
-        user.fcmToken,
+        member.fcmToken,
         "まもなく記念日です",
-        `「${data.title}」が${formatRelative(minutesBefore)}にあります`,
+        `「${data.title}」が${formatRelative(member.minutesBefore)}にあります`,
         { type: "reminder", coupleId, eventId: doc.id },
       );
-      anySent = true;
     }
-    if (anySent) await doc.ref.update({ remindedYear: occurrenceYear });
+
+    if (toRemind.length > 0 || fullySettled) {
+      await doc.ref.update({
+        remindedUids: [...alreadyRemindedUids, ...toRemind],
+        remindedUidsYear: occurrenceYear,
+        remindedYear: fullySettled ? occurrenceYear : null,
+      });
+    }
   }
 }
 

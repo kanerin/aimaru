@@ -86,3 +86,52 @@ export function shouldRemindNow(
 export function resolveMinutesBefore(value: number | undefined | null): number {
   return value ?? DEFAULT_REMINDER_MINUTES_BEFORE;
 }
+
+/** メンバー1人ぶんの、リマインダー判定に要る情報。 */
+export interface MemberReminderState {
+  uid: string;
+  /** この予定について、このメンバーへは送信済みか */
+  alreadyReminded: boolean;
+  remindersEnabled: boolean;
+  minutesBefore: number;
+}
+
+export interface ReminderTargets {
+  /** 今回新たに送信すべきメンバーのuid */
+  toRemind: string[];
+  /**
+   * 全メンバーが「送信済み」か「今後も送信不要（無効化）」のどちらかに
+   * 収まったか。falseなら、まだ送信タイミングを待っているメンバーがいる。
+   */
+  fullySettled: boolean;
+}
+
+/**
+ * 予定単位の `reminded` フラグだと、先にタイミングが来たメンバーへ送った
+ * 時点でフラグが立ち、他のメンバー（例: 「1日前」設定で自分より遅く
+ * タイミングが来る人）が二度と拾われなくなる。
+ *
+ * メンバーごとに `alreadyReminded` を管理し、「まだ送信していない・
+ * 無効化されていない・タイミングも来ていない」メンバーが1人でもいる間は
+ * `fullySettled` を false のままにすることで、次回以降の実行でも
+ * その予定を拾い続けられるようにする。
+ */
+export function resolveReminderTargets(
+  members: MemberReminderState[],
+  eventMs: number,
+  nowMs: number,
+): ReminderTargets {
+  const toRemind: string[] = [];
+  let stillPending = false;
+
+  for (const member of members) {
+    if (member.alreadyReminded || !member.remindersEnabled) continue;
+    if (shouldRemindNow(eventMs, member.minutesBefore, nowMs)) {
+      toRemind.push(member.uid);
+    } else {
+      stillPending = true;
+    }
+  }
+
+  return { toRemind, fullySettled: !stillPending };
+}
