@@ -43,6 +43,9 @@ jobs:
         id: ff
         run: |
           git fetch origin develop
+          # 昇格前の位置。release-stg.yml がリリースノートの起点として使う
+          # （stg-distributed タグがまだ無い初回のための保険）
+          echo "before=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/develop)" ]; then
             echo "release-stg は既にdevelopと同じ地点です。何もしません"
             echo "promoted=false" >> "$GITHUB_OUTPUT"
@@ -63,4 +66,6 @@ jobs:
         if: steps.ff.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run release-stg.yml --ref release-stg
+        run: |
+          gh workflow run release-stg.yml --ref release-stg \
+            -f from_sha=${{ steps.ff.outputs.before }}
