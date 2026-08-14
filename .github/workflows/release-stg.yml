@@ -7,13 +7,142 @@ name: Distribute to testers (release-stg)
 on:
   push:
     branches: [release-stg]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      from_sha:
+        description: 'リリースノートの起点コミット（省略時は前回配布地点のタグ stg-distributed を使う）'
+        required: false
+        default: ''
 
 jobs:
   distribute:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # 配布した地点を stg-distributed タグに記録するため
     steps:
       - uses: actions/checkout@v5
+        with:
+          # リリースノートは「前回配布した地点からの差分」なので、
+          # 全履歴とタグが要る（既定の浅いクローンでは差分が取れない）
+          fetch-depth: 0
+
+      # テスターの端末には「何が変わったのか」しか届かない。以前は
+      # コミットメッセージ1行（自動昇格の場合は「昇格ビルド（sha）」だけ）を
+      # 渡していたため、配布されたAPKに何が入っているのか誰にも分からなかった。
+      #
+      # 起点は「前回テスターに配布したコミット」を指す stg-distributed タグ。
+      # 配布が成功したときだけタグを進めるので、途中で失敗した回の変更も
+      # 次の配布ノートにまとめて載り、取りこぼしが出ない。
+      - name: Build release notes
+        env:
+          # workflow_dispatch 起動（promote-to-stg.yml からの自動昇格）で渡される、
+          # 昇格前の release-stg の位置。タグがまだ無い初回のための保険
+          FROM_SHA: ${{ inputs.from_sha }}
+          # push 起動のときにGitHubがくれる、push前のブランチの位置
+          EVENT_BEFORE: ${{ github.event.before }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+
+          NOTES_FILE="$RUNNER_TEMP/release-notes.txt"
+          SUBJECTS="$RUNNER_TEMP/subjects.txt"
+          MAX_ENTRIES=40
+
+          # 起点として使えるコミットかを確かめる。存在し、かつHEADの祖先である
+          # ものだけを採用する（HEAD自身なら差分ゼロ＝「変更なし」として扱う）
+          resolve_base() {
+            local cand="${1:-}" sha
+            [ -n "$cand" ] || return 1
+            sha=$(git rev-parse -q --verify "${cand}^{commit}" 2>/dev/null) || return 1
+            git merge-base --is-ancestor "$sha" HEAD || return 1
+            printf '%s' "$sha"
+          }
+
+          BASE=""
+          for cand in "refs/tags/stg-distributed" "$FROM_SHA" "$EVENT_BEFORE"; do
+            if BASE=$(resolve_base "$cand"); then
+              echo "リリースノートの起点: $cand ($BASE)"
+              break
+            fi
+            BASE=""
+          done
+
+          if [ -n "$BASE" ]; then
+            git log --no-merges --reverse --format=%s "$BASE..HEAD" > "$SUBJECTS"
+          else
+            # 初回など、前回配布地点がどうしても分からないとき。黙って
+            # 空にすると「変更なし」と誤読されるので、断り書きを添えて直近を出す
+            echo "起点が特定できませんでした。直近のコミットを表示します" >&2
+            git log --no-merges --reverse --format=%s -n 10 HEAD > "$SUBJECTS"
+          fi
+
+          TOTAL=$(wc -l < "$SUBJECTS")
+          OMITTED=0
+          if [ "$TOTAL" -gt "$MAX_ENTRIES" ]; then
+            OMITTED=$((TOTAL - MAX_ENTRIES))
+            tail -n "$MAX_ENTRIES" "$SUBJECTS" > "$SUBJECTS.tmp"
+            mv "$SUBJECTS.tmp" "$SUBJECTS"
+          fi
+
+          # Conventional Commits のプレフィクスで種類ごとに束ねる。
+          # 見出しの下に置くので、行頭の "feat:" 等は落として読みやすくする
+          FEAT="$RUNNER_TEMP/feat.txt"; FIX="$RUNNER_TEMP/fix.txt"; OTHER="$RUNNER_TEMP/other.txt"
+          : > "$FEAT"; : > "$FIX"; : > "$OTHER"
+          while IFS= read -r subject; do
+            [ -n "$subject" ] || continue
+            target="$OTHER"; label="$subject"
+            case "$subject" in
+              *:*)
+                type=${subject%%:*}   # "feat(scope)!: xxx" → "feat(scope)!"
+                type=${type%%(*}      # スコープを落とす
+                type=${type%!}        # 破壊的変更の "!" を落とす
+                case "$type" in
+                  feat) target="$FEAT"; label=${subject#*:} ;;
+                  fix) target="$FIX"; label=${subject#*:} ;;
+                  chore|docs|refactor|test|ci|perf|build|style|revert)
+                    label=${subject#*:} ;;
+                esac
+                ;;
+            esac
+            printf -- '- %s\n' "${label# }" >> "$target"
+          done < "$SUBJECTS"
+
+          APP_VERSION=$(sed -n 's/^version: *\([^+ ]*\).*/\1/p' pubspec.yaml)
+
+          {
+            printf '%s (%s)\n\n' "${APP_VERSION:-?}" "$BUILD_NUMBER"
+            [ -n "$BASE" ] || printf '（前回の配布地点が特定できないため、直近の変更を表示しています）\n\n'
+          } > "$NOTES_FILE"
+
+          append_section() {
+            if [ -s "$2" ]; then
+              printf '%s\n' "$1" >> "$NOTES_FILE"
+              cat "$2" >> "$NOTES_FILE"
+              printf '\n' >> "$NOTES_FILE"
+            fi
+          }
+          append_section "■ 新機能" "$FEAT"
+          append_section "■ 修正" "$FIX"
+          append_section "■ その他" "$OTHER"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            printf '前回の配布からコード変更はありません（再ビルドのみ）。\n\n' >> "$NOTES_FILE"
+          fi
+          if [ "$OMITTED" -gt 0 ]; then
+            printf 'ほか %s 件の変更\n\n' "$OMITTED" >> "$NOTES_FILE"
+          fi
+
+          printf 'commit %s\n' "$(git rev-parse --short HEAD)" >> "$NOTES_FILE"
+
+          echo "RELEASE_NOTES_FILE=$NOTES_FILE" >> "$GITHUB_ENV"
+
+          # 配布前でも実行ページで中身を確認できるようにしておく
+          {
+            echo '## テスターに配布するリリースノート'
+            echo '```'
+            cat "$NOTES_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-java@v5
         with:
@@ -99,16 +228,21 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
+      # ノートは複数行になるため --release-notes（1行想定）ではなくファイルで渡す
       - name: Distribute to testers via Firebase App Distribution
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-          # push起動（人間が直接pushした場合）はコミットメッセージを、
-          # workflow_dispatch起動（promote-to-stg.ymlからの自動昇格を含む）は
-          # head_commitが無いのでフォールバック文言を使う
-          RELEASE_NOTES: ${{ github.event.head_commit.message || format('release-stg 昇格ビルド（{0}）', github.sha) }}
         run: |
           firebase appdistribution:distribute build/app/outputs/flutter-apk/app-release.apk \
             --app "${{ secrets.FIREBASE_ANDROID_APP_ID }}" \
-            --release-notes "$RELEASE_NOTES" \
+            --release-notes-file "$RELEASE_NOTES_FILE" \
             --testers "${{ secrets.APP_DISTRIBUTION_TESTERS }}" \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}"
+
+      # 次回のリリースノートの起点。ここまで来た＝テスターの手元に届いた、
+      # という地点だけを記録する。配布に失敗した回はタグが進まないので、
+      # その変更は次回のノートにそのまま引き継がれる。
+      - name: Record distributed commit
+        run: |
+          git tag -f stg-distributed "$GITHUB_SHA"
+          git push -f origin refs/tags/stg-distributed
