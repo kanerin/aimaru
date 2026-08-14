@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
@@ -61,6 +62,27 @@ GeminiReply parseGeminiReply(String rawResponse) {
   }
 }
 
+// ── AIの応答形式の指示。テキスト応答・画像解析の両方で共通 ─────
+// events/textのJSONスキーマがずれるとparseGeminiReplyが読めなくなるため、
+// 両呼び出しで同じ文言を1箇所にまとめて共有する。
+const _kResponseFormatInstructions = '''
+## 応答形式
+ユーザーの入力を解釈し、必ず次のいずれかのJSON形式のみを返してください。
+マークダウンやコードブロックは不要です。
+
+1. 具体的な予定を追加できる場合（会話の流れ全体から日付・内容が十分に読み取れる場合）:
+{"kind":"events","events":[{"title":"予定のタイトル","date":"YYYY-MM-DD","type":"date|anniversary|celebrity|plan","recurring":true|false,"location":"場所や null","memo":"メモや null"}]}
+「〇〇のメンバー全員の誕生日」のように複数件が該当する場合は配列に複数件含めてください。
+有名人・アーティスト・スポーツ選手などの誕生日は、あなたの知識から正確な日付を答えてください。
+
+2. それ以外（雑談、上記の「直近の予定」を使って答える質問、使い方の質問、
+   予定を追加したそうだが日付や内容が曖昧で確定できない場合など）:
+{"kind":"text","text":"日本語で2〜4文の簡潔な返答。予定が曖昧な場合は『いつ・何をするか』を具体的に聞き返す。実在しないUI要素の案内はしない"}
+
+typeの使い分け: date=デートや外出、anniversary=記念日、celebrity=有名人の誕生日等、plan=未確定のプラン
+recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など）
+''';
+
 class GeminiService {
   // ビルド時に --dart-define=GEMINI_API_KEY=xxx で渡す（ソースにキーを書かない）。
   // 開発時は android/local.properties や ~/.gradle 等ではなく、
@@ -112,21 +134,7 @@ class GeminiService {
 ## 直近の予定（参照質問に答えるための参考情報）
 $eventsContext
 
-## 応答形式
-ユーザーの入力を解釈し、必ず次のいずれかのJSON形式のみを返してください。
-マークダウンやコードブロックは不要です。
-
-1. 具体的な予定を追加できる場合（会話の流れ全体から日付・内容が十分に読み取れる場合）:
-{"kind":"events","events":[{"title":"予定のタイトル","date":"YYYY-MM-DD","type":"date|anniversary|celebrity|plan","recurring":true|false,"location":"場所や null","memo":"メモや null"}]}
-「〇〇のメンバー全員の誕生日」のように複数件が該当する場合は配列に複数件含めてください。
-有名人・アーティスト・スポーツ選手などの誕生日は、あなたの知識から正確な日付を答えてください。
-
-2. それ以外（雑談、上記の「直近の予定」を使って答える質問、使い方の質問、
-   予定を追加したそうだが日付や内容が曖昧で確定できない場合など）:
-{"kind":"text","text":"日本語で2〜4文の簡潔な返答。予定が曖昧な場合は『いつ・何をするか』を具体的に聞き返す。実在しないUI要素の案内はしない"}
-
-typeの使い分け: date=デートや外出、anniversary=記念日、celebrity=有名人の誕生日等、plan=未確定のプラン
-recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など）
+$_kResponseFormatInstructions
 ''';
 
     final contents = [
@@ -143,6 +151,56 @@ recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など�
     } catch (e) {
       // 「エラーが発生しました」だけだと、上限切れなのか通信断なのか
       // APIキーの問題なのかが画面から一切判別できないので切り分ける
+      return GeminiReply.text(describeGeminiFailure(e));
+    }
+  }
+
+  // ── ユーザーが送った画像（他社カレンダーのスクショ、招待状、チラシなど）から
+  // 予定候補を抽出する。応答はテキスト版と同じJSONスキーマで受け取り、
+  // parseGeminiReplyをそのまま再利用する（「解釈できなければ予定を作らない」
+  // という安全性がここでも保たれる）。
+  Future<GeminiReply> respondToImage(
+    Uint8List imageBytes,
+    String mimeType, {
+    List<Map<String, String>> history = const [],
+    String eventsContext = 'なし',
+  }) async {
+    if (_apiKey.isEmpty) return const GeminiReply.text(kGeminiNoApiKeyMessage);
+
+    final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
+
+    final systemPrompt = '''
+あなたは「AIMARU」というカップル向けスケジュール共有アプリ内のAIアシスタント「AIMARU AI」です。
+今日の日付は $today です。
+
+ユーザーが画像を送ってきました。他のカレンダーアプリのスクリーンショット、招待状、
+チラシ、LINEやメールのやり取りなど、予定の情報が写っている可能性があります。
+画像から読み取れる予定（日付・タイトルなど）があればすべて抽出してください。
+複数の予定が写っていれば全件を配列に含めてください。
+年が書かれていない場合は、今日（$today）以降で直近に来る年と推測してください。
+予定らしき情報が読み取れない画像の場合は、その旨を伝える返答をしてください。
+
+## 直近の予定（参照質問に答えるための参考情報）
+$eventsContext
+
+$_kResponseFormatInstructions
+''';
+
+    final contents = [
+      Content.text(systemPrompt),
+      ...history.map((m) => m['role'] == 'user'
+          ? Content.text(m['text']!)
+          : Content.model([TextPart(m['text']!)])),
+      Content.multi([
+        TextPart('この画像から予定を抽出してください。'),
+        DataPart(mimeType, imageBytes),
+      ]),
+    ];
+
+    try {
+      final response = await _model.generateContent(contents);
+      return parseGeminiReply(response.text ?? '');
+    } catch (e) {
       return GeminiReply.text(describeGeminiFailure(e));
     }
   }

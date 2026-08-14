@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../models/models.dart';
 import '../../services/gemini_service.dart';
@@ -11,7 +12,23 @@ import '../../utils/recurring_events.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String coupleId;
-  const AiChatScreen({super.key, required this.coupleId});
+  // テスト用の差し替え口（本番は未指定でImagePicker/GeminiServiceを直接使う）。
+  final EventService? eventServiceOverride;
+  final Future<XFile?> Function()? pickImageOverride;
+  final Future<GeminiReply> Function(
+    Uint8List imageBytes,
+    String mimeType, {
+    required List<Map<String, String>> history,
+    required String eventsContext,
+  })? analyzeImageOverride;
+
+  const AiChatScreen({
+    super.key,
+    required this.coupleId,
+    this.eventServiceOverride,
+    this.pickImageOverride,
+    this.analyzeImageOverride,
+  });
 
   @override
   State<AiChatScreen> createState() => _AiChatScreenState();
@@ -19,10 +36,12 @@ class AiChatScreen extends StatefulWidget {
 
 class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver {
   final _gemini             = GeminiService();
-  final _eventService       = EventService();
+  late final _eventService  = widget.eventServiceOverride ?? EventService();
   final _gcalCacheService   = GoogleCalendarCacheService();
+  final _picker             = ImagePicker();
   final _controller         = TextEditingController();
   final _scrollCtrl         = ScrollController();
+  bool _pickingImage = false;
 
   String get _selfUid => FirebaseAuth.instance.currentUser!.uid;
 
@@ -115,41 +134,15 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     _scrollToBottom();
 
     try {
-      final history = _messages
-          .where((m) => m.type == _ChatType.user || m.type == _ChatType.ai)
-          .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
-          .toList();
-      // 直前に送信したユーザー発言は履歴とAI呼び出しの両方に含めないよう除く
-      if (history.isNotEmpty) history.removeLast();
-
-      // 予定の参照に使う直近の予定一覧（このアプリの予定 + Googleカレンダーの
-      // 自分/パートナーの予定）。取得に失敗しても会話自体は続けられるように、
-      // ここだけ個別にフォールバックする（例: 通信が不安定な状態から復帰した直後など）。
-      String eventsContext = 'なし';
-      try {
-        eventsContext = await _buildEventsContext().timeout(const Duration(seconds: 6));
-      } catch (_) {
-        eventsContext = 'なし';
-      }
+      final history = _historyForRequest();
+      final eventsContext = await _eventsContextWithFallback();
 
       final reply = await _gemini.respond(text, history, eventsContext: eventsContext);
       if (!mounted) return;
 
       setState(() {
         _thinking = false;
-        if (reply.kind == GeminiReplyKind.events) {
-          if (reply.events.length > 1) {
-            final batchId = DateTime.now().microsecondsSinceEpoch;
-            _messages.add(_ChatItem.bulkAdd(reply.events, batchId));
-            for (final e in reply.events) {
-              _messages.add(_ChatItem.eventPreview(e, batchId: batchId));
-            }
-          } else {
-            _messages.add(_ChatItem.eventPreview(reply.events.first));
-          }
-        } else {
-          _messages.add(_ChatItem.ai(reply.text));
-        }
+        _applyReply(reply);
       });
     } catch (_) {
       if (!mounted) return;
@@ -159,6 +152,92 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       });
     }
     _scrollToBottom();
+  }
+
+  // ── 画像（他社カレンダーのスクショ、招待状など）から予定候補を抽出する ──
+  Future<void> _sendImage() async {
+    if (_pickingImage) return;
+
+    setState(() => _pickingImage = true);
+    XFile? file;
+    try {
+      file = await (widget.pickImageOverride?.call() ??
+          _picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600));
+    } finally {
+      if (mounted) setState(() => _pickingImage = false);
+    }
+    if (file == null) return;
+
+    final bytes = await file.readAsBytes();
+    final mimeType = file.mimeType ?? 'image/jpeg';
+
+    setState(() {
+      _messages.add(_ChatItem.userImage(bytes));
+      _thinking = true;
+    });
+    _scrollToBottom();
+
+    try {
+      final history = _historyForRequest();
+      final eventsContext = await _eventsContextWithFallback();
+
+      final reply = await (widget.analyzeImageOverride?.call(
+            bytes, mimeType,
+            history: history, eventsContext: eventsContext,
+          ) ??
+          _gemini.respondToImage(bytes, mimeType, history: history, eventsContext: eventsContext));
+      if (!mounted) return;
+
+      setState(() {
+        _thinking = false;
+        _applyReply(reply);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _thinking = false;
+        _messages.add(_ChatItem.ai('画像の解析に失敗しました。もう一度試してください'));
+      });
+    }
+    _scrollToBottom();
+  }
+
+  // 直前に送信したメッセージ（テキストまたは画像）は履歴とAI呼び出しの
+  // 両方に含めないよう除いた上で、テキストの会話履歴だけを組み立てる。
+  List<Map<String, String>> _historyForRequest() {
+    final withoutLast =
+        _messages.length > 1 ? _messages.sublist(0, _messages.length - 1) : const <_ChatItem>[];
+    return withoutLast
+        .where((m) => m.type == _ChatType.user || m.type == _ChatType.ai)
+        .map((m) => {'role': m.isAi ? 'assistant' : 'user', 'text': m.text ?? ''})
+        .toList();
+  }
+
+  // 予定の参照に使う直近の予定一覧（このアプリの予定 + Googleカレンダーの
+  // 自分/パートナーの予定）。取得に失敗しても会話自体は続けられるように、
+  // ここだけ個別にフォールバックする（例: 通信が不安定な状態から復帰した直後など）。
+  Future<String> _eventsContextWithFallback() async {
+    try {
+      return await _buildEventsContext().timeout(const Duration(seconds: 6));
+    } catch (_) {
+      return 'なし';
+    }
+  }
+
+  void _applyReply(GeminiReply reply) {
+    if (reply.kind == GeminiReplyKind.events) {
+      if (reply.events.length > 1) {
+        final batchId = DateTime.now().microsecondsSinceEpoch;
+        _messages.add(_ChatItem.bulkAdd(reply.events, batchId));
+        for (final e in reply.events) {
+          _messages.add(_ChatItem.eventPreview(e, batchId: batchId));
+        }
+      } else {
+        _messages.add(_ChatItem.eventPreview(reply.events.first));
+      }
+    } else {
+      _messages.add(_ChatItem.ai(reply.text));
+    }
   }
 
   // AIに渡す「直近の予定」テキストを組み立てる。
@@ -348,6 +427,30 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
             ),
             child: Row(
               children: [
+                Tooltip(
+                  message: '画像から予定を読み取る',
+                  child: GestureDetector(
+                    onTap: _pickingImage ? null : _sendImage,
+                    child: Container(
+                      width: 40, height: 40,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.navySurface,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.hairline),
+                      ),
+                      child: _pickingImage
+                          ? const Padding(
+                              padding: EdgeInsets.all(11),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(
+                              Icons.add_photo_alternate_outlined,
+                              color: AppColors.textSecond, size: 20,
+                            ),
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
@@ -385,6 +488,9 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     }
     if (item.type == _ChatType.bulkAdd) {
       return _buildBulkAdd(item);
+    }
+    if (item.type == _ChatType.userImage) {
+      return _buildUserImage(item);
     }
 
     final isAi = item.isAi;
@@ -438,6 +544,25 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
             onPressed: () => _confirmBulk(item),
             icon: const Icon(Icons.playlist_add_check, size: 18),
             label: Text('${item.events!.length}件まとめて追加する', style: const TextStyle(fontSize: 13)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserImage(_ChatItem item) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 48),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16).copyWith(
+            bottomRight: const Radius.circular(4),
+          ),
+          child: Image.memory(
+            item.imageBytes!,
+            width: 160,
+            fit: BoxFit.cover,
           ),
         ),
       ),
@@ -549,7 +674,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
 }
 
 // ── チャットアイテムモデル ──────────────────────────
-enum _ChatType { user, ai, eventPreview, bulkAdd }
+enum _ChatType { user, ai, eventPreview, bulkAdd, userImage }
 
 class _ChatItem {
   final _ChatType type;
@@ -557,8 +682,16 @@ class _ChatItem {
   final GeminiParsedEvent? event;
   final List<GeminiParsedEvent>? events;
   final int? batchId;
+  final Uint8List? imageBytes;
 
-  _ChatItem._({required this.type, this.text, this.event, this.events, this.batchId});
+  _ChatItem._({
+    required this.type,
+    this.text,
+    this.event,
+    this.events,
+    this.batchId,
+    this.imageBytes,
+  });
 
   factory _ChatItem.user(String t) => _ChatItem._(type: _ChatType.user, text: t);
   factory _ChatItem.ai(String t)   => _ChatItem._(type: _ChatType.ai, text: t);
@@ -566,6 +699,8 @@ class _ChatItem {
       _ChatItem._(type: _ChatType.eventPreview, event: e, batchId: batchId);
   factory _ChatItem.bulkAdd(List<GeminiParsedEvent> events, int batchId) =>
       _ChatItem._(type: _ChatType.bulkAdd, events: events, batchId: batchId);
+  factory _ChatItem.userImage(Uint8List bytes) =>
+      _ChatItem._(type: _ChatType.userImage, imageBytes: bytes);
 
   bool get isAi => type == _ChatType.ai;
 }
