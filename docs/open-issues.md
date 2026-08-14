@@ -10,7 +10,7 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **17件すべて通過** |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **22件すべて通過** |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **8件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **33件すべて通過**（エミュレータ上、CIで確認） |
@@ -33,7 +33,7 @@ test/services/theme_controller_test.dart          4   テーマ
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
-functions/src/reminder_logic.test.ts             17   リマインダー判定
+functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/reminders.integration.test.ts       8   Firestoreを読んで判定し書き戻す経路
 rules_test/firestore.test.js                     27   Firestoreルールのメンバー境界（todos含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
@@ -69,7 +69,6 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
-| 7 | **リマインダーの `reminded` が予定単位で、メンバー単位でない** | TC-059 | メンバーの通知設定が違うと（60分前と1日前など）片方の通知が**永久に失われる**。`functions/src/index.ts` の133行目・172行目。`reminders.integration.test.ts` の【既知】テストが現状を固定している |
 | 8 | **`sendReminders` が `collectionGroup` の全件走査** | REQ-028 / FEAT-048 | `index.ts` 97行目・139行目。ユーザー数に対して課金と実行時間が線形以上に伸びる |
 | 9 | **画像から予定を読み取れない** | REQ-016 / FEAT-044 | TimeTree が実装済み。カップルの予定は他アプリのスクショが出どころ |
 | 10 | **2人の空き時間の検出・提案が無い** | REQ-017 / FEAT-045 | **競合が構造的に持てない優位性**。必要なデータ（自前の予定＋双方のGCalキャッシュ）は既に揃っている |

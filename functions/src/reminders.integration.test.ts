@@ -9,6 +9,7 @@ import {
   isStale,
   nextOccurrence,
   resolveMinutesBefore,
+  resolveReminderTargets,
   shouldRemindNow,
 } from "./reminder_logic";
 
@@ -66,6 +67,60 @@ async function collectOneTimeTargets(nowMs: number) {
   }
 
   return { sent, cleanedUp };
+}
+
+/**
+ * 本番の processOneTimeEvents と同じ順序・同じ書き戻しロジックで、
+ * 1回ぶんの実行をシミュレートする。collectOneTimeTargets と違い、
+ * remindedUids / reminded を実際にFirestoreへ書き戻すので、
+ * 「1回目の実行の結果が2回目の実行にどう影響するか」を検証できる。
+ */
+async function runOneTimeEventsPass(nowMs: number) {
+  const snap = await db.collectionGroup("events").where("reminded", "==", false).get();
+  const sent: Array<{ eventId: string; uid: string }> = [];
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as { date: Timestamp; recurring?: boolean; remindedUids?: string[] };
+    if (data.recurring) continue;
+
+    const eventMs = data.date.toDate().getTime();
+    if (isStale(eventMs, nowMs)) {
+      await doc.ref.update({ reminded: true });
+      continue;
+    }
+
+    const coupleId = doc.ref.parent.parent?.id;
+    if (!coupleId) continue;
+    const memberIds: string[] =
+      (await db.collection("couples").doc(coupleId).get()).data()?.memberIds ?? [];
+    const alreadyRemindedUids = new Set(data.remindedUids ?? []);
+
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const user = (await db.collection("users").doc(uid).get()).data() as
+          | { remindersEnabled?: boolean; reminderMinutesBefore?: number }
+          | undefined;
+        return {
+          uid,
+          alreadyReminded: alreadyRemindedUids.has(uid),
+          remindersEnabled: !!user && user.remindersEnabled !== false,
+          minutesBefore: resolveMinutesBefore(user?.reminderMinutesBefore),
+        };
+      }),
+    );
+
+    const { toRemind, fullySettled } = resolveReminderTargets(members, eventMs, nowMs);
+    for (const uid of toRemind) sent.push({ eventId: doc.id, uid });
+
+    if (toRemind.length > 0 || fullySettled) {
+      await doc.ref.update({
+        remindedUids: [...alreadyRemindedUids, ...toRemind],
+        reminded: fullySettled,
+      });
+    }
+  }
+
+  return sent;
 }
 
 describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エミュレータ未起動" }, () => {
@@ -216,26 +271,47 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     assert.equal(nextOccurrence(stored, nowMs).getFullYear(), 2027, "今年は過ぎているので来年");
   });
 
-  // 既知の未修正バグを固定するテスト。
-  // reminded は予定単位なので、片方のメンバーへ送った時点で true になると
-  // もう片方の通知が永久に失われる。修正したらここが落ちるので気づける。
-  it("【既知】reminded は予定単位のため、メンバー別の送信済み管理ができない", async () => {
+  // メンバーごとに送信タイミングが異なる場合でも、両方が通知を受け取れることの確認。
+  // reminded を予定単位のフラグのままにすると、先にタイミングが来たメンバーへ
+  // 送った時点でフラグが立ち、もう片方の通知が永久に失われる不具合があった
+  // （remindedUids でメンバー別に管理することで修正した）。
+  it("メンバーごとに送信タイミングが違っても、両方が別々のタイミングで通知を受け取れる", async () => {
     const nowMs = Date.now();
+    // 予定は1日後。Aは「23時間前」設定なのでnowMs+60分後に、
+    // Bは「1時間前」設定なのでnowMs+1380分後に、それぞれタイミングを迎える。
     await seed({
-      eventDate: new Date(nowMs + 60 * MINUTE),
+      eventDate: new Date(nowMs + 1440 * MINUTE),
       users: {
-        [USER_A]: { reminderMinutesBefore: 60 },
-        [USER_B]: { reminderMinutesBefore: 1440 },
+        [USER_A]: { reminderMinutesBefore: 1380 },
+        [USER_B]: { reminderMinutesBefore: 60 },
       },
     });
 
-    // Aへ送ったので reminded を立てる（本番の processOneTimeEvents と同じ）
-    await db.collection("couples").doc(COUPLE_ID).collection("events").doc("event-1")
-      .update({ reminded: true });
+    // 1回目の実行（Aのタイミング）: Aだけが拾われる
+    const firstPass = await runOneTimeEventsPass(nowMs + 60 * MINUTE);
+    assert.deepEqual(firstPass.map((s) => s.uid), [USER_A]);
 
-    // 1日前設定のBの番が来ても、もう拾われない
-    const { sent } = await collectOneTimeTargets(nowMs + 1);
+    const afterFirstPass = await db
+      .collection("couples")
+      .doc(COUPLE_ID)
+      .collection("events")
+      .doc("event-1")
+      .get();
+    assert.equal(afterFirstPass.data()?.reminded, false, "Bがまだ残っているのでreminded=trueにしない");
+    assert.deepEqual(afterFirstPass.data()?.remindedUids, [USER_A]);
 
-    assert.deepEqual(sent, [], "Bの通知は失われる。メンバー別管理へ直したらこのテストを更新する");
+    // 2回目の実行（Bのタイミング）: 修正前は reminded=true で除外され、
+    // Bの通知が永久に失われていた。修正後はremindedUidsで判定するので拾われる。
+    const secondPass = await runOneTimeEventsPass(nowMs + 1380 * MINUTE);
+    assert.deepEqual(secondPass.map((s) => s.uid), [USER_B]);
+
+    const afterSecondPass = await db
+      .collection("couples")
+      .doc(COUPLE_ID)
+      .collection("events")
+      .doc("event-1")
+      .get();
+    assert.equal(afterSecondPass.data()?.reminded, true, "両方に送り終えたので完了扱いになる");
+    assert.deepEqual(new Set(afterSecondPass.data()?.remindedUids), new Set([USER_A, USER_B]));
   });
 });
