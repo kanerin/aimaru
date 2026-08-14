@@ -58,8 +58,13 @@ jobs:
             printf '%s' "$sha"
           }
 
+          # 直近のバージョンタグ。バージョン採番の起点であり、
+          # stg-distributed が無い場合はリリースノートの起点にもなる
+          LAST_VERSION=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1 | sed 's/^v//')
+
           BASE=""
-          for cand in "refs/tags/stg-distributed" "$FROM_SHA" "$EVENT_BEFORE"; do
+          for cand in "refs/tags/stg-distributed" "refs/tags/v$LAST_VERSION" "$FROM_SHA" "$EVENT_BEFORE"; do
+            [ "$cand" != "refs/tags/v" ] || continue   # タグがまだ無い場合
             if BASE=$(resolve_base "$cand"); then
               echo "リリースノートの起点: $cand ($BASE)"
               break
@@ -107,7 +112,61 @@ jobs:
             printf -- '- %s\n' "${label# }" >> "$target"
           done < "$SUBJECTS"
 
-          APP_VERSION=$(sed -n 's/^version: *\([^+ ]*\).*/\1/p' pubspec.yaml)
+          # ---- バージョン採番 ----
+          # ビルド番号だけを増やすと表示は「1.0.0 (31)」「1.0.0 (32)」となり、
+          # 何世代目なのかも、機能追加なのか不具合修正なのかも読み取れない。
+          # リリース済みバージョンの正は v* タグ（配布に成功した時だけ打つ）で、
+          # pubspec.yaml の version はその出発点として扱う。メジャーを上げたい等、
+          # 人が決めたい時は pubspec を書き換えればそちらが優先される。
+          PUBSPEC_VERSION=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
+
+          bump() { # $1=x.y.z $2=major|minor|patch
+            local ma mi pa
+            IFS=. read -r ma mi pa <<< "$1"
+            case "$2" in
+              major) echo "$((ma + 1)).0.0" ;;
+              minor) echo "${ma}.$((mi + 1)).0" ;;
+              *)     echo "${ma}.${mi}.$((pa + 1))" ;;
+            esac
+          }
+
+          # 上げ幅を測る区間は「前回のバージョンタグから」。リリースノートの
+          # 区間（前回の配布地点から）とは普段は一致するが、タグが片方しか
+          # 無い状況でも正しい幅を出せるように別々に解決する
+          VER_BASE=""
+          if [ -n "$LAST_VERSION" ]; then
+            VER_BASE=$(resolve_base "refs/tags/v$LAST_VERSION") || VER_BASE="$BASE"
+          fi
+
+          # pubspec の方が新しければ人が手で上げたということ
+          newest_version=$(printf '%s\n%s\n' "$PUBSPEC_VERSION" "$LAST_VERSION" | sort -V | tail -n 1)
+
+          if [ -z "$LAST_VERSION" ]; then
+            APP_VERSION="$PUBSPEC_VERSION"   # 初回はpubspecの値をそのまま最初のリリースとする
+            REASON="初回リリース（pubspec.yaml の値）"
+          elif [ "$PUBSPEC_VERSION" != "$LAST_VERSION" ] && [ "$newest_version" = "$PUBSPEC_VERSION" ]; then
+            APP_VERSION="$PUBSPEC_VERSION"
+            REASON="pubspec.yaml で手動指定"
+          elif [ -n "$VER_BASE" ] && [ "$(git rev-list --no-merges --count "$VER_BASE..HEAD")" -eq 0 ]; then
+            APP_VERSION="$LAST_VERSION"      # 変更なしの再ビルド。ビルド番号だけ進める
+            REASON="変更が無いため据え置き"
+          else
+            # feat があれば機能追加としてマイナー、破壊的変更ならメジャー、
+            # それ以外（fix / chore など）はパッチ
+            KIND=patch
+            if [ -n "$VER_BASE" ]; then
+              if git log --format=%s "$VER_BASE..HEAD" | grep -qE '^feat(\(.+\))?!?:'; then
+                KIND=minor
+              fi
+              if git log --format=%B "$VER_BASE..HEAD" | grep -qE '^BREAKING[ -]CHANGE|^[a-z]+(\(.+\))?!:'; then
+                KIND=major
+              fi
+            fi
+            APP_VERSION=$(bump "$LAST_VERSION" "$KIND")
+            REASON="$LAST_VERSION から $KIND 更新"
+          fi
+          echo "バージョン: $APP_VERSION ($REASON) / ビルド番号: $BUILD_NUMBER"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
           {
             printf '%s (%s)\n\n' "${APP_VERSION:-?}" "$BUILD_NUMBER"
@@ -225,8 +284,13 @@ jobs:
 
       # ビルド番号をCI実行ごとに一意にする。固定のままだとFirebase側で
       # 「同じリリースの上書き」と判定され、テスターに通知が飛ばない。
+      # バージョン名(--build-name)は上のステップで採番した値で上書きする。
       - name: Build release APK
-        run: flutter build apk --release --build-number=${{ github.run_number }} --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        run: |
+          flutter build apk --release \
+            --build-name="$APP_VERSION" \
+            --build-number=${{ github.run_number }} \
+            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
 
       # ノートは複数行になるため --release-notes（1行想定）ではなくファイルで渡す
       - name: Distribute to testers via Firebase App Distribution
@@ -239,10 +303,12 @@ jobs:
             --testers "${{ secrets.APP_DISTRIBUTION_TESTERS }}" \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}"
 
-      # 次回のリリースノートの起点。ここまで来た＝テスターの手元に届いた、
-      # という地点だけを記録する。配布に失敗した回はタグが進まないので、
-      # その変更は次回のノートにそのまま引き継がれる。
+      # ここまで来た＝テスターの手元に届いた、という地点だけを記録する。
+      # stg-distributed は次回のリリースノートの起点、v* は次回のバージョン
+      # 採番の起点。配布に失敗した回はどちらも進まないので、その変更は
+      # 次回にそのまま引き継がれる。
       - name: Record distributed commit
         run: |
           git tag -f stg-distributed "$GITHUB_SHA"
-          git push -f origin refs/tags/stg-distributed
+          git tag -f "v$APP_VERSION" "$GITHUB_SHA"
+          git push -f origin refs/tags/stg-distributed "refs/tags/v$APP_VERSION"
