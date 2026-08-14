@@ -8,6 +8,7 @@ import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
+import 'ics_import_screen.dart';
 
 const _reminderOptions = <int, String>{
   15:   '15分前',
@@ -226,6 +227,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await _settingsService.setDefaultSyncGoogleCalendar(v);
               },
             ),
+            const SizedBox(height: 12),
+            _NavigationRow(
+              title: '他のカレンダーから予定をインポート',
+              subtitle: 'TimeTreeやGoogleカレンダーなどのiCal(.ics)形式のURL・テキストから予定を取り込みます',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => IcsImportScreen(coupleId: widget.coupleId)),
+              ),
+            ),
           ],
 
           const SizedBox(height: 28),
@@ -372,6 +381,42 @@ class _SettingsSwitch extends StatelessWidget {
       ),
       Switch(value: value, onChanged: onChanged),
     ]),
+  );
+}
+
+class _NavigationRow extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _NavigationRow({required this.title, required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.navySurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(
+                fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
+              )),
+              const SizedBox(height: 4),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.5)),
+            ],
+          ),
+        ),
+        const Icon(Icons.chevron_right, color: AppColors.textMuted),
+      ]),
+    ),
   );
 }
 
