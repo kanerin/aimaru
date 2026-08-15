@@ -11,6 +11,7 @@ import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
 import '../widgets/anniversary_card.dart';
 import 'ics_import_screen.dart';
+import 'trash_screen.dart';
 
 const _reminderOptions = <int, String>{
   15:   '15分前',
@@ -330,6 +331,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ],
+
+          const SizedBox(height: 28),
+          const _SectionLabel('データ管理'),
+          _NavigationRow(
+            title: 'ゴミ箱',
+            subtitle: '削除した予定を30日間保管します。誤って消してしまっても復元できます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => TrashScreen(coupleId: widget.coupleId)),
+            ),
+          ),
 
           const SizedBox(height: 28),
           const _SectionLabel('アカウント'),

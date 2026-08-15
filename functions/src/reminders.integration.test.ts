@@ -40,8 +40,14 @@ async function collectOneTimeTargets(nowMs: number) {
   const cleanedUp: string[] = [];
 
   for (const doc of snap.docs) {
-    const data = doc.data() as { date: Timestamp; recurring?: boolean; title: string };
+    const data = doc.data() as {
+      date: Timestamp;
+      recurring?: boolean;
+      title: string;
+      deletedAt?: Timestamp | null;
+    };
     if (data.recurring) continue;
+    if (data.deletedAt) continue;
 
     const eventMs = data.date.toDate().getTime();
     if (isStale(eventMs, nowMs)) {
@@ -80,8 +86,14 @@ async function runOneTimeEventsPass(nowMs: number) {
   const sent: Array<{ eventId: string; uid: string }> = [];
 
   for (const doc of snap.docs) {
-    const data = doc.data() as { date: Timestamp; recurring?: boolean; remindedUids?: string[] };
+    const data = doc.data() as {
+      date: Timestamp;
+      recurring?: boolean;
+      remindedUids?: string[];
+      deletedAt?: Timestamp | null;
+    };
     if (data.recurring) continue;
+    if (data.deletedAt) continue;
 
     const eventMs = data.date.toDate().getTime();
     if (isStale(eventMs, nowMs)) {
@@ -145,11 +157,13 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     eventDate,
     recurring = false,
     reminded = false,
+    deletedAt = null,
     users,
   }: {
     eventDate: Date;
     recurring?: boolean;
     reminded?: boolean;
+    deletedAt?: Timestamp | null;
     users: Record<string, { remindersEnabled?: boolean; reminderMinutesBefore?: number }>;
   }) {
     await db.collection("couples").doc(COUPLE_ID).set({
@@ -168,6 +182,7 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
       recurring,
       reminded,
       remindedYear: null,
+      deletedAt,
     });
   }
 
@@ -229,6 +244,19 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     const { sent } = await collectOneTimeTargets(nowMs);
 
     assert.deepEqual(sent, [], "送信済みの予定を二度拾わない");
+  });
+
+  it("ゴミ箱に入っている（論理削除済みの）予定は通知しない", async () => {
+    const nowMs = Date.now();
+    await seed({
+      eventDate: new Date(nowMs + 60 * MINUTE),
+      deletedAt: Timestamp.fromMillis(nowMs - MINUTE),
+      users: { [USER_A]: { reminderMinutesBefore: 60 } },
+    });
+
+    const { sent } = await collectOneTimeTargets(nowMs);
+
+    assert.deepEqual(sent, [], "復元されるかもしれない間はリマインダーを送らない");
   });
 
   it("大きく過ぎた予定は通知せず片付け対象になる", async () => {

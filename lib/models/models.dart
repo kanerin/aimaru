@@ -75,6 +75,9 @@ class AimaruEvent {
   final bool recurring;           // 毎年繰り返し
   final bool allDay;              // 終日（時刻を持たない）
   final String? googleCalendarEventId;
+  // null以外なら論理削除済み（ゴミ箱）。deleteEvent/restoreEvent/
+  // permanentlyDeleteEvent以外の経路（add/update）では触らない。
+  final DateTime? deletedAt;
 
   AimaruEvent({
     required this.id,
@@ -90,6 +93,7 @@ class AimaruEvent {
     this.recurring = false,
     this.allDay = false,
     this.googleCalendarEventId,
+    this.deletedAt,
   });
 
   factory AimaruEvent.fromDoc(DocumentSnapshot doc) {
@@ -116,6 +120,9 @@ class AimaruEvent {
           d['type'] == 'anniversary' ||
           d['type'] == 'celebrity',
       googleCalendarEventId: d['googleCalendarEventId'],
+      deletedAt:             d['deletedAt'] != null
+          ? (d['deletedAt'] as Timestamp).toDate()
+          : null,
     );
   }
 

@@ -45,7 +45,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.navyCard,
         title: const Text('この予定を削除しますか？'),
-        content: Text('「${widget.event.title}」を削除します。この操作は取り消せません。',
+        content: Text('「${widget.event.title}」を削除します。ゴミ箱に移動し、30日間は設定画面から復元できます。',
           style: const TextStyle(color: AppColors.textSecond, fontSize: 13)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
