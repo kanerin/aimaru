@@ -173,13 +173,65 @@ void main() {
     });
   });
 
-  group('予定の削除', () {
-    test('削除するとドキュメントが消える', () async {
+  group('予定の削除（ゴミ箱）', () {
+    test('削除してもドキュメントは消えず、deletedAtが立つだけ', () async {
       final created = await service.addEvent(coupleId, buildEvent());
 
       await service.deleteEvent(created);
 
+      final doc = await eventsRef().doc(created.id).get();
+      expect(doc.exists, isTrue);
+      expect(doc.data()!['deletedAt'], isNotNull);
+    });
+
+    test('復元するとdeletedAtが消える', () async {
+      final created = await service.addEvent(coupleId, buildEvent());
+      await service.deleteEvent(created);
+
+      final deleted = AimaruEvent.fromDoc(await eventsRef().doc(created.id).get());
+      await service.restoreEvent(deleted);
+
+      final doc = await eventsRef().doc(created.id).get();
+      expect(doc.data()!['deletedAt'], isNull);
+    });
+
+    test('完全に削除するとドキュメントが消える', () async {
+      final created = await service.addEvent(coupleId, buildEvent());
+      await service.deleteEvent(created);
+
+      final deleted = AimaruEvent.fromDoc(await eventsRef().doc(created.id).get());
+      await service.permanentlyDeleteEvent(deleted);
+
       expect((await eventsRef().doc(created.id).get()).exists, isFalse);
+    });
+
+    test('削除した予定は月・今後・繰り返し・Map取得のいずれからも除かれる', () async {
+      final active = await service.addEvent(coupleId,
+          buildEvent(title: '生きている予定', date: DateTime(2026, 8, 10)));
+      final deleted = await service.addEvent(coupleId,
+          buildEvent(title: '削除される予定', date: DateTime(2026, 8, 20), recurring: true));
+      await service.deleteEvent(deleted);
+
+      final month = await service.watchMonthEvents(coupleId, DateTime(2026, 8)).first;
+      expect(month.map((e) => e.title), [active.title]);
+
+      final recurring = await service.watchRecurringEvents(coupleId).first;
+      expect(recurring, isEmpty);
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+      expect(map.values.expand((e) => e).map((e) => e.title), [active.title]);
+    });
+
+    test('ゴミ箱一覧には削除した予定だけが、削除日時の新しい順で並ぶ', () async {
+      final first = await service.addEvent(coupleId, buildEvent(title: '先に削除'));
+      await service.deleteEvent(first);
+      final second = await service.addEvent(coupleId, buildEvent(title: '後で削除'));
+      await service.deleteEvent(second);
+      await service.addEvent(coupleId, buildEvent(title: '削除していない'));
+
+      final trashed = await service.watchDeletedEvents(coupleId).first;
+
+      expect(trashed.map((e) => e.title), ['後で削除', '先に削除']);
     });
   });
 

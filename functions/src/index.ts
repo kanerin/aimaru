@@ -12,6 +12,7 @@ import {
   resolveMinutesBefore,
   resolveReminderTargets,
 } from "./reminder_logic";
+import { TRASH_RETENTION_MS } from "./trash_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -31,6 +32,9 @@ interface EventDoc {
   // remindedUids は「年ごと」にリセットする必要がある繰り返し予定でも
   // 使い回すため、どの年についての集計かをここで持つ。
   remindedUidsYear?: number | null;
+  // null以外ならゴミ箱に入っている（論理削除済み）。
+  // 保持期間中はまだ復元されうるので、リマインダー送信の対象から外す。
+  deletedAt?: Timestamp | null;
 }
 
 interface UserDoc {
@@ -106,6 +110,7 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
   for (const doc of snap.docs) {
     const data = doc.data() as EventDoc;
     if (data.recurring) continue;
+    if (data.deletedAt) continue;
 
     const eventMs = data.date.toDate().getTime();
 
@@ -162,6 +167,7 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
 
   for (const doc of snap.docs) {
     const data = doc.data() as EventDoc;
+    if (data.deletedAt) continue;
 
     // 今年 or 来年のうち、直近の発生日を採用する
     const occurrence = nextOccurrence(data.date.toDate(), nowMs);
@@ -221,5 +227,22 @@ export const sendReminders = onSchedule(
     const nowMs = Date.now();
     await processOneTimeEvents(nowMs);
     await processRecurringEvents(nowMs);
+  },
+);
+
+// ── ゴミ箱の自動削除: 論理削除から保持期間を過ぎた予定を完全に消す ──
+// deletedAtへの範囲クエリのみ（他フィールドとの複合条件が無い）なので、
+// 単一フィールドの自動インデックスだけで動く。複合インデックスの
+// 追加デプロイは不要。
+async function purgeDeletedEvents(nowMs: number): Promise<void> {
+  const cutoff = Timestamp.fromMillis(nowMs - TRASH_RETENTION_MS);
+  const snap = await db.collectionGroup("events").where("deletedAt", "<=", cutoff).get();
+  await Promise.all(snap.docs.map((doc) => doc.ref.delete()));
+}
+
+export const purgeTrash = onSchedule(
+  { schedule: "every 24 hours", timeZone: "Asia/Tokyo" },
+  async () => {
+    await purgeDeletedEvents(Date.now());
   },
 );

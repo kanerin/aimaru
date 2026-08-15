@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-14 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-15 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -10,11 +10,11 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **22件すべて通過** |
-| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **8件すべて通過**（エミュレータ上） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
+| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **33件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **129件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **168件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
@@ -22,7 +22,7 @@
 test/services/gemini_reply_parser_test.dart      17   AI応答パース・失敗分類
 test/utils/free_time_finder_test.dart            15   2人の空き時間検出・提案
 test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
-test/services/event_service_test.dart            14   予定CRUD・終日・期間クエリ
+test/services/event_service_test.dart            18   予定CRUD・終日・期間クエリ・ゴミ箱
 test/services/couple_service_test.dart           13   ペアリング・招待コード
 test/utils/japan_holidays_test.dart              13   祝日計算
 test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
@@ -31,10 +31,13 @@ test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
+test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
-functions/src/reminders.integration.test.ts       8   Firestoreを読んで判定し書き戻す経路
+functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
+functions/src/reminders.integration.test.ts       9   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外含む）
+functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 rules_test/firestore.test.js                     27   Firestoreルールのメンバー境界（todos含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
@@ -73,10 +76,9 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 | 9 | **画像から予定を読み取れない** | REQ-016 / FEAT-044 | TimeTree が実装済み。カップルの予定は他アプリのスクショが出どころ |
 | 10 | **2人の空き時間の検出・提案が無い** | REQ-017 / FEAT-045 | **競合が構造的に持てない優位性**。必要なデータ（自前の予定＋双方のGCalキャッシュ）は既に揃っている |
 | 11 | **共有TODO・やりたいことリストが無い** | REQ-012 / FEAT-042 | 日付未定のアイデアの置き場が無く、「予定を書く道具」で止まっている |
-| 12 | **他社アプリからの移行手段が無い** | REQ-003 / FEAT-038 | Pairy 終了で移行先を探す層が市場に出ている。獲得の窓は永続しない |
+| 12 | **他社アプリからの移行手段が無い** | REQ-003 / FEAT-038 | Pairy 終了で移行先を探す層が市場に出ている。獲得の窓は永続しない → `.ics`インポート（#8）で対応済み |
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
-| 15 | **論理削除・バックアップが無い** | REQ-031 / FEAT-050 | 誤削除した思い出を戻せない |
 
 ### P2 — 余力があれば
 

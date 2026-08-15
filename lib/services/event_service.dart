@@ -74,10 +74,30 @@ class EventService {
         .update({...event.toMap(), ..._freshReminderFields});
   }
 
-  // ── 予定を削除 ────────────────────────────────────
+  // ── 予定を削除（ゴミ箱へ）───────────────────────
+  // 誤削除しても30日以内ならrestoreEventで戻せるよう、即座に消さず
+  // deletedAtを立てるだけにする。実体はpurgeTrash（Cloud Functions）が
+  // 保持期限を過ぎたものだけ完全に削除する。
   Future<void> deleteEvent(AimaruEvent event) async {
+    await _eventsRef(event.coupleId).doc(event.id)
+        .update({'deletedAt': FieldValue.serverTimestamp()});
+  }
+
+  // ── ゴミ箱から元に戻す ──────────────────────────
+  Future<void> restoreEvent(AimaruEvent event) async {
+    await _eventsRef(event.coupleId).doc(event.id).update({'deletedAt': null});
+  }
+
+  // ── ゴミ箱から完全に削除 ────────────────────────
+  Future<void> permanentlyDeleteEvent(AimaruEvent event) async {
     await _eventsRef(event.coupleId).doc(event.id).delete();
   }
+
+  // 論理削除済み（ゴミ箱）の予定を通常の一覧から取り除く。
+  // deletedAtでのクエリ側フィルタは本番用の複合インデックスを別途
+  // 用意する必要が出るため使わず、取得後にアプリ側で除く。
+  List<AimaruEvent> _excludeDeleted(Iterable<AimaruEvent> events) =>
+      events.where((e) => e.deletedAt == null).toList();
 
   // ── 月の予定を取得（リアルタイム）───────────────
   Stream<List<AimaruEvent>> watchMonthEvents(String coupleId, DateTime month) {
@@ -89,7 +109,7 @@ class EventService {
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(end))
         .orderBy('date')
         .snapshots()
-        .map((snap) => snap.docs.map(AimaruEvent.fromDoc).toList());
+        .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
   }
 
   // ── 今後の予定を取得（リアルタイム）─────────────
@@ -100,7 +120,7 @@ class EventService {
         .orderBy('date')
         .limit(limit)
         .snapshots()
-        .map((snap) => snap.docs.map(AimaruEvent.fromDoc).toList());
+        .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
   }
 
   // ── 毎年繰り返す予定（リアルタイム）─────────────
@@ -111,7 +131,7 @@ class EventService {
     return _eventsRef(coupleId)
         .where('recurring', isEqualTo: true)
         .snapshots()
-        .map((snap) => snap.docs.map(AimaruEvent.fromDoc).toList());
+        .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
   }
 
   // ── 全予定をMapで取得（カレンダー用）────────────
@@ -120,13 +140,29 @@ class EventService {
         .orderBy('date')
         .snapshots()
         .map((snap) {
-          final events = snap.docs.map(AimaruEvent.fromDoc).toList();
+          final events = _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc));
           final Map<DateTime, List<AimaruEvent>> map = {};
           for (final e in events) {
             final key = DateTime(e.date.year, e.date.month, e.date.day);
             map.putIfAbsent(key, () => []).add(e);
           }
           return map;
+        });
+  }
+
+  // ── ゴミ箱の一覧（リアルタイム）─────────────────
+  // 削除日時の新しい順。件数が多くなりにくい画面のため、
+  // ここもアプリ側フィルタで揃える。
+  Stream<List<AimaruEvent>> watchDeletedEvents(String coupleId) {
+    return _eventsRef(coupleId)
+        .snapshots()
+        .map((snap) {
+          final events = snap.docs
+              .map(AimaruEvent.fromDoc)
+              .where((e) => e.deletedAt != null)
+              .toList()
+            ..sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+          return events;
         });
   }
 }
