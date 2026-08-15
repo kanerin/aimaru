@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/couple_service.dart';
 import '../services/google_calendar_cache_service.dart';
@@ -8,6 +9,7 @@ import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
+import '../widgets/anniversary_card.dart';
 import 'ics_import_screen.dart';
 
 const _reminderOptions = <int, String>{
@@ -34,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _notificationSettingsService = NotificationSettingsService();
 
   String? _partnerName;
+  CoupleModel? _couple;
   bool _showGoogleCalendar = false;
   bool _defaultSync = false;
   bool _showHolidays = true;
@@ -55,7 +58,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final couple = await _coupleService.getMyCouple();
     if (couple == null) return;
     final name = await _coupleService.getPartnerName(couple);
-    if (mounted) setState(() => _partnerName = name);
+    if (mounted) {
+      setState(() {
+        _partnerName = name;
+        _couple = couple;
+      });
+    }
   }
 
   Future<void> _loadPrefs() async {
@@ -152,6 +160,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ]),
               ],
             ]),
+          ),
+
+          const SizedBox(height: 28),
+          const _SectionLabel('記念日'),
+          AnniversaryCard(
+            coupleId: widget.coupleId,
+            initialAnniversary: _couple?.anniversary,
+            onSaved: (date) => setState(() {
+              final couple = _couple;
+              if (couple != null) {
+                _couple = CoupleModel(
+                  id: couple.id,
+                  memberIds: couple.memberIds,
+                  inviteCode: couple.inviteCode,
+                  createdAt: couple.createdAt,
+                  anniversary: date,
+                );
+              }
+            }),
           ),
 
           const SizedBox(height: 28),
