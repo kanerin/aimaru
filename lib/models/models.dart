@@ -313,3 +313,48 @@ class GCalEventSummary {
     allDay: map['allDay'] ?? false,
   );
 }
+
+// ── ExpenseItem（割り勘・立て替えの記録）───────────────
+// デート代や買い物の立て替えを記録し、どちらがいくら多く払っているかを
+// 精算額として計算するための元データ。amountは円単位の整数。
+class ExpenseItem {
+  final String id;
+  final String coupleId;
+  final String title;
+  final int amount;
+  final String paidBy;
+  final String createdBy;
+  final DateTime createdAt;
+
+  ExpenseItem({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    required this.amount,
+    required this.paidBy,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory ExpenseItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return ExpenseItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      title:     d['title'] ?? '',
+      amount:    (d['amount'] as num?)?.toInt() ?? 0,
+      paidBy:    d['paidBy'] ?? '',
+      createdBy: d['createdBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'title':     title,
+    'amount':    amount,
+    'paidBy':    paidBy,
+    'createdBy': createdBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}

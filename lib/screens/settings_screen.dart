@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
 import '../widgets/anniversary_card.dart';
+import 'expenses_screen.dart';
 import 'ics_import_screen.dart';
 import 'trash_screen.dart';
 
@@ -331,6 +332,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ],
+
+          const SizedBox(height: 28),
+          const _SectionLabel('お金の記録'),
+          _NavigationRow(
+            title: '割り勘・立て替え',
+            subtitle: 'デート代や買い物の立て替えを記録して、精算額を自動で計算します',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ExpensesScreen(
+                coupleId: widget.coupleId,
+                memberIds: _couple?.memberIds ?? const [],
+                partnerName: _partnerName ?? 'パートナー',
+              )),
+            ),
+          ),
 
           const SizedBox(height: 28),
           const _SectionLabel('データ管理'),

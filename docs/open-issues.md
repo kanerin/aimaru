@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-15 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-16 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **33件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **168件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| セキュリティルール | `cd rules_test && npm test` | **38件すべて通過**（エミュレータ上、CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **181件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
@@ -29,16 +29,19 @@ test/utils/recurring_events_test.dart            12   毎年繰り返しの展�
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
+test/services/expense_service_test.dart           3   割り勘・立て替え記録のCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
+test/utils/expense_balance_test.dart              6   割り勘の精算額計算
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
+test/screens/expenses_screen_test.dart            4   割り勘画面のロード・エラー・表示状態・精算額表示
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
 functions/src/reminders.integration.test.ts       9   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
-rules_test/firestore.test.js                     27   Firestoreルールのメンバー境界（todos含む）
+rules_test/firestore.test.js                     32   Firestoreルールのメンバー境界（todos・expenses含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -70,13 +73,18 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 ### P1 — 次に効くもの
 
+旧9〜12（画像から予定を読み取る／2人の空き時間検出／共有TODO／他社アプリからの移行手段）は
+それぞれ #9・free_time_finder・#11・#8 で実装済みのため表から外した。棚卸しのたびに
+「新発見」として蒸し返さないよう、ここに記録しておく。
+
+割り勘・立て替え（ExpensesScreen / ExpenseService、`couples/{coupleId}/expenses`）を追加した
+（本PR）。TimeTreeにはカレンダー機能しか無く、費用共有は他のカップル/夫婦アプリで比較される
+要素のため差別化になる。2人のカップル前提で、支払い合計の差額の半分を精算額として自動計算する
+（`lib/utils/expense_balance.dart`）。
+
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
-| 8 | **`sendReminders` が `collectionGroup` の全件走査** | REQ-028 / FEAT-048 | `index.ts` 97行目・139行目。ユーザー数に対して課金と実行時間が線形以上に伸びる |
-| 9 | **画像から予定を読み取れない** | REQ-016 / FEAT-044 | TimeTree が実装済み。カップルの予定は他アプリのスクショが出どころ |
-| 10 | **2人の空き時間の検出・提案が無い** | REQ-017 / FEAT-045 | **競合が構造的に持てない優位性**。必要なデータ（自前の予定＋双方のGCalキャッシュ）は既に揃っている |
-| 11 | **共有TODO・やりたいことリストが無い** | REQ-012 / FEAT-042 | 日付未定のアイデアの置き場が無く、「予定を書く道具」で止まっている |
-| 12 | **他社アプリからの移行手段が無い** | REQ-003 / FEAT-038 | Pairy 終了で移行先を探す層が市場に出ている。獲得の窓は永続しない → `.ics`インポート（#8）で対応済み |
+| 8 | **`sendReminders` が `collectionGroup` の全件走査** | REQ-028 / FEAT-048 | `index.ts` の `processOneTimeEvents` / `processRecurringEvents`。ユーザー数に対して課金と実行時間が線形以上に伸びる。**注意**: `reminded`/`recurring` の等価条件を `date` の範囲条件に置き換えて絞り込む方向で直そうとすると、`collectionGroup` クエリは単一フィールド索引でも `queryScope: COLLECTION_GROUP` の明示的な索引（`firestore.indexes.json` の `fieldOverrides`）が要る。索引はルールと違い `release-stg.yml` がデプロイする経路が無い（`firebase deploy --only firestore:indexes` を回す仕組みが存在しない）ため、素朴に直すとエミュレータでは通って本番でクエリが失敗する状態になる。索引デプロイの経路を先に用意すること |
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
 

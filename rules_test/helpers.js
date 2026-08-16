@@ -102,3 +102,16 @@ export async function seedTodo(testEnv, todoId = "todo-1") {
     });
   });
 }
+
+export async function seedExpense(testEnv, expenseId = "expense-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/expenses/${expenseId}`).set({
+      coupleId: COUPLE_ID,
+      title: "ディナー代",
+      amount: 4000,
+      paidBy: USER_A,
+      createdBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}
