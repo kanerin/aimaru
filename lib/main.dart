@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,27 +37,31 @@ void main() async {
   await initializeDateFormatting('ja');
   await ThemeController.instance.load();
 
-  // ── 失敗しても起動を止めてはいけない初期化 ──────────────────
-  // FCM・ディープリンクはGoogle Play開発者サービスやOS側の状態に依存する。
-  // ここで例外が出るとrunAppまで到達できず「アプリが真っ白で起動しない」という
-  // 最悪の症状になるため、失敗しても起動は続行する。
-  // 結合テスト用のエミュレータにはPlay開発者サービスが無く、これが無いと
-  // FCMのトークン取得で落ちて起動テストが成立しない。
-  await _initOptional('FCM', () async {
+  // ── 起動をブロックしない初期化 ────────────────────────────
+  // FCMの初期化はrequestPermissionでOSの通知許可ダイアログを出し、利用者が
+  // 応答するまで完了しない。これをawaitするとrunAppに到達できず、Android 13以降の
+  // 初回起動で「許可を選ぶまで画面が真っ白」という状態になる。
+  // ディープリンクもOS側の状態に依存するため、どちらも起動とは切り離す。
+  // （結合テストでも権限ダイアログに応答できる人がいないため、awaitしていると
+  // アプリが起動せず起動テストがタイムアウトする）
+  //
+  // 併せて例外も握りつぶす。Google Play開発者サービスが無い端末でFCMの
+  // トークン取得に失敗しても、アプリ自体は起動できなければならない。
+  unawaited(_initInBackground('FCM', () async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     await NotificationService().init(
       scaffoldMessengerKey: _scaffoldMessengerKey,
       router: _router,
     );
-  });
-  await _initOptional('DeepLink', () => DeepLinkService().init());
+  }));
+  unawaited(_initInBackground('DeepLink', () => DeepLinkService().init()));
 
   runApp(const ProviderScope(child: AimaruApp()));
 }
 
-// 失敗しても起動を継続させたい初期化処理のラッパー。
-// 握りつぶしたことが分かるようdebugPrintにだけ残す。
-Future<void> _initOptional(String label, Future<void> Function() body) async {
+// 起動と並行して進める初期化のラッパー。
+// 失敗しても起動は続行し、握りつぶしたことが分かるようdebugPrintにだけ残す。
+Future<void> _initInBackground(String label, Future<void> Function() body) async {
   try {
     await body();
   } catch (e, st) {
