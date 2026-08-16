@@ -139,10 +139,15 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # JDKを2つ入れる。AndroidのGradleビルドは17（release-stg.ymlと揃える）、
+      # firebase-toolsはJDK21以上を要求するためエミュレータ起動だけ21を使う。
+      # 複数指定した場合JAVA_HOMEは最後の版を指すので、17を後ろに置いている。
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: |
+            21
+            17
 
       - uses: subosito/flutter-action@v2
         with:
@@ -166,10 +171,23 @@ jobs:
       # Androidエミュレータからは 10.0.2.2 でこのホストへ到達できる
       - name: Start Firebase emulators
         run: |
+          # firebase-toolsはJDK21以上を要求する（17のままだと起動せずに落ちる）
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          java -version
+
           npm install -g firebase-tools
           firebase emulators:start --only auth,firestore,storage --project aimaru-7eb2e \
             > "${RUNNER_TEMP}/firebase-emulator.log" 2>&1 &
+          emulator_pid=$!
+
           for _ in $(seq 1 60); do
+            # 起動に失敗して即死した場合、待ち続けず即座に失敗させる
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Firebaseエミュレータのプロセスが終了しました"
+              cat "${RUNNER_TEMP}/firebase-emulator.log"
+              exit 1
+            fi
             if nc -z 127.0.0.1 8080 && nc -z 127.0.0.1 9099; then
               echo "Firebaseエミュレータ起動完了"
               exit 0
