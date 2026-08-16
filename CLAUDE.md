@@ -45,13 +45,19 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 | 対象 | コマンド |
 |---|---|
 | Flutter（単体・ウィジェット） | `flutter test` |
-| Flutter（結合、実機/エミュレータ必要） | `flutter test integration_test/app_test.dart -d <device-id>` |
+| Flutter（結合、実機/エミュレータ必要） | `./scripts/run_e2e.sh` |
 | Cloud Functions（型） | `cd functions && npm run typecheck` |
 | Cloud Functions（単体） | `cd functions && npm test` |
 | Cloud Functions（結合、Firestoreエミュレータ） | `cd functions && npm run test:integration` |
 | セキュリティルール（Firestore/Storage、エミュレータ） | `cd rules_test && npm test` |
 
 テストファイルは対象ファイルと対称の場所に置く（`test/services/foo_service_test.dart` は `lib/services/foo_service.dart` に対応、`functions/src/*.test.ts`、`rules_test/*.test.js`、画面は`test/screens/foo_screen_test.dart`）。
+
+**結合テスト（`integration_test/`）は「単体・ウィジェットテストでは通れない経路」だけを担当する。** 具体的には `main()` の初期化、GoRouterのリダイレクト、実際のFirestoreへの読み書き（クエリ・セキュリティルール・ストリーム反映）、実機のレイアウト。画面のロジックはウィジェットテストで書くこと（結合テストは1回15〜25分かかるため、ここに寄せると開発が遅くなる）。
+
+結合テストの接続先は `--dart-define=USE_FIREBASE_EMULATOR=true` のときだけローカルのFirebaseエミュレータに切り替わる（`lib/services/firebase_bootstrap.dart`）。フラグ無しで実行すると本番Firebaseを壊さないようテスト側が起動を拒否する。認証はGoogleログインを自動化できないため匿名ログインで代用し、カップルをseedして「ログイン済み・ペアリング済み」の状態を作る（`integration_test/helpers/e2e.dart`）。
+
+このリポジトリの画面はテスト用の`Key`を持たない方針なので、テストからの要素特定は表示テキスト・アイコン・`textFieldWithHint`（hintTextで入力欄を特定するヘルパー）で行う。
 
 **StreamBuilder/FutureBuilderを使う画面は、必ずエラー状態を明示的にハンドリングし、テストでも確認すること。** `hasData`だけを見て`hasError`を見ていないと、権限エラーや通信エラーでストリームが失敗したときに無限ローディングのまま固まる（実際に`todos_screen.dart`で発生し、原因は`firestore.rules`の変更が本番Firestoreへデプロイされていなかったことだった。デプロイは`release-stg.yml`で自動化済みだが、rules_testやflutter testはエミュレータ上でしか検証しないため、「エミュレータでは通る」ことと「本番で動く」ことは別問題だと意識すること）。画面に注入可能なStream/Future（テスト用のoverrideパラメータなど）を用意し、`test/screens/todos_screen_test.dart`のようにローディング・エラー・データ表示の3状態を最低限テストする。
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,6 +18,7 @@ import 'screens/memories_screen.dart';
 import 'screens/todos_screen.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/firebase_bootstrap.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
 
@@ -28,15 +31,42 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // 結合テスト時のみローカルエミュレータへ繋ぎ替える（通常ビルドでは何もしない）
+  await connectFirebaseEmulators();
+
   await initializeDateFormatting('ja');
-  await DeepLinkService().init();
   await ThemeController.instance.load();
-  await NotificationService().init(
-    scaffoldMessengerKey: _scaffoldMessengerKey,
-    router: _router,
-  );
+
+  // ── 起動をブロックしない初期化 ────────────────────────────
+  // FCMの初期化はrequestPermissionでOSの通知許可ダイアログを出し、利用者が
+  // 応答するまで完了しない。これをawaitするとrunAppに到達できず、Android 13以降の
+  // 初回起動で「許可を選ぶまで画面が真っ白」という状態になる。
+  // ディープリンクもOS側の状態に依存するため、どちらも起動とは切り離す。
+  // （結合テストでも権限ダイアログに応答できる人がいないため、awaitしていると
+  // アプリが起動せず起動テストがタイムアウトする）
+  //
+  // 併せて例外も握りつぶす。Google Play開発者サービスが無い端末でFCMの
+  // トークン取得に失敗しても、アプリ自体は起動できなければならない。
+  unawaited(_initInBackground('FCM', () async {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await NotificationService().init(
+      scaffoldMessengerKey: _scaffoldMessengerKey,
+      router: _router,
+    );
+  }));
+  unawaited(_initInBackground('DeepLink', () => DeepLinkService().init()));
+
   runApp(const ProviderScope(child: AimaruApp()));
+}
+
+// 起動と並行して進める初期化のラッパー。
+// 失敗しても起動は続行し、握りつぶしたことが分かるようdebugPrintにだけ残す。
+Future<void> _initInBackground(String label, Future<void> Function() body) async {
+  try {
+    await body();
+  } catch (e, st) {
+    debugPrint('[起動時初期化に失敗: $label] $e\n$st');
+  }
 }
 
 // ── ルーター ──────────────────────────────────────
