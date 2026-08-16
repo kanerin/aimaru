@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **38件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **181件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **191件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
@@ -35,6 +35,8 @@ test/utils/expense_balance_test.dart              6   割り勘の精算額計�
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
 test/screens/expenses_screen_test.dart            4   割り勘画面のロード・エラー・表示状態・精算額表示
+test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
+test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
@@ -77,10 +79,16 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 それぞれ #9・free_time_finder・#11・#8 で実装済みのため表から外した。棚卸しのたびに
 「新発見」として蒸し返さないよう、ここに記録しておく。
 
-割り勘・立て替え（ExpensesScreen / ExpenseService、`couples/{coupleId}/expenses`）を追加した
-（本PR）。TimeTreeにはカレンダー機能しか無く、費用共有は他のカップル/夫婦アプリで比較される
+割り勘・立て替え（ExpensesScreen / ExpenseService、`couples/{coupleId}/expenses`）を追加した。
+TimeTreeにはカレンダー機能しか無く、費用共有は他のカップル/夫婦アプリで比較される
 要素のため差別化になる。2人のカップル前提で、支払い合計の差額の半分を精算額として自動計算する
 （`lib/utils/expense_balance.dart`）。
+
+旧16（去年の今日の振り返り）は、思い出画面（MemoriesScreen）に「n年前の今日」セクションとして
+実装済みのため表から外した（本PR）。サービス終了したPairyが持っていた「思い出を振り返る」体験の
+穴埋め。新しいFirestoreクエリやCloud Functionsは追加せず、既存の予定購読ストリームから
+クライアント側で抽出するだけにしてある（`lib/utils/on_this_day_finder.dart`）。課題8で指摘した
+`collectionGroup` の新規索引リスクを避けるため、あえてプッシュ通知化はしていない。
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
@@ -92,7 +100,6 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 | # | 課題 | 対応する要件 |
 |---|---|---|
-| 16 | 去年の今日の振り返り通知 | REQ-021 / FEAT-047 |
 | 17 | ペア未成立時の体験プレビュー | REQ-033 / FEAT-051 |
 | 18 | 収益モデル | REQ-032 |
 
