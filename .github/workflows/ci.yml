@@ -237,11 +237,10 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # アニメーションを切るとpumpAndSettleが安定し、テストのフレークが減る
           disable-animations: true
-          script: |
-            adb devices
-            flutter test integration_test \
-              --dart-define=USE_FIREBASE_EMULATOR=true \
-              --reporter expanded
+          # このactionのscriptは1行ずつ別々の `sh -c` で実行されるため、
+          # バックスラッシュによる行継続は使えない（継続のつもりの `\` が
+          # そのまま引数として渡り、テスト対象の解決に失敗する）。1行で書くこと。
+          script: flutter test integration_test --dart-define=USE_FIREBASE_EMULATOR=true --reporter expanded
 
       # 失敗時の原因調査用。Firestoreへの接続が拒否されている等がここで分かる
       - name: Upload emulator log
