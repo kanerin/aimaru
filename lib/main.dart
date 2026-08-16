@@ -16,6 +16,7 @@ import 'screens/memories_screen.dart';
 import 'screens/todos_screen.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/firebase_bootstrap.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
 
@@ -28,15 +29,38 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  // 結合テスト時のみローカルエミュレータへ繋ぎ替える（通常ビルドでは何もしない）
+  await connectFirebaseEmulators();
+
   await initializeDateFormatting('ja');
-  await DeepLinkService().init();
   await ThemeController.instance.load();
-  await NotificationService().init(
-    scaffoldMessengerKey: _scaffoldMessengerKey,
-    router: _router,
-  );
+
+  // ── 失敗しても起動を止めてはいけない初期化 ──────────────────
+  // FCM・ディープリンクはGoogle Play開発者サービスやOS側の状態に依存する。
+  // ここで例外が出るとrunAppまで到達できず「アプリが真っ白で起動しない」という
+  // 最悪の症状になるため、失敗しても起動は続行する。
+  // 結合テスト用のエミュレータにはPlay開発者サービスが無く、これが無いと
+  // FCMのトークン取得で落ちて起動テストが成立しない。
+  await _initOptional('FCM', () async {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await NotificationService().init(
+      scaffoldMessengerKey: _scaffoldMessengerKey,
+      router: _router,
+    );
+  });
+  await _initOptional('DeepLink', () => DeepLinkService().init());
+
   runApp(const ProviderScope(child: AimaruApp()));
+}
+
+// 失敗しても起動を継続させたい初期化処理のラッパー。
+// 握りつぶしたことが分かるようdebugPrintにだけ残す。
+Future<void> _initOptional(String label, Future<void> Function() body) async {
+  try {
+    await body();
+  } catch (e, st) {
+    debugPrint('[起動時初期化に失敗: $label] $e\n$st');
+  }
 }
 
 // ── ルーター ──────────────────────────────────────

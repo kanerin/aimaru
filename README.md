@@ -160,17 +160,58 @@ firebase deploy --only functions,firestore:indexes
 ```bash
 # ユニットテスト・ウィジェットテスト（祝日計算、テーマカラー切り替えなど）
 flutter test
-
-# 結合テスト（実際にFirebaseへ接続してアプリを起動し、画面遷移を確認する。
-# 接続済みの実機/エミュレータが必要）
-flutter test integration_test/app_test.dart -d <device-id>
 ```
+
+### 結合テスト（E2E）
+
+実機/エミュレータ上でアプリを本当に起動して操作する。単体・ウィジェットテストでは
+通らない「`main()`の初期化」「GoRouterのリダイレクト」「実際のFirestoreへの読み書き」
+「実機のレイアウト」を検証する層。
+
+Firebaseの接続先は**ローカルのFirebaseエミュレータ**に切り替わるので、
+本番のFirestore・認証・ユーザーデータには一切触らない。
+
+事前準備:
+
+```bash
+npm install -g firebase-tools    # 未導入なら
+# Androidエミュレータ（または実機）を1台つないでおく
+```
+
+実行:
+
+```bash
+# Firebaseエミュレータの起動〜テスト実行まで全部やってくれる
+./scripts/run_e2e.sh
+
+# 1ファイルだけ流したいとき
+./scripts/run_e2e.sh integration_test/event_crud_test.dart
+```
+
+手動で流す場合は `--dart-define` が必須。付け忘れて本番Firebaseを壊さないよう、
+テスト側が起動を拒否する:
+
+```bash
+firebase emulators:start --only auth,firestore,storage --project aimaru-7eb2e &
+flutter test integration_test --dart-define=USE_FIREBASE_EMULATOR=true -d <device-id>
+```
+
+| テストファイル | 内容 |
+|---|---|
+| `app_test.dart` | 未ログインで起動 → ログイン画面に到達する |
+| `home_navigation_test.dart` | ログイン済みで起動 → ホーム5タブ。タブを往復してもAIチャットの入力が消えない |
+| `event_crud_test.dart` | 予定を追加 → カレンダーとFirestoreの両方に反映 → 詳細画面から削除するとゴミ箱行きになる |
+| `layout_test.dart` | 画面サイズ・文字サイズを変えてレイアウト崩れ（はみ出し・重なり）を自動検出 |
+
+本番アプリはGoogleログインを使うがCIでは自動化できないため、テストでは匿名ログインで
+ユーザーを作り、そのuidでカップルをseedしている（`integration_test/helpers/e2e.dart`）。
+アプリ側から見れば「ログイン済み・ペアリング済み」の状態と区別がつかない。
 
 ## 配布・CI/CD
 
 このリポジトリは3つのブランチで運用する。`release-stg` / `release-prd` は push すると自動でCI/CDが走る（`.github/workflows/`）。
 
-- **`develop`** → 開発の起点。ここからブランチを切り、ここへマージする。PR で `flutter analyze` / `flutter test` とCloud Functionsの検査が走る。
+- **`develop`** → 開発の起点。ここからブランチを切り、ここへマージする。PR で `flutter analyze` / `flutter test`、Cloud Functionsの検査、セキュリティルールの検査、Androidエミュレータ上の結合テストが走る（`ci.yml`）。
 
 - **`release-stg`** → push すると自動で `flutter build apk --release` → Firebase App Distributionへアップロードし、テスターに通知が届く。**動作確認済み。**
 - **`release-prd`** → push すると自動で `flutter build appbundle --release` → Google Play Store（internalトラック）へアップロード。**Play Console側の準備が必要（下記）。**
@@ -182,6 +223,32 @@ flutter test integration_test/app_test.dart -d <device-id>
 ```
 
 `develop` から作業ブランチを切って `develop` へマージ → `release-stg` へマージして App Distribution で実機確認 → 問題なければ `release-prd` へマージして Play Store へ。
+
+### 必須チェックの設定（未設定だと自動マージの安全装置が効かない）
+
+`propose-feature.yml` は人間のレビューを介さずCI成功だけを条件に `develop` へ自動マージする。
+**CIを必須チェックに設定していないと、赤いまま自動マージされてしまう。**
+
+GitHub → Settings → Branches → **Add classic branch protection rule**
+（新UIでは Settings → Rules → Rulesets → New branch ruleset でも同じことができる）
+
+1. Branch name pattern に `develop`
+2. **Require status checks to pass before merging** にチェック
+3. 検索窓で以下のジョブ名を必須に指定する
+
+| ジョブ名（すべて `ci.yml`） | 目安時間 |
+|---|---|
+| `Flutter (analyze & test)` | 数分 |
+| `Cloud Functions (typecheck, unit & integration)` | 数分 |
+| `Security rules (Firestore & Storage)` | 数分 |
+| `Integration test (Android emulator)` | 15〜25分 |
+
+> 検索窓には「直近で実行実績のあるチェック」しか候補が出ない。
+> 名前が出てこない場合は、一度PRを作ってCIを走らせてから設定する。
+
+結合テストを別ワークフローに分けていないのは、`promote-to-stg.yml` が
+「CIワークフローの成功」だけを条件に `release-stg` へ自動昇格するため。
+別ワークフローにすると、結合テストが赤いままテスターへ配信されてしまう。
 
 ### テスターに届くリリースノート
 

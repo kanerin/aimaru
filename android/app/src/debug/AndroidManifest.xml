@@ -4,4 +4,10 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- 結合テストでFirebaseエミュレータ（http://10.0.2.2:8080 等）へ平文HTTPで
+         接続するために必要。targetSdk 28以降は平文通信が既定で禁止されており、
+         これが無いとエミュレータに一切繋がらない。
+         debugビルド用のマニフェストなので、配信するリリース版には影響しない。 -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>
