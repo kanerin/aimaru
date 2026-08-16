@@ -12,6 +12,7 @@ import {
   seedChat,
   seedCouple,
   seedEvent,
+  seedExpense,
   seedTodo,
 } from "./helpers.js";
 
@@ -148,6 +149,47 @@ describe("todos — メンバー境界", () => {
   it("未認証はTODOに一切アクセスできない", async () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-4`).set({ text: "x" }));
+  });
+});
+
+describe("expenses — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedExpense(testEnv);
+  });
+
+  it("メンバーは立て替え記録を読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/expenses/expense-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/expenses/expense-1`).get());
+  });
+
+  it("メンバー以外は立て替え記録を読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/expenses/expense-1`).get());
+  });
+
+  it("メンバーは立て替え記録を作成・削除できる", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/expenses/expense-2`).set({
+        coupleId: COUPLE_ID,
+        title: "映画代",
+        amount: 3600,
+        paidBy: USER_B,
+        createdBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/expenses/expense-1`).delete());
+  });
+
+  it("メンバー以外は立て替え記録を作成・削除できない", async () => {
+    const ref = asC().doc(`couples/${COUPLE_ID}/expenses/expense-3`);
+    await assertFails(ref.set({ title: "勝手な記録", amount: 100 }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/expenses/expense-1`).delete());
+  });
+
+  it("未認証は立て替え記録に一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/expenses/expense-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/expenses/expense-4`).set({ title: "x" }));
   });
 });
 
