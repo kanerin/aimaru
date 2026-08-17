@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-16 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-17 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **38件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **191件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **213件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
@@ -37,6 +37,7 @@ test/screens/trash_screen_test.dart               4   ゴミ箱画面のロー�
 test/screens/expenses_screen_test.dart            4   割り勘画面のロード・エラー・表示状態・精算額表示
 test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
 test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
+test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
@@ -96,11 +97,17 @@ TimeTreeにはカレンダー機能しか無く、費用共有は他のカップ
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
 
+旧17（ペア未成立時の体験プレビュー）は、ペアリング画面（PairingScreen）に招待コード/QRの
+上に「ペアになるとできること」カード（`lib/widgets/pairing_preview_cards.dart`）を追加し、
+実装済みのため表から外した（本PR）。招待コードだけが表示される待機中の画面は離脱されやすく、
+Pairyからの移行検討ユーザーは他アプリと比較検討中であることが多いため、機能を先に見せて
+招待を最後まで送ってもらう／相手に参加してもらう後押しにする。静的なコンテンツのみで
+Firestore・Cloud Functionsへの新しい依存は追加していない。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
 |---|---|---|
-| 17 | ペア未成立時の体験プレビュー | REQ-033 / FEAT-051 |
 | 18 | 収益モデル | REQ-032 |
 
 ## 人間にしかできない作業
