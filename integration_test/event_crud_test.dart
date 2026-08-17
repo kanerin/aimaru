@@ -30,7 +30,10 @@ void main() {
     await signInAndSeedCouple();
   });
 
-  tearDown(() async {
+  // サインアウトはファイル全体の最後に1回だけ行う。テストごとに行うと、
+  // 画面が投げた非同期のFirestore取得がテスト終了後に着地したときに
+  // 未認証となり、権限エラーが「完了済みのテストの失敗」として計上される。
+  tearDownAll(() async {
     await signOutTestUser();
   });
 
