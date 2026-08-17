@@ -229,12 +229,23 @@ flutter test integration_test --dart-define=USE_FIREBASE_EMULATOR=true -d <devic
 `propose-feature.yml` は人間のレビューを介さずCI成功だけを条件に `develop` へ自動マージする。
 **CIを必須チェックに設定していないと、赤いまま自動マージされてしまう。**
 
-GitHub → Settings → Branches → **Add classic branch protection rule**
-（新UIでは Settings → Rules → Rulesets → New branch ruleset でも同じことができる）
+設定場所は2つあり、**項目名が違う**ので注意する。
 
-1. Branch name pattern に `develop`
-2. **Require status checks to pass before merging** にチェック
-3. 検索窓で以下のジョブ名を必須に指定する
+| UI | 場所 | 項目名 |
+|---|---|---|
+| Rulesets（現在の既定） | Settings → Rules → Rulesets → New branch ruleset | **Require status checks to pass** |
+| classic | Settings → Branches → Add classic branch protection rule | **Require status checks to pass before merging** |
+
+Rulesets側には `before merging` が付かないため、その文言で検索しても見つからない。
+Branch rules の一覧では `Require signed commits` や
+`Require a pull request before merging` の下あたりにある。
+
+Rulesets で設定する場合:
+
+1. **Target branches** に `develop` を追加
+2. **Enforcement status** を `Active` にする（`Disabled` / `Evaluate` では実際には止まらない）
+3. Branch rules の **Require status checks to pass** にチェック
+4. 開いた欄で以下のジョブ名を必須に指定する
 
 | ジョブ名（すべて `ci.yml`） | 目安時間 |
 |---|---|
@@ -245,6 +256,9 @@ GitHub → Settings → Branches → **Add classic branch protection rule**
 
 > 検索窓には「直近で実行実績のあるチェック」しか候補が出ない。
 > 名前が出てこない場合は、一度PRを作ってCIを走らせてから設定する。
+
+`Require linear history` も併せて入れておくとよい。`promote-to-stg.yml` が
+`release-stg` へ `--ff-only` で昇格するため、`develop` が直線である前提と合う。
 
 結合テストを別ワークフローに分けていないのは、`promote-to-stg.yml` が
 「CIワークフローの成功」だけを条件に `release-stg` へ自動昇格するため。
