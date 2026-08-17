@@ -48,12 +48,17 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   final List<_ChatItem> _messages = [];
   bool _thinking = false;
 
-  // サジェストチップ（実在の人物名は使わない）
+  // サジェストチップ（実在の人物名は使わない）。
+  // 2人の予定を扱うアプリなので、最初に出るのはカップルとして使う場面にする。
+  // 「好きなアーティストの誕生日」のような個人的な用途を先頭に置くと、
+  // このアプリが何をするものなのか伝わらない。
   final _suggestions = [
-    '好きなアーティストの誕生日を追加',
-    '来週の土曜デートしたい',
+    '今週末デートしたい',
+    '2人の空いてる日を教えて',
     '付き合って1年の記念日',
     '来週の予定を教えて',
+    '2人で行きたいお店を提案して',
+    '好きなアーティストの誕生日を追加',
   ];
 
   static const _greeting =
