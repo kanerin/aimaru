@@ -61,14 +61,12 @@ Future<void> signInAndSeedCouple({bool withPartner = false}) async {
     'reminderMinutesBefore': 60,
   });
 
+  // パートナーのユーザードキュメントはクライアントからは作れない。
+  // firestore.rules の users は「本人だけが書ける」ので、他人のuidへ
+  // set すると permission-denied になる（ルールが正しく効いている）。
+  // カップルのmemberIdsに入れるだけで2人ぶんの計算は成立するため、
+  // 表示名が要る画面にはテスト側から直接渡すこと。
   const partnerUid = 'partner-uid-for-e2e';
-  if (withPartner) {
-    await db.collection('users').doc(partnerUid).set(<String, dynamic>{
-      'uid': partnerUid,
-      'displayName': 'テスト花子',
-      'email': 'partner@example.com',
-    });
-  }
 
   final coupleRef = db.collection('couples').doc();
   await coupleRef.set(<String, dynamic>{
