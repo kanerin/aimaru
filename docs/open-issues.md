@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-16 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-17 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **38件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **191件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **223件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
 
 テストの内訳:
 
@@ -37,13 +37,16 @@ test/screens/trash_screen_test.dart               4   ゴミ箱画面のロー�
 test/screens/expenses_screen_test.dart            4   割り勘画面のロード・エラー・表示状態・精算額表示
 test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
 test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
+test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
+test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
+test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
 functions/src/reminders.integration.test.ts       9   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
-rules_test/firestore.test.js                     32   Firestoreルールのメンバー境界（todos・expenses含む）
+rules_test/firestore.test.js                     39   Firestoreルールのメンバー境界（todos・expenses・questionAnswers含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -89,6 +92,14 @@ TimeTreeにはカレンダー機能しか無く、費用共有は他のカップ
 穴埋め。新しいFirestoreクエリやCloud Functionsは追加せず、既存の予定購読ストリームから
 クライアント側で抽出するだけにしてある（`lib/utils/on_this_day_finder.dart`）。課題8で指摘した
 `collectionGroup` の新規索引リスクを避けるため、あえてプッシュ通知化はしていない。
+
+「ふたりの質問」（QuestionsScreen / QuestionService、`couples/{coupleId}/questionAnswers`）を追加した
+（本PR）。TimeTreeはカレンダー機能主体で「お互いを知る」体験を持たず、サービス終了した
+Pairyの移行先として比較されるSumOne・Twinestが持つ質問カード機能に近い差別化要素。日付ごとに
+固定の質問を1つ、乱数やサーバー状態を使わず決定的に選び（`lib/utils/daily_question_picker.dart`）、
+2人とも回答するまでは相手の回答を伏せることで、相手の回答に引っ張られない素直な回答を引き出す。
+回答は`request.resource.data.uid`で本人の分のみ書き込みを許可し、更新・削除は許可していない
+（相手の回答を見た後に自分の回答を書き換える抜け道を防ぐため）。
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
