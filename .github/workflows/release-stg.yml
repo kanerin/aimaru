@@ -262,6 +262,7 @@ jobs:
       # 権限が直るまでテスター配布そのものが止まってしまうため、失敗しても
       # ビルド・配布は続行する。ルールは当面ローカルから手動デプロイすること。
       - name: Deploy Firestore rules
+        id: deploy_rules
         continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
@@ -269,6 +270,28 @@ jobs:
           firebase deploy --only firestore:rules \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
+
+      # continue-on-error のままだと、ルールのデプロイに失敗してもジョブは緑になり
+      # 誰も気づけない。実際にこれで expenses（割り勘）のルールが本番へ反映されず、
+      # 画面を開くと権限エラーになる不具合が配信された（todos_screenに続いて2度目）。
+      # 配信自体は止めないが、失敗したことは必ず目に見える形で残す。
+      - name: Warn if Firestore rules were not deployed
+        if: steps.deploy_rules.outcome != 'success'
+        run: |
+          echo "::warning title=Firestoreルール未デプロイ::firestore.rules を本番へ反映できませんでした。新しいコレクションを追加している場合、その画面は本番で権限エラーになります。"
+          {
+            echo "### ⚠️ Firestoreルールが本番へ反映されていません"
+            echo ""
+            echo "\`firebase deploy --only firestore:rules\` が失敗しました。"
+            echo "サービスアカウントにGCP側のIAMロールが付与されていないためです。"
+            echo ""
+            echo "**新しいコレクションを追加した変更では、その画面が本番で権限エラーになります。**"
+            echo "ローカルから手動で反映してください:"
+            echo ""
+            echo '```'
+            echo "firebase deploy --only firestore:rules --project aimaru-7eb2e"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
