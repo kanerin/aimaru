@@ -78,6 +78,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 // hasDataだけを見ていると、権限エラー等でストリームがエラーに
                 // 落ちたときに無限ローディングのまま固まる。
                 if (snap.hasError) {
+                  // 画面には利用者向けの文言しか出さないが、原因が分からないと
+                  // 調査できないので実際の例外はログに残す。
+                  // （セキュリティルール未デプロイによるpermission-deniedを
+                  //   ここで一度取り逃がし、原因特定に時間を要した）
+                  debugPrint('[割り勘の読み込みに失敗] ${snap.error}');
                   return const Center(
                     child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
                       textAlign: TextAlign.center,
