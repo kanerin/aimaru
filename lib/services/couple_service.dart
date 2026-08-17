@@ -94,6 +94,21 @@ class CoupleService {
     });
   }
 
+  // ── 基本の休日を設定 ──────────────────────────────
+  // 2人で共有する設定なので端末ローカルではなくカップルのドキュメントに持つ。
+  // （既存の couples の update ルールでメンバーなら書き込めるため、
+  //   セキュリティルールの追加は不要）
+  Future<void> setDaysOff(
+    String coupleId, {
+    required List<int> daysOff,
+    required bool holidaysAreDaysOff,
+  }) async {
+    await _db.collection('couples').doc(coupleId).update({
+      'daysOff': daysOff..sort(),
+      'holidaysAreDaysOff': holidaysAreDaysOff,
+    });
+  }
+
   // ── パートナーの表示名を取得 ──────────────────────
   Future<String?> getPartnerName(CoupleModel couple) async {
     final partnerId = couple.memberIds.firstWhere(

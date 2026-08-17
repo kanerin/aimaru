@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'japan_holidays.dart';
 
 // ── 2人の空き時間検出 ──────────────────────────────────
 //
@@ -104,4 +105,101 @@ List<FreeSlot> findFreeSlots({
   }
 
   return slots;
+}
+
+// ── 休みの日だけを対象にする ────────────────────────────
+//
+// 「空いている時間」を平日の深夜まで含めて並べても実際には会えない。
+// 2人の基本の休日（CoupleModel.daysOff）と祝日を休みとみなし、
+// その日だけを探索対象にすることで、実際に会える候補だけが並ぶ。
+
+/// その日が「休み」かどうか。
+/// 基本の休日に入っている曜日か、（設定していれば）日本の祝日なら休み。
+bool isDayOff(
+  DateTime day, {
+  required List<int> daysOff,
+  bool holidaysAreDaysOff = true,
+}) {
+  if (daysOff.contains(day.weekday)) return true;
+  if (holidaysAreDaysOff && JapanHolidays.isHoliday(day)) return true;
+  return false;
+}
+
+/// 休みの日の空き具合。
+/// fullDay: その日の活動時間帯がまるごと空いている（1日デートできる）
+/// partial: 予定の合間に会える時間がある（ちょっと会える）
+enum FreeDayKind { fullDay, partial }
+
+class FreeDay {
+  final DateTime date;
+  final FreeDayKind kind;
+  final List<FreeSlot> slots;
+
+  const FreeDay({required this.date, required this.kind, required this.slots});
+
+  /// その日でいちばん長く空いている時間帯
+  FreeSlot get longestSlot =>
+      slots.reduce((a, b) => a.duration >= b.duration ? a : b);
+
+  Duration get totalFree =>
+      slots.fold(Duration.zero, (sum, s) => sum + s.duration);
+}
+
+/// [from, to] のうち休みの日について、空き具合を日単位でまとめる。
+///
+/// busy には2人分の予定（共有予定＋双方のGoogleカレンダー）を渡す。
+/// 予定がまったく無く活動時間帯がまるごと空いていれば fullDay、
+/// 予定の合間に minDuration 以上の空きがあれば partial として返す。
+/// 今日のように途中から始まる日は、時間帯が丸ごと空いているとは言えないため
+/// fullDay にはしない。
+List<FreeDay> findFreeDays({
+  required List<BusyInterval> busy,
+  required DateTime from,
+  required DateTime to,
+  required List<int> daysOff,
+  bool holidaysAreDaysOff = true,
+  Duration minDuration = const Duration(hours: 2),
+  int dayStartHour = 9,
+  int dayEndHour = 22,
+}) {
+  if (!to.isAfter(from)) return [];
+
+  final result = <FreeDay>[];
+  var day = DateTime(from.year, from.month, from.day);
+  final lastDay = DateTime(to.year, to.month, to.day);
+
+  while (!day.isAfter(lastDay)) {
+    final current = day;
+    day = day.add(const Duration(days: 1));
+
+    if (!isDayOff(current, daysOff: daysOff, holidaysAreDaysOff: holidaysAreDaysOff)) {
+      continue;
+    }
+
+    final dayStart = DateTime(current.year, current.month, current.day, dayStartHour);
+    final dayEnd = DateTime(current.year, current.month, current.day, dayEndHour);
+
+    final slots = findFreeSlots(
+      busy: busy,
+      from: from.isAfter(dayStart) ? from : dayStart,
+      to: to.isBefore(dayEnd) ? to : dayEnd,
+      minDuration: minDuration,
+      dayStartHour: dayStartHour,
+      dayEndHour: dayEndHour,
+    );
+    if (slots.isEmpty) continue;
+
+    // 活動時間帯がまるごと1つの空きで埋まっていれば「1日空いている」
+    final isFullDay = slots.length == 1 &&
+        !slots.first.start.isAfter(dayStart) &&
+        !slots.first.end.isBefore(dayEnd);
+
+    result.add(FreeDay(
+      date: current,
+      kind: isFullDay ? FreeDayKind.fullDay : FreeDayKind.partial,
+      slots: slots,
+    ));
+  }
+
+  return result;
 }

@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
 import '../widgets/anniversary_card.dart';
+import '../widgets/days_off_card.dart';
 import 'expenses_screen.dart';
 import 'ics_import_screen.dart';
 import 'trash_screen.dart';
@@ -178,6 +179,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   inviteCode: couple.inviteCode,
                   createdAt: couple.createdAt,
                   anniversary: date,
+                  // 休みの設定を引き継がないと、記念日を保存しただけで
+                  // 画面上の休み設定が既定値へ戻って見えてしまう
+                  daysOff: couple.daysOff,
+                  holidaysAreDaysOff: couple.holidaysAreDaysOff,
+                );
+              }
+            }),
+          ),
+
+          const SizedBox(height: 28),
+          const _SectionLabel('基本の休日'),
+          DaysOffCard(
+            coupleId: widget.coupleId,
+            initialDaysOff: _couple?.daysOff ?? CoupleModel.defaultDaysOff,
+            initialHolidaysAreDaysOff: _couple?.holidaysAreDaysOff ?? true,
+            onSaved: (daysOff, holidaysAreDaysOff) => setState(() {
+              final couple = _couple;
+              if (couple != null) {
+                _couple = CoupleModel(
+                  id: couple.id,
+                  memberIds: couple.memberIds,
+                  inviteCode: couple.inviteCode,
+                  createdAt: couple.createdAt,
+                  anniversary: couple.anniversary,
+                  daysOff: daysOff,
+                  holidaysAreDaysOff: holidaysAreDaysOff,
                 );
               }
             }),

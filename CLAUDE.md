@@ -77,7 +77,7 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 | `backmerge.yml` | `release-prd`へのpush | `release-prd`→`develop`の戻しマージPRを作成。コンフリクトが無ければ自動マージ、あればClaudeが差分を分析してPRにコメントし、人間の判断を待つ | `contents: write`, `pull-requests: write` |
 | `claude-mention.yml` | Issue/PRコメントで`@claude`メンション（書き込み権限者のみ） | 良い提案Issueを人間が明示的に指示して実装させ、`develop`向けPRを作成する | `contents: write`, `pull-requests: write`, `issues: write` |
 
-`propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。CIをdevelopの必須チェックに設定していない場合、この安全装置が機能しないので必ず設定すること（Settings → Branches → develop → Require status checks to pass）。
+`propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。CIをdevelopの必須チェックに設定していない場合、この安全装置が機能しないので必ず設定すること（Rulesetsなら「Require status checks to pass」、classicなら「Require status checks to pass before merging」。詳しい手順はREADMEの「必須チェックの設定」を参照）。
 
 **GITHUB_TOKENによるpushはpushトリガーを起動しない**（GitHub Actionsの無限ループ防止仕様）。`promote-to-stg.yml`は`GITHUB_TOKEN`で`release-stg`へpushするため、`release-stg.yml`（テスター配布、`push: branches: [release-stg]`）は自動発火せず、`promote-to-stg.yml`側から`workflow_dispatch`で明示的に起動している。`release-stg`へのpush起点のワークフローを新設する場合はこの制約を踏まえること。
 

@@ -8,12 +8,24 @@ class CoupleModel {
   final DateTime createdAt;
   final DateTime? anniversary;    // 付き合い始めた日
 
+  // 基本の休日（DateTime.monday=1 〜 DateTime.sunday=7）。
+  // 「2人の空き時間」はこの曜日だけを探索対象にする。
+  // 平日休みの職種もあるため曜日は自由に選べるようにしてある。
+  final List<int> daysOff;
+  // 祝日も休みとして扱うか
+  final bool holidaysAreDaysOff;
+
+  // 未設定のカップルは土日休みとして扱う
+  static const defaultDaysOff = <int>[DateTime.saturday, DateTime.sunday];
+
   CoupleModel({
     required this.id,
     required this.memberIds,
     required this.inviteCode,
     required this.createdAt,
     this.anniversary,
+    this.daysOff = defaultDaysOff,
+    this.holidaysAreDaysOff = true,
   });
 
   factory CoupleModel.fromDoc(DocumentSnapshot doc) {
@@ -26,14 +38,21 @@ class CoupleModel {
       anniversary: d['anniversary'] != null
           ? (d['anniversary'] as Timestamp).toDate()
           : null,
+      // 既存のカップルにはこのフィールドが無いので既定値へフォールバックする
+      daysOff: d['daysOff'] != null
+          ? List<int>.from(d['daysOff'])
+          : defaultDaysOff,
+      holidaysAreDaysOff: d['holidaysAreDaysOff'] ?? true,
     );
   }
 
   Map<String, dynamic> toMap() => {
-    'memberIds':   memberIds,
-    'inviteCode':  inviteCode,
-    'createdAt':   Timestamp.fromDate(createdAt),
-    'anniversary': anniversary != null ? Timestamp.fromDate(anniversary!) : null,
+    'memberIds':          memberIds,
+    'inviteCode':         inviteCode,
+    'createdAt':          Timestamp.fromDate(createdAt),
+    'anniversary':        anniversary != null ? Timestamp.fromDate(anniversary!) : null,
+    'daysOff':            daysOff,
+    'holidaysAreDaysOff': holidaysAreDaysOff,
   };
 }
 
@@ -288,6 +307,11 @@ class GCalEventSummary {
   final DateTime start;
   final DateTime end;
   final bool allDay;
+  // Googleカレンダー側の場所・メモ。このアプリで作った予定と同じ項目を
+  // Google由来の予定でも編集できるようにするために持つ
+  // （AimaruEvent.location / memo に対応する）。
+  final String? location;
+  final String? memo;
 
   GCalEventSummary({
     required this.id,
@@ -295,14 +319,18 @@ class GCalEventSummary {
     required this.start,
     required this.end,
     required this.allDay,
+    this.location,
+    this.memo,
   });
 
   Map<String, dynamic> toMap() => {
-    'id':     id,
-    'title':  title,
-    'start':  Timestamp.fromDate(start),
-    'end':    Timestamp.fromDate(end),
-    'allDay': allDay,
+    'id':       id,
+    'title':    title,
+    'start':    Timestamp.fromDate(start),
+    'end':      Timestamp.fromDate(end),
+    'allDay':   allDay,
+    'location': location,
+    'memo':     memo,
   };
 
   factory GCalEventSummary.fromMap(Map<String, dynamic> map) => GCalEventSummary(
@@ -311,6 +339,9 @@ class GCalEventSummary {
     start:  (map['start'] as Timestamp).toDate(),
     end:    (map['end'] as Timestamp).toDate(),
     allDay: map['allDay'] ?? false,
+    // 以前のキャッシュにはこのフィールドが無いのでnull許容で読む
+    location: map['location'] as String?,
+    memo:     map['memo'] as String?,
   );
 }
 

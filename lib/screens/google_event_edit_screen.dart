@@ -22,7 +22,9 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
   final _calendarService = GoogleCalendarService();
   final _cacheService    = GoogleCalendarCacheService();
 
-  late final _titleCtrl = TextEditingController(text: widget.event.title);
+  late final _titleCtrl    = TextEditingController(text: widget.event.title);
+  late final _locationCtrl = TextEditingController(text: widget.event.location ?? '');
+  late final _memoCtrl     = TextEditingController(text: widget.event.memo ?? '');
   late DateTime _start = widget.event.start;
   // 終日予定の end は「翌日」を指す排他的な値で届くので、表示上は最終日へ戻す
   late final DateTime _initialEnd = widget.event.allDay
@@ -43,6 +45,8 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _locationCtrl.dispose();
+    _memoCtrl.dispose();
     super.dispose();
   }
 
@@ -67,6 +71,8 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
       start: dateChanged ? _start : null,
       end: dateChanged ? _end : null,
       allDay: _allDay,
+      location: _locationCtrl.text.trim(),
+      memo: _memoCtrl.text.trim(),
     );
 
     if (!result.ok) {
@@ -183,6 +189,27 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
             onStartChanged: (v) => setState(() => _start = v),
             onEndChanged: (v) => setState(() => _end = v),
             onAllDayChanged: (v) => setState(() => _allDay = v),
+          ),
+          const SizedBox(height: 20),
+
+          // 場所・メモはGoogleカレンダー側にも同じ概念（location / description）が
+          // あるので、このアプリで作った予定と同じように編集できるようにする。
+          // ここが編集できないと「アプリで入れた予定は場所を書けるのに、
+          // Googleから入れた予定は書けない」という差分が見えてしまう。
+          const SectionLabel('場所（任意）'),
+          TextField(
+            controller: _locationCtrl,
+            style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            decoration: const InputDecoration(hintText: '例: 新江ノ島水族館'),
+          ),
+          const SizedBox(height: 20),
+
+          const SectionLabel('メモ（任意）'),
+          TextField(
+            controller: _memoCtrl,
+            maxLines: 3,
+            style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            decoration: const InputDecoration(hintText: 'メモを書く...'),
           ),
 
           const SizedBox(height: 28),

@@ -90,6 +90,9 @@ class GoogleCalendarService {
     DateTime? start,
     DateTime? end,
     bool allDay = false,
+    // 未指定(null)なら既存の値をそのまま残す。空文字を渡すと消える。
+    String? location,
+    String? memo,
   }) async {
     final api = await _api();
     if (api == null) return const GCalResult.failure(kGCalNotSignedIn);
@@ -106,6 +109,8 @@ class GoogleCalendarService {
       // ことで description / location / recurrence / attendees も保たれる。
       final event = await api.events.get('primary', eventId);
       event.summary = title;
+      if (location != null) event.location = location.isEmpty ? null : location;
+      if (memo != null) event.description = memo.isEmpty ? null : memo;
 
       if (start != null && end != null) {
         if (allDay) {
@@ -189,11 +194,13 @@ class GoogleCalendarService {
         final endDt = normalizeGCalDateTime(
             e.end?.dateTime ?? e.end?.date, isAllDay: isAllDay);
         return GCalEventSummary(
-          id:     e.id ?? '',
-          title:  e.summary ?? '(無題の予定)',
-          start:  startDt ?? start,
-          end:    endDt ?? (startDt ?? start),
-          allDay: isAllDay,
+          id:       e.id ?? '',
+          title:    e.summary ?? '(無題の予定)',
+          start:    startDt ?? start,
+          end:      endDt ?? (startDt ?? start),
+          allDay:   isAllDay,
+          location: e.location,
+          memo:     e.description,
         );
       }).toList();
     } catch (_) {
