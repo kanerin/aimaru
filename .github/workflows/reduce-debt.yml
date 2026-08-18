@@ -1,29 +1,28 @@
-name: Propose & implement feature (1x/day)
+name: Reduce technical debt (1x/day)
 
-# 市場動向・競合を調査した上で、競合差分の解消につながる改善（中規模なものを含む）を
-# 1つ選んで実装し、developへPRを作成してauto-mergeする。
+# docs/open-issues.md のP0/P1のうちコード変更だけで完結するものを1つ選んで実装し、
+# developへPRを作成してauto-mergeする。propose-feature.yml（機能追加枠）は
+# 「Firebase設定・シークレット・課金構成に関わる変更を避ける」方針のため、
+# そこに該当するP0/P1課題がいつまでも選ばれない問題への対応。
 # developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
 # CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
 #
 # 人間レビューを介さない自動実装のため、安全装置はCIのみ。
-# ci.yml（CIワークフロー）をdevelopの必須チェックに設定しておくこと
-# （Settings → Branches → develop → Require status checks to pass）。
-#
-# 朝枠は reduce-debt.yml（docs/open-issues.mdの既存課題の消化）に割り当てているため、
-# このワークフローは夜枠のみ。
+# ユーザーデータの削除・退会・ペア解消のような不可逆な変更は
+# .claude/commands/reduce-debt.md の指示で対象外にしている。
 
 on:
   schedule:
-    - cron: '0 12 * * *' # 毎日 12:00 UTC = 21:00 JST
+    - cron: '0 0 * * *' # 毎日 00:00 UTC = 09:00 JST
   workflow_dispatch: {}
 
 # workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
 concurrency:
-  group: propose-feature
+  group: reduce-debt
   cancel-in-progress: false
 
 jobs:
-  propose:
+  reduce-debt:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,12 +64,6 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            .claude/commands/propose-feature.md の指示を読み、その通りに実行してください。
-          # display_report: Claudeが何を分析し何を実装・マージしたかをGitHub Actionsの
-          # Step Summaryに表示する。
+            .claude/commands/reduce-debt.md の指示を読み、その通りに実行してください。
           display_report: true
-          # WebSearchで市場動向・競合調査を行い、中規模な改善まで積極的に検討するため
-          # 通常より探索・実装のターン数がかかる想定でmax-turnsを引き上げている。
-          # allowedToolsの値はスペースを含む（Bash(git commit:*)等）ため、
-          # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
-          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,WebSearch,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
+          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"

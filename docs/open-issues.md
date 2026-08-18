@@ -175,15 +175,19 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 2026-08-14 に、実際には呼び出されていなかったNotion連携の`.claude/skills/`（scheduled-run /
 notion-audit / notion-implement / market-brief / pr-review）を廃止し、GitHub Actions +
 `claude-code-action`（`CLAUDE_CODE_OAUTH_TOKEN`認証、Claude Pro/Maxプランの利用枠を使う）
-ベースの構成へ移行した。月間コストを抑えるため、Claudeを呼ぶのは「何か対応が要る時」だけに
-絞っている（テストが全部greenの週やコンフリクトが無いリリースでは、Claude起動コストは
-実質ゼロ）。
+ベースの構成へ移行した。その後 `propose-feature.yml` は「調査してIssue起票のみ」から
+「実装してPRを作りCI成功のみを条件にauto-mergeする」方式へ変わり（2026-08-14）、
+その後既存課題の消化に絞った `reduce-debt.yml` を朝枠として追加した
+（下記の一覧は現状に更新済み）。`test-report.yml` / `backmerge.yml` / `claude-mention.yml` は
+引き続き、月間コストを抑えるため「何か対応が要る時」だけClaudeを呼ぶ設計のまま
+（テストが全部greenの週やコンフリクトが無いリリースでは、Claude起動コストは実質ゼロ）。
 
 ```
-propose-feature.yml  週1回cron    コードベース分析 → Issue起票のみ（PR化しない）
-test-report.yml      週2-3回cron  テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
-backmerge.yml         release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
-claude-mention.yml    @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼
+reduce-debt.yml       1日1回cron（朝）   docs/open-issues.mdのP0/P1のうちコード変更だけで完結するものを1つ実装 → develop へPR → CI成功でauto-merge
+propose-feature.yml   1日1回cron（夜）   市場動向調査 → 改善を1つ実装 → develop へPR → CI成功でauto-merge
+test-report.yml       週2-3回cron        テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
+backmerge.yml          release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
+claude-mention.yml     @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼
 ```
 
 詳細は`CLAUDE.md`の「自動化の構成」、各ワークフローファイル、`.claude/commands/`を参照。
