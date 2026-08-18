@@ -184,6 +184,55 @@ void main() {
     });
   });
 
+  group('ペアの解消', () {
+    test('相手がいる場合、自分だけがmemberIdsから外れる', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
+
+      await serviceFor(meUid).leaveCouple(id);
+
+      final doc = await db.collection('couples').doc(id).get();
+      expect(doc.exists, isTrue, reason: 'ドキュメント自体は相手のために残す');
+      expect(doc.data()!['memberIds'], [partnerUid]);
+    });
+
+    test('相手がいる場合、予定などのサブコレクションは削除しない', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
+      await db.collection('couples').doc(id).collection('events').doc('e1').set({
+        'title': '思い出のデート',
+      });
+
+      await serviceFor(meUid).leaveCouple(id);
+
+      final events = await db.collection('couples').doc(id).collection('events').get();
+      expect(events.docs, hasLength(1), reason: '相手の思い出まで消してはいけない');
+    });
+
+    test('自分しかいない場合、ドキュメントごと削除する', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);
+
+      await serviceFor(meUid).leaveCouple(id);
+
+      final doc = await db.collection('couples').doc(id).get();
+      expect(doc.exists, isFalse);
+    });
+
+    test('抜けた後、自分は新しいペアを作り直せる', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
+      final service = serviceFor(meUid);
+      await service.leaveCouple(id);
+
+      final newCode = await service.createInviteCode();
+
+      expect(newCode, isNot('A3K9PZ'));
+      final mine = await service.getMyCouple();
+      expect(mine!.id, isNot(id), reason: '古いペアではなく新しいペアに属する');
+    });
+
+    test('既に存在しないペアに対して呼んでも例外にならない', () async {
+      await expectLater(serviceFor(meUid).leaveCouple('no-such-couple'), completes);
+    });
+  });
+
   group('記念日', () {
     test('設定した記念日が読み戻せる', () async {
       final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);

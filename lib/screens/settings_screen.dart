@@ -1,9 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/couple_service.dart';
+import '../services/data_export_service.dart';
 import '../services/google_calendar_cache_service.dart';
 import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
@@ -37,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _settingsService = SettingsService();
   final _googleCalendarCache = GoogleCalendarCacheService();
   final _notificationSettingsService = NotificationSettingsService();
+  final _dataExportService = DataExportService();
 
   String? _partnerName;
   CoupleModel? _couple;
@@ -45,6 +52,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showHolidays = true;
   bool _weekStartsMonday = false;
   bool _loadingPrefs = true;
+  bool _exporting = false;
+  bool _accountActionInProgress = false;
 
   bool _notifyOnNewEvent = true;
   bool _remindersEnabled = true;
@@ -108,6 +117,128 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     await _authService.signOut();
     if (mounted) context.go('/login');
+  }
+
+  // ── データをエクスポート ──────────────────────────
+  // 予定・思い出（写真付きの予定）・チャット・やりたいことリスト・割り勘・
+  // ふたりの質問への回答をJSONにまとめ、共有シートで書き出す。
+  Future<void> _exportData() async {
+    final couple = _couple;
+    if (couple == null || _exporting) return;
+
+    setState(() => _exporting = true);
+    try {
+      final json = await _dataExportService.exportAsJson(couple.id);
+      final dir = await getTemporaryDirectory();
+      final fileName =
+          'aimaru_export_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(json);
+
+      if (mounted) {
+        await SharePlus.instance.share(ShareParams(
+          files: [XFile(file.path)],
+          text: 'AIMARUのデータをエクスポートしました',
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('エクスポートに失敗しました。もう一度試してください')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  // ── ペアを解消する（自分だけ抜ける）──────────────
+  // 予定・チャットなどの記録はパートナー側にそのまま残ることを、
+  // 実際に削除される前にダイアログで伝える（誤解して押されると
+  // 「せっかくの記録が消えた」という取り返しのつかない不満につながるため）。
+  Future<void> _leaveCouple() async {
+    final couple = _couple;
+    if (couple == null || _accountActionInProgress) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.navyCard,
+        title: const Text('ペアを解消しますか？'),
+        content: const Text(
+          'これまでの予定・チャット・写真などの記録は削除されません。パートナー側にはそのまま残ります。',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ペアを解消する', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _accountActionInProgress = true);
+    try {
+      await _coupleService.leaveCouple(couple.id);
+      if (mounted) context.go('/pairing');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _accountActionInProgress = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('ペアの解消に失敗しました。もう一度試してください')),
+        );
+      }
+    }
+  }
+
+  // ── アカウントを削除する（退会）────────────────────
+  // ペアを組んでいる場合は先に自分だけ抜け（_leaveCoupleと同じ挙動、
+  // パートナー側の記録は残る）、そのあとFirebase Authのアカウントと
+  // 自分のプロフィールを削除する。
+  Future<void> _deleteAccount() async {
+    if (_accountActionInProgress) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.navyCard,
+        title: const Text('アカウントを削除しますか？'),
+        content: const Text(
+          'アカウントを削除すると元に戻せません。ペアを組んでいる場合は自動的に解消されます'
+          '（パートナー側の記録は残ります）。\n\n'
+          'データを残したい場合は、先に「データをエクスポート」から書き出しておいてください。',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('削除する', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _accountActionInProgress = true);
+    try {
+      final couple = _couple;
+      if (couple != null) {
+        await _coupleService.leaveCouple(couple.id);
+      }
+      await _authService.deleteAccount();
+      if (mounted) context.go('/login');
+    } catch (_) {
+      if (mounted) {
+        setState(() => _accountActionInProgress = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(
+            'アカウントの削除に失敗しました。再ログインが必要な場合があります。もう一度お試しください',
+          )),
+        );
+      }
+    }
   }
 
   @override
@@ -367,6 +498,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               MaterialPageRoute(builder: (_) => TrashScreen(coupleId: widget.coupleId)),
             ),
           ),
+          if (_couple != null) ...[
+            const SizedBox(height: 10),
+            _NavigationRow(
+              title: _exporting ? 'エクスポート中…' : 'データをエクスポート',
+              subtitle: '予定・思い出・チャットなどをJSONファイルとして書き出せます',
+              onTap: _exportData,
+            ),
+          ],
 
           const SizedBox(height: 28),
           const _SectionLabel('フィードバック'),
@@ -380,11 +519,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           const _SectionLabel('アカウント'),
+          if (_couple != null)
+            Center(
+              child: TextButton.icon(
+                onPressed: _accountActionInProgress ? null : _leaveCouple,
+                icon: const Icon(Icons.link_off, size: 16, color: Colors.redAccent),
+                label: const Text('ペアを解消する', style: TextStyle(color: Colors.redAccent)),
+              ),
+            ),
           Center(
             child: TextButton.icon(
-              onPressed: _signOut,
+              onPressed: _accountActionInProgress ? null : _signOut,
               icon: const Icon(Icons.logout, size: 16, color: Colors.redAccent),
               label: const Text('ログアウト', style: TextStyle(color: Colors.redAccent)),
+            ),
+          ),
+          Center(
+            child: TextButton.icon(
+              onPressed: _accountActionInProgress ? null : _deleteAccount,
+              icon: const Icon(Icons.delete_forever, size: 16, color: Colors.redAccent),
+              label: const Text('アカウントを削除する', style: TextStyle(color: Colors.redAccent)),
             ),
           ),
           const SizedBox(height: 24),

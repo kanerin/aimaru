@@ -116,6 +116,32 @@ class CoupleService {
     });
   }
 
+  // ── ペアを解消する（自分だけ抜ける）──────────────
+  // 予定・チャット・写真・TODO・割り勘・ふたりの質問への回答はそのまま
+  // couples/{coupleId} 側に残す。共有してきたデータを片方の操作で
+  // 一方的に消してしまわないための判断（相手がまだ見返したいかもしれない）。
+  // 自分しかメンバーがいない（相手がまだ参加していない、または既に抜けた）
+  // 場合だけ、カップルのドキュメント自体を削除する
+  // （残っていても誰の役にも立たないゴミになるだけなので）。
+  //
+  // サブコレクション（events等）は削除しない。memberIdsから外れた時点で
+  // firestore.rulesの`request.auth.uid in couples/{coupleId}.data.memberIds`
+  // 判定により、自分からは二度と読み書きできなくなる。
+  Future<void> leaveCouple(String coupleId) async {
+    final ref = _db.collection('couples').doc(coupleId);
+    final snap = await ref.get();
+    if (!snap.exists) return;
+
+    final memberIds = List<String>.from(snap.data()?['memberIds'] ?? []);
+    if (memberIds.length <= 1) {
+      await ref.delete();
+    } else {
+      await ref.update({
+        'memberIds': FieldValue.arrayRemove([_uid]),
+      });
+    }
+  }
+
   // ── パートナーの表示名を取得 ──────────────────────
   Future<String?> getPartnerName(CoupleModel couple) async {
     final partnerId = couple.memberIds.firstWhere(

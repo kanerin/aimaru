@@ -67,4 +67,48 @@ class AuthService {
     final doc = await _db.collection('users').doc(uid).get();
     return doc.data()?['displayName'] as String?;
   }
+
+  // ── 退会（アカウント削除）────────────────────────
+  // Firebase Authのユーザーを削除し、続けて users/{uid} の個人データを消す。
+  // ペア（couples）側の後始末はここでは行わない。呼び出し側が
+  // CoupleService.leaveCouple を先に呼ぶこと（このクラスはAuth/自分の
+  // プロフィールだけを扱い、他サービスには依存しない設計を保つため）。
+  //
+  // サインインから時間が経っていると、Firebaseは削除のような機微な操作を
+  // requires-recent-loginで拒否する。その場合はGoogleへ再ログインしてから
+  // 1回だけ再試行する。
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    final uid = user.uid;
+
+    try {
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'requires-recent-login') rethrow;
+      await _reauthenticate();
+      await _auth.currentUser!.delete();
+    }
+
+    await _db.collection('users').doc(uid).delete();
+    await _googleSign.signOut();
+  }
+
+  Future<void> _reauthenticate() async {
+    final googleUser = await _googleSign.signIn();
+    if (googleUser == null) {
+      throw FirebaseAuthException(
+        code: 'reauthentication-cancelled',
+        message: '再ログインがキャンセルされました',
+      );
+    }
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken:     googleAuth.idToken,
+    );
+
+    await _auth.currentUser!.reauthenticateWithCredential(credential);
+  }
 }

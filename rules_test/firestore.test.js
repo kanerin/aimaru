@@ -353,6 +353,30 @@ describe("couples — ペアの作成と参加", () => {
   });
 });
 
+describe("couples — ペアの解消（leaveCouple）", () => {
+  it("メンバーは自分だけをmemberIdsから外せる", async () => {
+    await seedCouple(testEnv, { members: [USER_A, USER_B] });
+
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}`).update({ memberIds: [USER_B] }),
+    );
+  });
+
+  it("メンバーでない第三者はmemberIdsを書き換えられない", async () => {
+    await seedCouple(testEnv, { members: [USER_A, USER_B] });
+
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}`).update({ memberIds: [USER_A] }),
+    );
+  });
+
+  it("自分しかいないペアは自分で削除できる", async () => {
+    await seedCouple(testEnv, { members: [USER_A] });
+
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}`).delete());
+  });
+});
+
 describe("users — 自分のドキュメントだけ書ける", () => {
   it("自分のドキュメントは書ける", async () => {
     await assertSucceeds(asA().doc(`users/${USER_A}`).set({ displayName: "A", reminderMinutesBefore: 30 }));

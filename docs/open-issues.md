@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **26件**（テストコードのtypecheckは通過。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **47件**（ルール自体はfirestore.rulesとして正しく書けている前提だが、上記と同じ理由でローカル実行未確認。CIのNode 22では要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **265件すべて通過**（ローカルで確認、CIでも要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **確認中**（マージ後に再測定） |
+| Flutter 単体・ウィジェット | `flutter test` | **確認中**（マージ後に再測定） |
 
 テストの内訳:
 
@@ -24,7 +24,8 @@ test/services/gemini_service_test.dart           12   askGemini呼び出し(coup
 test/utils/free_time_finder_test.dart            15   2人の空き時間検出・提案
 test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
 test/services/event_service_test.dart            18   予定CRUD・終日・期間クエリ・ゴミ箱
-test/services/couple_service_test.dart           13   ペアリング・招待コード
+test/services/couple_service_test.dart           20   ペアリング・招待コード・ペアの解消
+test/services/data_export_service_test.dart       7   データエクスポート(予定・チャット・TODO等のJSON化)
 test/utils/japan_holidays_test.dart              13   祝日計算
 test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
@@ -110,10 +111,33 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 （元のフェーズ4）はまだ行っていない。`parseGeminiReply`・応答スキーマ・`describeGeminiFailure`は
 一切変更していない（`test/services/gemini_reply_parser_test.dart`の17件は無改変のまま通過）。
 
+課題4（ペア解消・退会・データエクスポートの導線が無い）は実装した（本PR）。
+設定画面に3つの導線を追加した。
+- **ペアを解消する**（`CoupleService.dissolveCouple` → Cloud Functionsの`dissolveCouple`）:
+  共有してきたデータ（予定・チャット・写真・TODO・ふたりの質問への回答）を**両方のぶん
+  まとめて完全に削除する**。当初は「自分だけ抜けて相手のデータは残す」設計だったが、レビューで
+  「良くない」と指摘を受け、解消＝共有の終わりとして両者ともペア無しの状態に戻す仕様へ変更した。
+  `questionAnswers`はクライアントからは削除できない設計（`firestore.rules`に`allow delete`が無い。
+  相手の回答を見た後に自分の回答を書き換える抜け道を防ぐため）のため、複数コレクションにまたがる
+  削除はCloud Functions（Admin SDK経由）に寄せている。`couples/{coupleId}`とその配下は
+  `db.recursiveDelete()`でまとめて削除し、Storageの写真は`bucket.deleteFiles({prefix})`で削除する。
+- **アカウントを削除する**（`AuthService.deleteAccount`）: ペアを組んでいれば上と同じ`dissolveCouple`
+  を先に呼ぶ（パートナー側のデータも含めて完全に削除される）うえで、Firebase Authのアカウントと
+  `users/{uid}`の自分のプロフィールを削除する。`requires-recent-login`（サインインから時間が
+  経っている場合の保護）はGoogle再ログインを挟んで1回だけ再試行する。
+- **データをエクスポート**（`DataExportService`）: カップルの予定・思い出（写真付きの予定）・
+  チャット・やりたいことリスト・ふたりの質問への回答をJSONにまとめ、`share_plus`の
+  共有シートで書き出す。ゴミ箱（論理削除済み）の予定は対象外。「ペアを解消する」「アカウントを
+  削除する」のどちらも実行前にこのエクスポートを案内している。
+
+相手側の端末で無限ローディングやクラッシュにならないことを確認した:
+`memberIds`が1人になった後にアクセスする既存コード（`calendar_screen.dart`の`_loadMembers`、
+`couple_service.dart`の`getPartnerName`、`questions_screen.dart`のパートナー回答表示）は、
+いずれも既に「相手がいない」ケースを安全に扱っていた（新規の不具合は見つからなかった）。
+
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|
 | 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する。フェーズ1（下記）着手済み |
-| 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
 
 課題3（予定ごとの共有範囲）はフェーズ1として、`AimaruEvent`に`visibility`（`shared`/既定 or `private`）
