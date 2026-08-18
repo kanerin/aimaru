@@ -11,7 +11,7 @@
 | 対象 | コマンド | 結果 |
 |---|---|---|
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
-| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
+| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **11件すべて通過**（エミュレータ上、CIで確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
 | Flutter 単体・ウィジェット | `flutter test` | **244件すべて通過**（CIで確認） |
@@ -45,7 +45,7 @@ test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
-functions/src/reminders.integration.test.ts       9   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外含む）
+functions/src/reminders.integration.test.ts      10   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外・先読み幅の絞り込み含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 rules_test/firestore.test.js                     39   Firestoreルールのメンバー境界（todos・expenses・questionAnswers含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
