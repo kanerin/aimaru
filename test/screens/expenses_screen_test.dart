@@ -78,6 +78,63 @@ void main() {
 
     expect(find.textContaining('精算は完了しています'), findsOneWidget);
     expect(find.textContaining('まだ記録がありません'), findsOneWidget);
+    expect(find.text('精算する'), findsNothing);
+
+    await controller.close();
+  });
+
+  testWidgets('未精算があれば「精算する」ボタンが出る', (tester) async {
+    final controller = StreamController<List<ExpenseItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([buildExpense(amount: 4000, paidBy: uidA)]);
+    await tester.pump();
+
+    expect(find.text('精算する'), findsOneWidget);
+
+    await controller.close();
+  });
+
+  testWidgets('精算記録は一覧で「精算」として区別して表示され、精算し終えるとボタンが消える', (tester) async {
+    final controller = StreamController<List<ExpenseItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([
+      buildExpense(amount: 4000, paidBy: uidA),
+      ExpenseItem(
+        id: 'settlement-1',
+        coupleId: 'couple-1',
+        title: '精算',
+        amount: 2000,
+        paidBy: uidB,
+        createdBy: uidB,
+        createdAt: DateTime(2026, 1, 2),
+        isSettlement: true,
+      ),
+    ]);
+    await tester.pump();
+
+    expect(find.text('精算'), findsOneWidget);
+    expect(find.textContaining('パートナーがあなたに精算'), findsOneWidget);
+    expect(find.textContaining('精算は完了しています'), findsOneWidget);
+    // 精算済みまで反映されてボタンは出ない
+    expect(find.text('精算する'), findsNothing);
+
+    await controller.close();
+  });
+
+  testWidgets('精算するボタンを押すと金額を含む確認ダイアログが出る', (tester) async {
+    final controller = StreamController<List<ExpenseItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([buildExpense(amount: 4000, paidBy: uidA)]);
+    await tester.pump();
+
+    await tester.tap(find.text('精算する'));
+    await tester.pump();
+
+    expect(find.text('精算しますか？'), findsOneWidget);
+    expect(find.textContaining('¥2000'), findsWidgets);
 
     await controller.close();
   });

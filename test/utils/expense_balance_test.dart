@@ -9,14 +9,19 @@ void main() {
   const uidB = 'user-b';
   const memberIds = [uidA, uidB];
 
-  ExpenseItem buildExpense({required int amount, required String paidBy}) => ExpenseItem(
+  ExpenseItem buildExpense({
+    required int amount,
+    required String paidBy,
+    bool isSettlement = false,
+  }) => ExpenseItem(
         id: 'e1',
         coupleId: 'couple-1',
-        title: 'ディナー代',
+        title: isSettlement ? '精算' : 'ディナー代',
         amount: amount,
         paidBy: paidBy,
         createdBy: paidBy,
         createdAt: DateTime(2026, 8, 1),
+        isSettlement: isSettlement,
       );
 
   group('calculateBalance', () {
@@ -83,6 +88,33 @@ void main() {
       );
 
       expect(balance.amount, 0);
+    });
+
+    test('精算記録があると、その分の精算額が0に戻る', () {
+      final balance = calculateBalance(
+        [
+          buildExpense(amount: 4000, paidBy: uidA),
+          buildExpense(amount: 2000, paidBy: uidB, isSettlement: true),
+        ],
+        memberIds,
+      );
+
+      expect(balance.amount, 0);
+    });
+
+    test('精算後に新しい立て替えが発生すると、その分だけ再計算される', () {
+      final balance = calculateBalance(
+        [
+          buildExpense(amount: 4000, paidBy: uidA),
+          buildExpense(amount: 2000, paidBy: uidB, isSettlement: true),
+          buildExpense(amount: 1000, paidBy: uidA),
+        ],
+        memberIds,
+      );
+
+      expect(balance.owedByUid, uidB);
+      expect(balance.owedToUid, uidA);
+      expect(balance.amount, 500);
     });
   });
 }
