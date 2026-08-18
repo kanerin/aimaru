@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **229件すべて通過**（CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **231件すべて通過**（CIで確認） |
 
 テストの内訳:
 
@@ -40,6 +40,7 @@ test/screens/memories_screen_test.dart            5   思い出画面のロー�
 test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
 test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
 test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
+test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
@@ -115,11 +116,17 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
 
+旧17（ペア未成立時の体験プレビュー）は、ペアリング画面（PairingScreen）に招待コード/QRの
+上に「ペアになるとできること」カード（`lib/widgets/pairing_preview_cards.dart`）を追加し、
+実装済みのため表から外した（本PR）。招待コードだけが表示される待機中の画面は離脱されやすく、
+Pairyからの移行検討ユーザーは他アプリと比較検討中であることが多いため、機能を先に見せて
+招待を最後まで送ってもらう／相手に参加してもらう後押しにする。静的なコンテンツのみで
+Firestore・Cloud Functionsへの新しい依存は追加していない。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
 |---|---|---|
-| 17 | ペア未成立時の体験プレビュー | REQ-033 / FEAT-051 |
 | 18 | 収益モデル | REQ-032 |
 
 ## 人間にしかできない作業
