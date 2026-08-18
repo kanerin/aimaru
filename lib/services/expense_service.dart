@@ -38,6 +38,25 @@ class ExpenseService {
     await _expensesRef(expense.coupleId).doc(expense.id).delete();
   }
 
+  // ── 精算を記録 ────────────────────────────────────
+  // owedByUidがowedToUidにamountを渡したことを記録し、以降の精算額計算を
+  // 0円に戻す（履歴は削除せず「精算」として残す）。
+  Future<ExpenseItem> recordSettlement(String coupleId, String owedByUid, int amount) async {
+    final ref = _expensesRef(coupleId).doc();
+    final settlement = ExpenseItem(
+      id:           ref.id,
+      coupleId:     coupleId,
+      title:        '精算',
+      amount:       amount,
+      paidBy:       owedByUid,
+      createdBy:    _uid,
+      createdAt:    DateTime.now(),
+      isSettlement: true,
+    );
+    await ref.set(settlement.toMap());
+    return settlement;
+  }
+
   // ── 一覧をリアルタイム取得（新しい順）────────────────
   Stream<List<ExpenseItem>> watchExpenses(String coupleId) {
     return _expensesRef(coupleId)

@@ -43,6 +43,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   final _titleController = TextEditingController();
   final _amountController = TextEditingController();
+  bool _settling = false;
 
   @override
   void dispose() {
@@ -63,6 +64,31 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Future<void> _delete(ExpenseItem expense) => _service.deleteExpense(expense);
 
   String _payerLabel(String paidBy) => paidBy == _uid ? 'あなた' : widget.partnerName;
+  String _receiverLabel(String paidBy) => paidBy == _uid ? widget.partnerName : 'あなた';
+
+  Future<void> _settle(ExpenseBalance balance) async {
+    final owedByUid = balance.owedByUid;
+    if (owedByUid == null || _settling) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.navyCard,
+        title: const Text('精算しますか？'),
+        content: Text('${_payerLabel(owedByUid)}が¥${balance.amount}を渡したことを記録します'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('記録する')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _settling = true);
+    await _service.recordSettlement(widget.coupleId, owedByUid, balance.amount);
+    if (!mounted) return;
+    setState(() => _settling = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +104,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 // hasDataだけを見ていると、権限エラー等でストリームがエラーに
                 // 落ちたときに無限ローディングのまま固まる。
                 if (snap.hasError) {
+                  // 画面には利用者向けの文言しか出さないが、原因が分からないと
+                  // 調査できないので実際の例外はログに残す。
+                  // （セキュリティルール未デプロイによるpermission-deniedを
+                  //   ここで一度取り逃がし、原因特定に時間を要した）
+                  debugPrint('[割り勘の読み込みに失敗] ${snap.error}');
                   return const Center(
                     child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
                       textAlign: TextAlign.center,
@@ -135,7 +166,22 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.hairline),
       ),
-      child: Text(text, style: const TextStyle(fontSize: 13.5, color: AppColors.textPrimary)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: const TextStyle(fontSize: 13.5, color: AppColors.textPrimary)),
+          if (balance.amount > 0) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _settling ? null : () => _settle(balance),
+                child: const Text('精算する'),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -163,6 +209,11 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
           border: Border.all(color: AppColors.hairline),
         ),
         child: Row(children: [
+          if (expense.isSettlement)
+            const Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: Icon(Icons.check_circle_outline, size: 18, color: AppColors.success),
+            ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -171,8 +222,12 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                   fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
                 )),
                 const SizedBox(height: 4),
-                Text('${_payerLabel(expense.paidBy)}が支払い',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                Text(
+                  expense.isSettlement
+                      ? '${_payerLabel(expense.paidBy)}が${_receiverLabel(expense.paidBy)}に精算'
+                      : '${_payerLabel(expense.paidBy)}が支払い',
+                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
               ],
             ),
           ),

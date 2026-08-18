@@ -116,22 +116,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (mounted) setState(() { _showHolidays = holidays; _weekStartsMonday = weekStart; });
   }
 
+  // メンバーの表示名・アイコンの取得。
+  // 取得できなくてもカレンダー自体は「自分／パートナー」の既定表示で成立するため、
+  // 失敗しても画面を壊さない。ここで例外を投げっぱなしにすると、権限エラーや
+  // ログアウト直後の応答が非同期で着地したときに拾い手のない例外になる。
   Future<void> _loadMembers() async {
-    final couple = await _coupleService.getMyCouple();
-    if (couple == null || !mounted) return;
-    final profiles = <String, _Member>{};
-    for (final uid in couple.memberIds) {
-      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final data = doc.data();
-      profiles[uid] = _Member(
-        uid: uid,
-        name: (data?['displayName'] as String?)?.isNotEmpty == true
-            ? data!['displayName']
-            : (uid == _selfUid ? '自分' : 'パートナー'),
-        photoUrl: data?['photoUrl'],
-      );
+    try {
+      final couple = await _coupleService.getMyCouple();
+      if (couple == null || !mounted) return;
+      final profiles = <String, _Member>{};
+      for (final uid in couple.memberIds) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+        final data = doc.data();
+        profiles[uid] = _Member(
+          uid: uid,
+          name: (data?['displayName'] as String?)?.isNotEmpty == true
+              ? data!['displayName']
+              : (uid == _selfUid ? '自分' : 'パートナー'),
+          photoUrl: data?['photoUrl'],
+        );
+      }
+      if (mounted) setState(() => _members = profiles);
+    } catch (e) {
+      debugPrint('[メンバー情報の取得に失敗] $e');
     }
-    if (mounted) setState(() => _members = profiles);
   }
 
   Future<void> _initGoogleCalendar() async {

@@ -192,6 +192,21 @@ describe("expenses — メンバー境界", () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/expenses/expense-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/expenses/expense-4`).set({ title: "x" }));
   });
+
+  // アプリの割り勘画面が実際に投げるのは単一ドキュメントのgetではなく、
+  // コレクション全体を並べ替えて購読するクエリ(list)。
+  // getだけを検証していると、listで落ちる状態に気づけない。
+  it("メンバーは立て替え記録を一覧できる（アプリと同じクエリ）", async () => {
+    await assertSucceeds(
+      asA().collection(`couples/${COUPLE_ID}/expenses`).orderBy("createdAt", "desc").get(),
+    );
+  });
+
+  it("メンバー以外は立て替え記録を一覧できない", async () => {
+    await assertFails(
+      asC().collection(`couples/${COUPLE_ID}/expenses`).orderBy("createdAt", "desc").get(),
+    );
+  });
 });
 
 describe("questionAnswers — メンバー境界・自分の回答のみ書き込み", () => {

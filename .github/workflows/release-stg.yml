@@ -169,7 +169,7 @@ jobs:
           echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
 
           {
-            printf '%s (%s)\n\n' "${APP_VERSION:-?}" "$BUILD_NUMBER"
+            printf '%s\n\n' "${APP_VERSION:-?}"
             [ -n "$BASE" ] || printf '（前回の配布地点が特定できないため、直近の変更を表示しています）\n\n'
           } > "$NOTES_FILE"
 
