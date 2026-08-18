@@ -94,6 +94,13 @@ class CoupleService {
     });
   }
 
+  // ── 次に会う日を設定（nullで解除）────────────────
+  Future<void> setNextMeetingDate(String coupleId, DateTime? date) async {
+    await _db.collection('couples').doc(coupleId).update({
+      'nextMeetingDate': date != null ? Timestamp.fromDate(date) : null,
+    });
+  }
+
   // ── 基本の休日を設定 ──────────────────────────────
   // 2人で共有する設定なので端末ローカルではなくカップルのドキュメントに持つ。
   // （既存の couples の update ルールでメンバーなら書き込めるため、
