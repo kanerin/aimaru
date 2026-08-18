@@ -8,6 +8,7 @@ import {
   DEFAULT_REMINDER_MINUTES_BEFORE,
   isStale,
   nextOccurrence,
+  QUERY_LOOKAHEAD_MS,
   resolveMinutesBefore,
   resolveReminderTargets,
   shouldRemindNow,
@@ -35,7 +36,12 @@ const MINUTE = 60000;
 
 /** 本番の processOneTimeEvents と同じ順序で、単発予定の送信対象を数える。 */
 async function collectOneTimeTargets(nowMs: number) {
-  const snap = await db.collectionGroup("events").where("reminded", "==", false).get();
+  const lookaheadCutoff = Timestamp.fromMillis(nowMs + QUERY_LOOKAHEAD_MS);
+  const snap = await db
+    .collectionGroup("events")
+    .where("reminded", "==", false)
+    .where("date", "<=", lookaheadCutoff)
+    .get();
   const sent: Array<{ eventId: string; uid: string; minutesBefore: number }> = [];
   const cleanedUp: string[] = [];
 
@@ -82,7 +88,12 @@ async function collectOneTimeTargets(nowMs: number) {
  * 「1回目の実行の結果が2回目の実行にどう影響するか」を検証できる。
  */
 async function runOneTimeEventsPass(nowMs: number) {
-  const snap = await db.collectionGroup("events").where("reminded", "==", false).get();
+  const lookaheadCutoff = Timestamp.fromMillis(nowMs + QUERY_LOOKAHEAD_MS);
+  const snap = await db
+    .collectionGroup("events")
+    .where("reminded", "==", false)
+    .where("date", "<=", lookaheadCutoff)
+    .get();
   const sent: Array<{ eventId: string; uid: string }> = [];
 
   for (const doc of snap.docs) {
@@ -270,6 +281,19 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
 
     assert.deepEqual(sent, []);
     assert.deepEqual(cleanedUp, ["event-1"]);
+  });
+
+  it("先読み幅を超えて先の予定はクエリの絞り込みで対象外になる", async () => {
+    const nowMs = Date.now();
+    await seed({
+      eventDate: new Date(nowMs + QUERY_LOOKAHEAD_MS + 60 * MINUTE),
+      users: { [USER_A]: { reminderMinutesBefore: 60 } },
+    });
+
+    const { sent, cleanedUp } = await collectOneTimeTargets(nowMs);
+
+    assert.deepEqual(sent, [], "先読み幅より先の予定はまだ拾わない");
+    assert.deepEqual(cleanedUp, [], "片付け対象でもない（クエリに乗っていないだけ）");
   });
 
   it("recurring の予定は単発の経路では拾わない", async () => {

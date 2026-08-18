@@ -9,6 +9,7 @@ import {
   formatRelative,
   isStale,
   nextOccurrence,
+  QUERY_LOOKAHEAD_MS,
   resolveMinutesBefore,
   resolveReminderTargets,
 } from "./reminder_logic";
@@ -104,8 +105,20 @@ export const onEventCreated = onDocumentCreated(
 // 判定そのものは reminder_logic.ts の純粋関数に寄せてある。
 
 // 単発の予定（recurring != true）のリマインダー
+//
+// 「reminded == false」だけの等価条件だと、何ヶ月も先の予定までユーザー数分
+// 毎回全件読み込むことになり、課金と実行時間がイベント数に対して線形以上に
+// 伸びる（docs/open-issues.md 課題8）。dateの上限を切ることで、まだリマインダー
+// 対象になり得ない先の予定を読まないようにする。過去方向は絞らない
+// （STALE_AFTER_MSを超えた予定を片付ける処理がそのまま働く）。
+// このクエリには firestore.indexes.json の複合インデックスが要る。
 async function processOneTimeEvents(nowMs: number): Promise<void> {
-  const snap = await db.collectionGroup("events").where("reminded", "==", false).get();
+  const lookaheadCutoff = Timestamp.fromMillis(nowMs + QUERY_LOOKAHEAD_MS);
+  const snap = await db
+    .collectionGroup("events")
+    .where("reminded", "==", false)
+    .where("date", "<=", lookaheadCutoff)
+    .get();
 
   for (const doc of snap.docs) {
     const data = doc.data() as EventDoc;

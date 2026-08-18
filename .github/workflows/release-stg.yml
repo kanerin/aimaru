@@ -293,6 +293,39 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # firestore.indexes.json も rules と同じ理由（サービスアカウントに
+      # 権限が無い）で自動デプロイできていない。索引が要るクエリに変更した
+      # 場合、エミュレータでは通っても本番ではFAILED_PRECONDITIONで失敗する
+      # （docs/open-issues.md 課題8）。IAMロールが揃うまでは
+      # continue-on-error のまま、失敗を可視化するだけに留める。
+      - name: Deploy Firestore indexes
+        id: deploy_indexes
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          firebase deploy --only firestore:indexes \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --non-interactive
+
+      - name: Warn if Firestore indexes were not deployed
+        if: steps.deploy_indexes.outcome != 'success'
+        run: |
+          echo "::warning title=Firestore索引未デプロイ::firestore.indexes.json を本番へ反映できませんでした。索引が要る新しいクエリは本番でFAILED_PRECONDITIONになります。"
+          {
+            echo "### ⚠️ Firestore索引が本番へ反映されていません"
+            echo ""
+            echo "\`firebase deploy --only firestore:indexes\` が失敗しました。"
+            echo "サービスアカウントにGCP側のIAMロールが付与されていないためです（rulesと同じ原因）。"
+            echo ""
+            echo "**索引を追加するクエリ変更は、本番でFAILED_PRECONDITIONになります。**"
+            echo "ローカルから手動で反映してください:"
+            echo ""
+            echo '```'
+            echo "firebase deploy --only firestore:indexes --project aimaru-7eb2e"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
