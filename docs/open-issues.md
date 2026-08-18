@@ -122,9 +122,27 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 回答は`request.resource.data.uid`で本人の分のみ書き込みを許可し、更新・削除は許可していない
 （相手の回答を見た後に自分の回答を書き換える抜け道を防ぐため）。
 
+課題8（`sendReminders` の `collectionGroup` 全件走査）はフェーズ1に着手した（本PR）。
+まず `release-stg.yml` に `firebase deploy --only firestore:indexes` のステップを追加し
+（rulesと同じ手順で並べた）、`processOneTimeEvents`（単発予定）のクエリに
+`reminded == false` に加えて `date <= 先読み幅` の範囲条件を足した。先読み幅は
+`QUERY_LOOKAHEAD_MS`（`functions/src/reminder_logic.ts`、3日）で、設定できる
+リマインダーの最大値（`lib/screens/settings_screen.dart` の `_reminderOptions`、
+現状1日前）より長く取ってある。これで、何ヶ月も先の一回限りの予定まで毎回
+ユーザー数分読み込む問題は解消した。複合索引 `firestore.indexes.json` の
+`indexes`（`reminded` ASC, `date` ASC, `queryScope: COLLECTION_GROUP`）を追加した。
+
+**残っている範囲（フェーズ2）**: `processRecurringEvents`（毎年繰り返す予定）は今回
+narrowingしていない。`date` フィールドは予定の**作成時点の年**を持つため、
+「今年の発生日」を求める `nextOccurrence`（月日だけを見る）とは単純な範囲比較が
+噛み合わず、素朴な `date` 範囲条件では絞り込めない。narrowingするなら
+「次の発生日」を別フィールドとして保持するスキーマ変更が要りそうで、今回のPRの
+範囲を超えるため見送った。また、索引デプロイ自体は課題2隣接のIAM未付与
+（rulesと同じ原因）により本番では引き続き失敗する想定で、`continue-on-error: true`
+のまま可視化のみ行っている。IAMロールが付与されたら自動的に効くようになる。
+
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
-| 8 | **`sendReminders` が `collectionGroup` の全件走査** | REQ-028 / FEAT-048 | `index.ts` の `processOneTimeEvents` / `processRecurringEvents`。ユーザー数に対して課金と実行時間が線形以上に伸びる。**注意**: `reminded`/`recurring` の等価条件を `date` の範囲条件に置き換えて絞り込む方向で直そうとすると、`collectionGroup` クエリは単一フィールド索引でも `queryScope: COLLECTION_GROUP` の明示的な索引（`firestore.indexes.json` の `fieldOverrides`）が要る。索引はルールと違い `release-stg.yml` がデプロイする経路が無い（`firebase deploy --only firestore:indexes` を回す仕組みが存在しない）ため、素朴に直すとエミュレータでは通って本番でクエリが失敗する状態になる。索引デプロイの経路を先に用意すること |
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
 

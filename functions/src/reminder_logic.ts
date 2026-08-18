@@ -12,6 +12,13 @@ export const WINDOW_MINUTES = 8;
 // これ以上過ぎた予定はもう通知せず、クエリ肥大化を防ぐため片付ける。
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
+// 単発予定の走査を絞り込む先読み幅。設定できるリマインダーの最大値
+// （lib/screens/settings_screen.dart の _reminderOptions、現状最大は
+// 1440分=1日前）より確実に長く取ってある。ここを縮めると、先読み幅を
+// 超えて設定されたリマインダーが発火しなくなるので、_reminderOptions に
+// より長い選択肢を追加する場合はあわせて見直すこと。
+export const QUERY_LOOKAHEAD_MS = 3 * 24 * 60 * 60 * 1000;
+
 // リマインダーを何分前に送るかの既定値。
 export const DEFAULT_REMINDER_MINUTES_BEFORE = 60;
 
