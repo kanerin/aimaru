@@ -7,6 +7,7 @@ class CoupleModel {
   final String inviteCode;
   final DateTime createdAt;
   final DateTime? anniversary;    // 付き合い始めた日
+  final DateTime? nextMeetingDate; // 次に会う予定の日
 
   // 基本の休日（DateTime.monday=1 〜 DateTime.sunday=7）。
   // 「2人の空き時間」はこの曜日だけを探索対象にする。
@@ -24,6 +25,7 @@ class CoupleModel {
     required this.inviteCode,
     required this.createdAt,
     this.anniversary,
+    this.nextMeetingDate,
     this.daysOff = defaultDaysOff,
     this.holidaysAreDaysOff = true,
   });
@@ -38,6 +40,9 @@ class CoupleModel {
       anniversary: d['anniversary'] != null
           ? (d['anniversary'] as Timestamp).toDate()
           : null,
+      nextMeetingDate: d['nextMeetingDate'] != null
+          ? (d['nextMeetingDate'] as Timestamp).toDate()
+          : null,
       // 既存のカップルにはこのフィールドが無いので既定値へフォールバックする
       daysOff: d['daysOff'] != null
           ? List<int>.from(d['daysOff'])
@@ -51,6 +56,7 @@ class CoupleModel {
     'inviteCode':         inviteCode,
     'createdAt':          Timestamp.fromDate(createdAt),
     'anniversary':        anniversary != null ? Timestamp.fromDate(anniversary!) : null,
+    'nextMeetingDate':    nextMeetingDate != null ? Timestamp.fromDate(nextMeetingDate!) : null,
     'daysOff':            daysOff,
     'holidaysAreDaysOff': holidaysAreDaysOff,
   };

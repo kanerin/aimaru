@@ -195,4 +195,27 @@ void main() {
       expect(couple!.anniversary, DateTime(2023, 4, 1));
     });
   });
+
+  group('次に会う日', () {
+    test('設定した次に会う日が読み戻せる', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);
+      final service = serviceFor(meUid);
+
+      await service.setNextMeetingDate(id, DateTime(2026, 9, 1));
+
+      final couple = await service.getMyCouple();
+      expect(couple!.nextMeetingDate, DateTime(2026, 9, 1));
+    });
+
+    test('nullを渡すと解除できる', () async {
+      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);
+      final service = serviceFor(meUid);
+      await service.setNextMeetingDate(id, DateTime(2026, 9, 1));
+
+      await service.setNextMeetingDate(id, null);
+
+      final couple = await service.getMyCouple();
+      expect(couple!.nextMeetingDate, isNull);
+    });
+  });
 }

@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **231件すべて通過**（CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **244件すべて通過**（CIで確認） |
 
 テストの内訳:
 
@@ -115,6 +115,13 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 | 8 | **`sendReminders` が `collectionGroup` の全件走査** | REQ-028 / FEAT-048 | `index.ts` の `processOneTimeEvents` / `processRecurringEvents`。ユーザー数に対して課金と実行時間が線形以上に伸びる。**注意**: `reminded`/`recurring` の等価条件を `date` の範囲条件に置き換えて絞り込む方向で直そうとすると、`collectionGroup` クエリは単一フィールド索引でも `queryScope: COLLECTION_GROUP` の明示的な索引（`firestore.indexes.json` の `fieldOverrides`）が要る。索引はルールと違い `release-stg.yml` がデプロイする経路が無い（`firebase deploy --only firestore:indexes` を回す仕組みが存在しない）ため、素朴に直すとエミュレータでは通って本番でクエリが失敗する状態になる。索引デプロイの経路を先に用意すること |
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 | 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
+
+設定画面に「次に会う日」カード（`NextMeetingCard`）を追加した（本PR）。遠距離・多忙で
+頻繁に会えないカップル向けのトレンド（次に会える日までのカウントダウン）に対応する、
+記念日カードと対になる機能。既存の`anniversary`と同じ形（`couples/{coupleId}`の1フィールド）
+で`nextMeetingDate`を持たせているため、新しいFirestoreコレクションやルール変更は増やして
+いない。過ぎた日付は「予定の日を過ぎています」と表示するだけで自動クリアはしない
+（ユーザーが明示的にクリア・更新するまで直近の予定として残す）。
 
 旧17（ペア未成立時の体験プレビュー）は、ペアリング画面（PairingScreen）に招待コード/QRの
 上に「ペアになるとできること」カード（`lib/widgets/pairing_preview_cards.dart`）を追加し、
