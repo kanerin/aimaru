@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-17 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-18 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **10件すべて通過**（エミュレータ上） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **38件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **213件すべて通過**（ローカルでFlutter SDKにより実行確認済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **219件すべて通過**（CIで確認） |
 
 テストの内訳:
 
@@ -29,12 +29,12 @@ test/utils/recurring_events_test.dart            12   毎年繰り返しの展�
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
-test/services/expense_service_test.dart           3   割り勘・立て替え記録のCRUD・並び順
+test/services/expense_service_test.dart           4   割り勘・立て替え記録・精算記録のCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
-test/utils/expense_balance_test.dart              6   割り勘の精算額計算
+test/utils/expense_balance_test.dart              8   割り勘の精算額計算・精算記録の相殺
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
-test/screens/expenses_screen_test.dart            4   割り勘画面のロード・エラー・表示状態・精算額表示
+test/screens/expenses_screen_test.dart            7   割り勘画面のロード・エラー・表示状態・精算額表示・精算する操作
 test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
 test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
@@ -73,6 +73,7 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 | 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
 | 6 | **リリース署名鍵の SHA-1 が Firebase に未登録** | REQ-029 / TC-096 | リリースビルドで Google ログインが失敗する |
+| 7 | **リポジトリで "Allow auto-merge" が有効になっていない** | CLAUDE.md「自動化の構成」 | `gh pr merge --auto` が `GraphQL: Auto merge is not allowed for this repository` で失敗する（本PR #21 で実際に発生）。CIが必須チェックとして設定されていても、auto-mergeが有効でなければ`propose-feature.yml`が作るPRは無人でマージされず、`develop`へも`release-stg`へも昇格しない。**Settings → General → Pull Requests → Allow auto-merge の有効化が要り、リポジトリ管理者権限が必要でエージェントからは実施できない**。PR #16・#20・#21 がCI green・コンフリクト無し（`mergeStateStatus: BLOCKED`）のまま止まっている実例 |
 
 ### P1 — 次に効くもの
 
@@ -84,6 +85,13 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 TimeTreeにはカレンダー機能しか無く、費用共有は他のカップル/夫婦アプリで比較される
 要素のため差別化になる。2人のカップル前提で、支払い合計の差額の半分を精算額として自動計算する
 （`lib/utils/expense_balance.dart`）。
+
+割り勘画面に「精算する」操作を追加した（本PR）。Splitwiseなど専業の割り勘アプリは精算を記録して
+残高をリセットできるが、従来のAIMARUは未精算額を都度計算するだけで記録する手段が無く、記録が
+増え続けると見通しが悪くなっていた。精算は`ExpenseItem`に`isSettlement`フラグを立てて既存の
+`expenses`コレクションにそのまま記録する形にし、新しいFirestoreコレクションやルール変更は
+増やしていない。精算1件はpaidBy側の寄与を2倍で計算することで、以降の`calculateBalance`が
+0円に戻る（`lib/utils/expense_balance.dart`）。履歴は削除せず「精算」ラベルで一覧に残す。
 
 旧16（去年の今日の振り返り）は、思い出画面（MemoriesScreen）に「n年前の今日」セクションとして
 実装済みのため表から外した（本PR）。サービス終了したPairyが持っていた「思い出を振り返る」体験の
@@ -115,6 +123,7 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 エージェントが着手しても完了できないもの。ここが詰まると後続が止まる。
 
 - [ ] **CI を必須チェックに設定**（Settings → Branches → develop）— 課題1
+- [ ] **"Allow auto-merge" を有効化**（Settings → General → Pull Requests）— 課題7。これが無いと`propose-feature.yml`が作るPRが無人でマージされない（PR #16・#20・#21 が滞留中）
 - [ ] リリース署名鍵の SHA-1 を Firebase Console に登録 — 課題6
 - [ ] Play Console でデベロッパーアカウント作成、手動で1度 AAB をアップロード — REQ-029
 - [ ] `PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットの登録 — REQ-029

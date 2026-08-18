@@ -38,6 +38,22 @@ void main() {
     });
   });
 
+  group('精算の記録', () {
+    test('isSettlementがtrueで、指定した相手・金額で作られる', () async {
+      final created = await service.recordSettlement(coupleId, partnerUid, 2000);
+
+      expect(created.isSettlement, isTrue);
+      expect(created.paidBy, partnerUid);
+      expect(created.amount, 2000);
+      expect(created.title, '精算');
+
+      final data = (await expensesRef().doc(created.id).get()).data()!;
+      expect(data['isSettlement'], isTrue);
+      expect(data['paidBy'], partnerUid);
+      expect(data['amount'], 2000);
+    });
+  });
+
   group('削除', () {
     test('削除するとドキュメントが消える', () async {
       final created = await service.addExpense(coupleId, '映画代', 3600, meUid);
