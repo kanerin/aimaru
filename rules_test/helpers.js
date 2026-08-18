@@ -115,3 +115,15 @@ export async function seedExpense(testEnv, expenseId = "expense-1") {
     });
   });
 }
+
+export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/questionAnswers/${dateKey}_${uid}`).set({
+      coupleId: COUPLE_ID,
+      dateKey,
+      uid,
+      text: "水族館に行きたい",
+      createdAt: new Date("2026-08-17T10:00:00"),
+    });
+  });
+}

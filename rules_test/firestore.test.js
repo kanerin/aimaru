@@ -13,6 +13,7 @@ import {
   seedCouple,
   seedEvent,
   seedExpense,
+  seedQuestionAnswer,
   seedTodo,
 } from "./helpers.js";
 
@@ -204,6 +205,72 @@ describe("expenses — メンバー境界", () => {
   it("メンバー以外は立て替え記録を一覧できない", async () => {
     await assertFails(
       asC().collection(`couples/${COUPLE_ID}/expenses`).orderBy("createdAt", "desc").get(),
+    );
+  });
+});
+
+describe("questionAnswers — メンバー境界・自分の回答のみ書き込み", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedQuestionAnswer(testEnv, { uid: USER_A });
+  });
+
+  it("メンバーは回答を読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).get());
+  });
+
+  it("メンバー以外は回答を読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).get());
+  });
+
+  it("自分の回答は作成できる", async () => {
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_B}`).set({
+        coupleId: COUPLE_ID,
+        dateKey: "2026-08-17",
+        uid: USER_B,
+        text: "動物園に行きたい",
+        createdAt: new Date("2026-08-17T11:00:00"),
+      }),
+    );
+  });
+
+  it("相手のuidを騙って回答を作成できない", async () => {
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).set({
+        coupleId: COUPLE_ID,
+        dateKey: "2026-08-17",
+        uid: USER_A,
+        text: "なりすまし",
+        createdAt: new Date("2026-08-17T11:00:00"),
+      }),
+    );
+  });
+
+  it("回答は更新・削除できない（相手の回答を見た後の書き換えを防ぐ）", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).update({ text: "書き換え" }),
+    );
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).delete());
+  });
+
+  it("メンバー以外は回答を作成できない", async () => {
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_C}`).set({
+        coupleId: COUPLE_ID,
+        dateKey: "2026-08-17",
+        uid: USER_C,
+        text: "割り込み",
+        createdAt: new Date("2026-08-17T11:00:00"),
+      }),
+    );
+  });
+
+  it("未認証は回答に一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).get());
+    await assertFails(
+      asAnon().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_C}`).set({ uid: USER_C }),
     );
   });
 });

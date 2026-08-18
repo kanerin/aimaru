@@ -13,6 +13,7 @@ import '../widgets/anniversary_card.dart';
 import '../widgets/days_off_card.dart';
 import 'expenses_screen.dart';
 import 'ics_import_screen.dart';
+import 'questions_screen.dart';
 import 'trash_screen.dart';
 
 const _reminderOptions = <int, String>{
@@ -359,6 +360,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ],
+
+          const SizedBox(height: 28),
+          const _SectionLabel('お互いを知る'),
+          _NavigationRow(
+            title: 'ふたりの質問',
+            subtitle: '毎日1つの質問に2人で回答します。2人とも答えるまで相手の回答は見えません',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => QuestionsScreen(
+                coupleId: widget.coupleId,
+                memberIds: _couple?.memberIds ?? const [],
+                partnerName: _partnerName ?? 'パートナー',
+              )),
+            ),
+          ),
 
           const SizedBox(height: 28),
           const _SectionLabel('お金の記録'),
