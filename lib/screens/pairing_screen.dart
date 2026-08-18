@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../services/couple_service.dart';
 import '../../utils/app_theme.dart';
 import '../services/deep_link_service.dart';
+import '../widgets/pairing_preview_cards.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -101,6 +102,21 @@ class _PairingScreenState extends State<PairingScreen>
       appBar: AppBar(title: const Text('2人をつなぐ')),
       body: Column(
         children: [
+          const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'ペアになるとできること',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecond,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const PairingPreviewCards(),
+
           // ── タブ ──
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
