@@ -41,24 +41,19 @@ flutterfire configure
 
 ## 3. Gemini APIキー取得
 
+**2026-08時点、キーはアプリのビルドには埋め込まない。** 以前は `--dart-define=GEMINI_API_KEY` でクライアントに直接渡していたが、これはソースへの直書きを防ぐだけでAPKからは抽出できてしまうため（`docs/open-issues.md` 課題2）、Cloud Functionsの`onCall`（`functions/src/index.ts` の `askGemini`）へ移した。`lib/services/gemini_service.dart` はFirebase Callable Functions経由で呼ぶだけになり、`String.fromEnvironment('GEMINI_API_KEY')` はもう読まない。
+
 1. https://aistudio.google.com/apikey → 「APIキーを作成」
 2. **重要**: 課金（Blazeプラン）が有効なGoogle Cloudプロジェクト（Firebase用のプロジェクトなど）を選ぶと、そのプロジェクトのGemini APIは無料枠が使えず「最初のトークンから課金」扱いになる（前払いクレジット¥0だと`prepayment credits are depleted`エラー）。無料枠を使うなら、プルダウンから「＋ プロジェクトを作成」で**課金が紐付いていない新規プロジェクト**を作り、そちらでキーを発行する
-3. 無料枠の対象は Flash / Flash-Lite系のみ（Proモデルは対象外、2026年4月時点）。`gemini_service.dart` は `gemini-flash-lite-latest` を使用（`gemini-flash-latest`は無料枠が1日20リクエストしかなく枯渇しやすいため避けている。クォータ切れの場合はAPIが`429 RESOURCE_EXHAUSTED`を返す）
-4. **キーはソースコードに書かず、ローカルの `.env.local` に置く**（GitHubにpushされないよう`.gitignore`済み）
+3. 無料枠の対象は Flash / Flash-Lite系のみ（Proモデルは対象外、2026年4月時点）。`functions/src/gemini_logic.ts` の `GEMINI_MODEL` は `gemini-flash-lite-latest` を使用（`gemini-flash-latest`は無料枠が1日20リクエストしかなく枯渇しやすいため避けている。クォータ切れの場合はAPIが`429 RESOURCE_EXHAUSTED`を返す）
+4. **本番・ステージング**: Secret Managerに登録する（ローカルにキーを置かない）
 
 ```bash
-cp .env.local.example .env.local
-# .env.local を開いて GEMINI_API_KEY=発行したキー を設定
+firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e
 ```
 
-起動・ビルドは通常の `flutter run` / `flutter build apk` の代わりに、キーを読み込む付属スクリプトを使う：
-
-```bash
-./scripts/run_dev.sh                 # flutter run 相当
-./scripts/build_release_apk.sh        # flutter build apk --release 相当
-```
-
-（直接 `flutter run` する場合は `--dart-define=GEMINI_API_KEY=xxx` を手動で付ける。`gemini_service.dart` は `String.fromEnvironment('GEMINI_API_KEY')` でこれを読む）
+5. **ローカルでのCloud Functionsエミュレータ実行**: `functions/.secret.local`（`.gitignore`済み）に `GEMINI_API_KEY=発行したキー` を1行書いておくと、`firebase emulators:start` / `npm run serve` がそれを読む。無くてもエミュレータは起動するが、`askGemini`呼び出しは`failed-precondition`（`AIのAPIキーが設定されていないため利用できません。`）を返す
+6. **Flutter側のローカル開発**: `--dart-define=GEMINI_API_KEY=...` はもう不要。`./scripts/run_dev.sh` / `./scripts/build_release_apk.sh` は当面そのまま残しているが、渡された値をDart側は読まないため実質無害。AIチャットを試すには、実機/エミュレータから届く先が「本番のCloud Functions」か「ローカルのFunctionsエミュレータ（`FirebaseFunctions.instance.useFunctionsEmulator(...)`を呼ぶよう一時的にコードを変更）」かのどちらかになる
 
 ## 4. Google Calendar API（カレンダー同期）
 
@@ -318,7 +313,7 @@ commit ab34b59
 |---|---|---|
 | `FIREBASE_OPTIONS_DART_BASE64` | `lib/firebase_options.dart` をbase64化したもの（CIで復元） | 設定済み |
 | `GOOGLE_SERVICES_JSON_BASE64` | `android/app/google-services.json` をbase64化したもの（CIで復元） | 設定済み |
-| `GEMINI_API_KEY` | ビルド時にGemini APIキーを埋め込む | 設定済み |
+| `GEMINI_API_KEY` | ビルドの`--dart-define`に渡すレガシー用途（Dart側はもう読まない。実体はCloud FunctionsのSecret Manager、`firebase functions:secrets:set`で別途登録） | 設定済み |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | App Distributionへのアップロード認証（サービスアカウントJSON） | 設定済み |
 | `FIREBASE_ANDROID_APP_ID` | 対象のFirebase Androidアプリ | 設定済み |
 | `FIREBASE_PROJECT_ID` | Firebaseプロジェクト | 設定済み |

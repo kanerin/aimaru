@@ -10,16 +10,17 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
-| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **11件すべて通過**（エミュレータ上、CIで確認） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **61件すべて通過**（ローカルで確認、CIでも要確認） |
+| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **244件すべて通過**（CIで確認） |
+| セキュリティルール | `cd rules_test && npm test` | **51件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **254件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
 ```
 test/services/gemini_reply_parser_test.dart      17   AI応答パース・失敗分類
+test/services/gemini_service_test.dart           12   askGemini呼び出し(coupleId・contents)とエラー分類
 test/utils/free_time_finder_test.dart            15   2人の空き時間検出・提案
 test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
 test/services/event_service_test.dart            18   予定CRUD・終日・期間クエリ・ゴミ箱
@@ -47,7 +48,9 @@ functions/src/reminder_logic.test.ts             22   リマインダー判定�
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
 functions/src/reminders.integration.test.ts      10   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外・先読み幅の絞り込み含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
-rules_test/firestore.test.js                     39   Firestoreルールのメンバー境界（todos・expenses・questionAnswers含む）
+functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
+functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
+rules_test/firestore.test.js                     45   Firestoreルールのメンバー境界（todos・expenses・questionAnswers・aiCallCount保護含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -83,9 +86,21 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 このフィンガープリント登録より古い、OAuth同意画面の設定、等）を疑うこと。実機での再現確認は
 まだ行っていないので、失敗が実際に起きているかどうかも含めて要確認。
 
+課題2（Gemini APIキーがビルド成果物に埋まる）・課題14（AI呼び出しのレート制限が無い）は
+まとめて着手した（本PR）。Cloud Functionsに`askGemini`（`onCall`）を新設し、キーはSecret
+Manager（`firebase functions:secrets:set GEMINI_API_KEY`）に置くようにした。`lib/services/gemini_service.dart`
+は`FirebaseFunctions.instance.httpsCallable`を呼ぶだけになり、`String.fromEnvironment('GEMINI_API_KEY')`
+はもう読まない。呼び出しは認証済み・該当カップルのメンバーであることを検証し（非メンバーからの
+呼び出しを拒否）、1日あたりの呼び出し回数を`users/{uid}`の`aiCallDate`/`aiCallCount`で制限する
+（`AI_DAILY_CALL_LIMIT`、`functions/src/gemini_logic.ts`に定数化、既定50回/日）。このカウント
+フィールドは`firestore.rules`でクライアントからの直接書き換えを禁止した（許してしまうと自分で
+0にリセットしてレート制限を無効化できてしまうため）。ビルドの`--dart-define=GEMINI_API_KEY`は
+Dart側がもう読まないため実質無害だが、`release-stg.yml`/`release.yml`/`scripts/*.sh`からの削除
+（元のフェーズ4）はまだ行っていない。`parseGeminiReply`・応答スキーマ・`describeGeminiFailure`は
+一切変更していない（`test/services/gemini_reply_parser_test.dart`の17件は無改変のまま通過）。
+
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|
-| 2 | **Gemini API キーがビルド成果物に埋まる** | REQ-026 / FEAT-046 / TC-087 | `--dart-define` はソースへの直書きを防ぐだけで、APK からは抽出できる。Cloud Functions の `onCall` へ移して Secret Manager に置く必要がある |
 | 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する |
 | 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
@@ -144,7 +159,6 @@ narrowingしていない。`date` フィールドは予定の**作成時点の�
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
-| 14 | **AI 呼び出しのレート制限が無い** | REQ-018 / FEAT-046 | 2番（APIキー）と同時に実施するのが合理的 |
 
 設定画面に「次に会う日」カード（`NextMeetingCard`）を追加した（本PR）。遠距離・多忙で
 頻繁に会えないカップル向けのトレンド（次に会える日までのカウントダウン）に対応する、

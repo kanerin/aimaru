@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
 
@@ -30,7 +30,7 @@ const kGeminiNoApiKeyMessage    = 'AIのAPIキーが設定されていないた�
 const kGeminiUnknownErrorMessage = 'AIとの通信でエラーが発生しました。もう一度試してください。';
 
 // ── AIの生の応答文字列を GeminiReply へ変換する ─────────
-// GenerativeModel に依存しない純粋関数なので単体テストできる。
+// Cloud Functions呼び出しに依存しない純粋関数なので単体テストできる。
 // どの失敗経路でも例外を外へ出さず、予定は決して作らない。
 GeminiReply parseGeminiReply(String rawResponse) {
   try {
@@ -83,27 +83,45 @@ typeの使い分け: date=デートや外出、anniversary=記念日、celebrity
 recurringは「毎年繰り返す」場合にtrue（誕生日・記念日など）
 ''';
 
+// ── Cloud Functions（askGemini）へ渡す contents/parts の組み立て ─────
+// Gemini APIのcontents/parts JSON形式をそのまま踏襲している
+// （functions/src/gemini_logic.ts の GeminiContent/GeminiPart と対応）。
+Map<String, dynamic> _textPart(String text) => {'text': text};
+
+Map<String, dynamic> _inlineDataPart(String mimeType, String base64Data) => {
+  'inlineData': {'mimeType': mimeType, 'data': base64Data},
+};
+
+Map<String, dynamic> _content(String role, List<Map<String, dynamic>> parts) =>
+    {'role': role, 'parts': parts};
+
+List<Map<String, dynamic>> _historyContents(List<Map<String, String>> history) =>
+    history
+        .map((m) => _content(
+              m['role'] == 'user' ? 'user' : 'model',
+              [_textPart(m['text']!)],
+            ))
+        .toList();
+
 class GeminiService {
-  // ビルド時に --dart-define=GEMINI_API_KEY=xxx で渡す（ソースにキーを書かない）。
-  // 開発時は android/local.properties や ~/.gradle 等ではなく、
-  // 下記のように起動コマンドへ直接渡すか .vscode/launch.json 等に設定する。
-  // 詳細はREADMEの「Gemini APIキー取得」を参照。
-  static const _apiKey = String.fromEnvironment('GEMINI_API_KEY');
+  // どのカップルとしてAIを呼び出すか。Cloud Functions側でこのカップルの
+  // メンバーであることを検証する（招待コードだけ知っている非メンバーからの
+  // 呼び出しや、他カップルへのなりすましを防ぐ）。
+  final String coupleId;
 
-  late final GenerativeModel _model;
+  // 本番はFirebase Callable Functions（askGemini）を呼ぶ。テストからは
+  // 実際のFirebase呼び出しをせずに応答を差し込めるようにしてある。
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> data) _invoke;
 
-  GeminiService() {
-    _model = GenerativeModel(
-      // gemini-flash-latestは無料枠が1日20リクエストしかなく枯渇しやすいため、
-      // より余裕のあるgemini-flash-lite-latestを使う。
-      model:  'gemini-flash-lite-latest',
-      apiKey: _apiKey,
-      // プロンプトで「JSONのみ」と指示しても、モデルは平文や
-      // ```json 囲みで返してくることがある。そうなると parseGeminiReply が
-      // JSONとして読めず「エラーが発生しました」に落ちて会話が成立しない。
-      // APIレベルでJSON出力を強制して、この失敗経路自体を無くす。
-      generationConfig: GenerationConfig(responseMimeType: 'application/json'),
-    );
+  GeminiService({
+    required this.coupleId,
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> data)? invoke,
+  }) : _invoke = invoke ?? _defaultInvoke;
+
+  static Future<Map<String, dynamic>> _defaultInvoke(Map<String, dynamic> data) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('askGemini');
+    final result = await callable.call<Map<String, dynamic>>(data);
+    return Map<String, dynamic>.from(result.data as Map);
   }
 
   // ── ユーザーの入力に対して、予定候補 or 通常の返答を1回のAI呼び出しで返す ──
@@ -116,8 +134,6 @@ class GeminiService {
     List<Map<String, String>> history, {
     String eventsContext = 'なし',
   }) async {
-    if (_apiKey.isEmpty) return const GeminiReply.text(kGeminiNoApiKeyMessage);
-
     final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
 
     final systemPrompt = '''
@@ -138,20 +154,18 @@ $_kResponseFormatInstructions
 ''';
 
     final contents = [
-      Content.text(systemPrompt),
-      ...history.map((m) => m['role'] == 'user'
-          ? Content.text(m['text']!)
-          : Content.model([TextPart(m['text']!)])),
-      Content.text(userMessage),
+      _content('user', [_textPart(systemPrompt)]),
+      ..._historyContents(history),
+      _content('user', [_textPart(userMessage)]),
     ];
 
     try {
-      final response = await _model.generateContent(contents);
-      return parseGeminiReply(response.text ?? '');
+      final data = await _invoke({'coupleId': coupleId, 'contents': contents});
+      return parseGeminiReply(data['text'] as String? ?? '');
     } catch (e) {
       // 「エラーが発生しました」だけだと、上限切れなのか通信断なのか
-      // APIキーの問題なのかが画面から一切判別できないので切り分ける
-      return GeminiReply.text(describeGeminiFailure(e));
+      // 認証の問題なのかが画面から一切判別できないので切り分ける
+      return GeminiReply.text(describeCallableFailure(e));
     }
   }
 
@@ -165,8 +179,6 @@ $_kResponseFormatInstructions
     List<Map<String, String>> history = const [],
     String eventsContext = 'なし',
   }) async {
-    if (_apiKey.isEmpty) return const GeminiReply.text(kGeminiNoApiKeyMessage);
-
     final today = DateFormat('yyyy-MM-dd(E)', 'ja').format(DateTime.now());
 
     final systemPrompt = '''
@@ -187,27 +199,52 @@ $_kResponseFormatInstructions
 ''';
 
     final contents = [
-      Content.text(systemPrompt),
-      ...history.map((m) => m['role'] == 'user'
-          ? Content.text(m['text']!)
-          : Content.model([TextPart(m['text']!)])),
-      Content.multi([
-        TextPart('この画像から予定を抽出してください。'),
-        DataPart(mimeType, imageBytes),
+      _content('user', [_textPart(systemPrompt)]),
+      ..._historyContents(history),
+      _content('user', [
+        _textPart('この画像から予定を抽出してください。'),
+        _inlineDataPart(mimeType, base64Encode(imageBytes)),
       ]),
     ];
 
     try {
-      final response = await _model.generateContent(contents);
-      return parseGeminiReply(response.text ?? '');
+      final data = await _invoke({'coupleId': coupleId, 'contents': contents});
+      return parseGeminiReply(data['text'] as String? ?? '');
     } catch (e) {
-      return GeminiReply.text(describeGeminiFailure(e));
+      return GeminiReply.text(describeCallableFailure(e));
     }
   }
 }
 
+// ── askGemini呼び出しが例外で落ちた理由を、利用者が次に取れる行動へ翻訳する ──
+// サーバー側（functions/src/index.ts の askGemini）が投げるHttpsErrorの
+// codeとここでの分岐を対応させている。FirebaseFunctionsException以外
+// （Firebase未初期化など、Functions呼び出しにすら到達しない例外）は
+// describeGeminiFailure の文字列判定にフォールバックする。
+String describeCallableFailure(Object error) {
+  if (error is FirebaseFunctionsException) {
+    switch (error.code) {
+      case 'resource-exhausted':
+        return kGeminiQuotaMessage;
+      // サーバー側にGemini APIキーがまだ設定されていない場合。
+      // 以前の「クライアント側のAPIキー未設定」と意味的に対応する。
+      case 'failed-precondition':
+        return kGeminiNoApiKeyMessage;
+      case 'unauthenticated':
+      case 'permission-denied':
+        return kGeminiApiKeyMessage;
+      case 'unavailable':
+      case 'deadline-exceeded':
+        return kGeminiNetworkMessage;
+    }
+  }
+  return describeGeminiFailure(error);
+}
+
 // ── 呼び出しが例外で落ちた理由を、利用者が次に取れる行動へ翻訳する ──
-// 例外の型は google_generative_ai の実装に依存するため、文字列で判定する。
+// FirebaseFunctionsException以外の一般的な例外（Firebase未初期化、
+// ソケットエラーなど）を文字列で判定する。describeCallableFailure から
+// フォールバックとして使われる。
 String describeGeminiFailure(Object error) {
   final s = error.toString().toLowerCase();
   if (s.contains('429') || s.contains('quota') || s.contains('resource_exhausted') ||

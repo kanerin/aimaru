@@ -60,7 +60,20 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
+      allow delete: if request.auth.uid == userId;
+      // aiCallDate/aiCallCountはaskGemini（Cloud Functions、Admin SDK経由で
+      // ここを迂回する）が1日あたりのAI呼び出し回数を数えるための場所。
+      // ここを他フィールドと同列に書き込み自由にすると、クライアントが
+      // 直接自分のカウントを0へ書き戻してレート制限を無効化できてしまう。
+      // set(..., {merge:true})では変更していない既存フィールドも
+      // request.resource.dataに含まれてくるため、変更されたキーだけを見る
+      // diff().affectedKeys()で判定する（keys()だけで見ると、一度でも
+      // これらのフィールドが立った後は無関係な設定変更まで拒否されてしまう）。
+      allow create, update: if request.auth.uid == userId &&
+        (resource == null
+          ? !request.resource.data.keys().hasAny(['aiCallDate', 'aiCallCount'])
+          : !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['aiCallDate', 'aiCallCount']));
     }
   }
 }
