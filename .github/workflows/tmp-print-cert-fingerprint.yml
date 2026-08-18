@@ -1,0 +1,25 @@
+name: (temp) Print release cert fingerprint
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tmp-print-cert-fingerprint.yml"
+
+jobs:
+  print-fingerprint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decode release keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+
+      - name: Print SHA-1 / SHA-256 fingerprint
+        run: |
+          keytool -list -v \
+            -keystore release.keystore \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            | grep -E "SHA1:|SHA256:"
+
+      - name: Remove keystore
+        if: always()
+        run: rm -f release.keystore
