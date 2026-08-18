@@ -19,7 +19,10 @@ ExpenseBalance calculateBalance(List<ExpenseItem> expenses, List<String> memberI
 
   final paidTotals = <String, int>{};
   for (final expense in expenses) {
-    paidTotals[expense.paidBy] = (paidTotals[expense.paidBy] ?? 0) + expense.amount;
+    // 精算記録は「立て替えの半額を受け取る」対象ではなく全額の直接移動なので、
+    // 通常の立て替えと同じ重みで足すと半分しか相殺されない。2倍で数える。
+    final contribution = expense.isSettlement ? expense.amount * 2 : expense.amount;
+    paidTotals[expense.paidBy] = (paidTotals[expense.paidBy] ?? 0) + contribution;
   }
 
   final a = memberIds[0];
