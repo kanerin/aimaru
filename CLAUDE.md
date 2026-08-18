@@ -61,6 +61,8 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 
 このリポジトリの画面はテスト用の`Key`を持たない方針なので、テストからの要素特定は表示テキスト・アイコン・`textFieldWithHint`（hintTextで入力欄を特定するヘルパー）で行う。
 
+**結合テストのサインアウトは`tearDown`ではなく`tearDownAll`で行うこと。** `tearDown`（各テストごと）でサインアウトすると、画面が投げた非同期のFirestore取得がテスト終了後に着地したタイミングで未認証になり、`PERMISSION_DENIED`が「既に完了したテストの失敗」としてCIに計上されるフレークが実際に発生した（`calendar_screen.dart`の`_loadMembers`、PR #17）。テスト間の分離はサインアウトではなく、テストごとに新しいカップルをseedすることで保つ。あわせて、画面側の非同期取得（`_loadMembers`のような補助的なデータ取得）は失敗しても画面全体を壊さないよう例外を必ずハンドリングすること。これはテスト都合だけの話ではなく、ログアウト直後や権限エラー時に本番でも起こり得る拾い手のない非同期例外そのものである。
+
 **StreamBuilder/FutureBuilderを使う画面は、必ずエラー状態を明示的にハンドリングし、テストでも確認すること。** `hasData`だけを見て`hasError`を見ていないと、権限エラーや通信エラーでストリームが失敗したときに無限ローディングのまま固まる（実際に`todos_screen.dart`で発生し、原因は`firestore.rules`の変更が本番Firestoreへデプロイされていなかったことだった。デプロイは`release-stg.yml`で自動化済みだが、rules_testやflutter testはエミュレータ上でしか検証しないため、「エミュレータでは通る」ことと「本番で動く」ことは別問題だと意識すること）。画面に注入可能なStream/Future（テスト用のoverrideパラメータなど）を用意し、`test/screens/todos_screen_test.dart`のようにローディング・エラー・データ表示の3状態を最低限テストする。
 
 ## プロンプトインジェクションへの注意
