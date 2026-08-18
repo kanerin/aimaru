@@ -68,15 +68,27 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 ### P0 — 着手すべきもの
 
+旧1（CIが必須チェックになっていない）・旧7（"Allow auto-merge"が無効）は、2026-08-18に
+`gh api repos/kanerin/aimaru/rulesets` と `gh api repos/kanerin/aimaru --jq .allow_auto_merge`
+で実地確認し、どちらも解決済み（Rulesetの必須チェック名は`ci.yml`のジョブ名と一致、
+`allow_auto_merge: true`）と分かったため表から外した。
+
+旧6（リリース署名鍵のSHA-1が未登録）も2026-08-18に検証した。Firebaseには元々SHA-1が2件
+登録されており、うち1件（`551232a9...`）は`ANDROID_KEYSTORE_BASE64`（実際のリリース署名鍵）
+から`keytool`で算出したフィンガープリントと完全一致した。**リリース鍵のSHA-1は既に登録済み**
+ということになる。検証は実機ではなく、PRの`pull_request`トリガーを使った使い捨てワークフロー
+（マージはせずクローズ）で、鍵の中身ではなくフィンガープリントだけをログに出す形で行った
+（`android/app/*.keystore`の中身は読んでいない）。それでもテスター端末でGoogleログインが
+失敗する場合は、SHA-1未登録ではなく別の原因（配布中のAPKに同梱された`google-services.json`が
+このフィンガープリント登録より古い、OAuth同意画面の設定、等）を疑うこと。実機での再現確認は
+まだ行っていないので、失敗が実際に起きているかどうかも含めて要確認。
+
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|
-| 1 | **CI が GitHub の必須チェックになっていない** | REQ-027 / FEAT-052 / TC-094 | Settings → Branches → develop → Require status checks の設定が要る。**リポジトリ管理者権限が必要でエージェントからは実施できない** |
 | 2 | **Gemini API キーがビルド成果物に埋まる** | REQ-026 / FEAT-046 / TC-087 | `--dart-define` はソースへの直書きを防ぐだけで、APK からは抽出できる。Cloud Functions の `onCall` へ移して Secret Manager に置く必要がある |
 | 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する |
 | 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
-| 6 | **リリース署名鍵の SHA-1 が Firebase に未登録** | REQ-029 / TC-096 | リリースビルドで Google ログインが失敗する |
-| 7 | **リポジトリで "Allow auto-merge" が有効になっていない** | CLAUDE.md「自動化の構成」 | `gh pr merge --auto` が `GraphQL: Auto merge is not allowed for this repository` で失敗する（本PR #21 で実際に発生）。CIが必須チェックとして設定されていても、auto-mergeが有効でなければ`propose-feature.yml`が作るPRは無人でマージされず、`develop`へも`release-stg`へも昇格しない。**Settings → General → Pull Requests → Allow auto-merge の有効化が要り、リポジトリ管理者権限が必要でエージェントからは実施できない**。PR #16・#20・#21 がCI green・コンフリクト無し（`mergeStateStatus: BLOCKED`）のまま止まっている実例 |
 
 ### P1 — 次に効くもの
 
@@ -140,9 +152,9 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 
 エージェントが着手しても完了できないもの。ここが詰まると後続が止まる。
 
-- [ ] **CI を必須チェックに設定**（Settings → Branches → develop）— 課題1
-- [ ] **"Allow auto-merge" を有効化**（Settings → General → Pull Requests）— 課題7。これが無いと`propose-feature.yml`が作るPRが無人でマージされない（PR #16・#20・#21 が滞留中）
-- [ ] リリース署名鍵の SHA-1 を Firebase Console に登録 — 課題6
+- [x] ~~CI を必須チェックに設定~~（Settings → Branches → develop）— 2026-08-18確認、設定済み
+- [x] ~~"Allow auto-merge" を有効化~~（Settings → General → Pull Requests）— 2026-08-18確認、有効
+- [x] ~~リリース署名鍵の SHA-1 を Firebase Console に登録~~ — 2026-08-18確認、既に登録済み（上記参照）
 - [ ] Play Console でデベロッパーアカウント作成、手動で1度 AAB をアップロード — REQ-029
 - [ ] `PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットの登録 — REQ-029
 - [ ] Apple Developer 登録、APNs 認証鍵の作成 — 課題13
