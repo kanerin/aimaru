@@ -72,6 +72,7 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 | 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
 | 6 | **リリース署名鍵の SHA-1 が Firebase に未登録** | REQ-029 / TC-096 | リリースビルドで Google ログインが失敗する |
+| 7 | **リポジトリで "Allow auto-merge" が有効になっていない** | CLAUDE.md「自動化の構成」 | `gh pr merge --auto` が `GraphQL: Auto merge is not allowed for this repository` で失敗する（本PR #21 で実際に発生）。CIが必須チェックとして設定されていても、auto-mergeが有効でなければ`propose-feature.yml`が作るPRは無人でマージされず、`develop`へも`release-stg`へも昇格しない。**Settings → General → Pull Requests → Allow auto-merge の有効化が要り、リポジトリ管理者権限が必要でエージェントからは実施できない**。PR #16・#20・#21 がCI green・コンフリクト無し（`mergeStateStatus: BLOCKED`）のまま止まっている実例 |
 
 ### P1 — 次に効くもの
 
@@ -115,6 +116,7 @@ TimeTreeにはカレンダー機能しか無く、費用共有は他のカップ
 エージェントが着手しても完了できないもの。ここが詰まると後続が止まる。
 
 - [ ] **CI を必須チェックに設定**（Settings → Branches → develop）— 課題1
+- [ ] **"Allow auto-merge" を有効化**（Settings → General → Pull Requests）— 課題7。これが無いと`propose-feature.yml`が作るPRが無人でマージされない（PR #16・#20・#21 が滞留中）
 - [ ] リリース署名鍵の SHA-1 を Firebase Console に登録 — 課題6
 - [ ] Play Console でデベロッパーアカウント作成、手動で1度 AAB をアップロード — REQ-029
 - [ ] `PLAY_STORE_SERVICE_ACCOUNT_JSON` シークレットの登録 — REQ-029
