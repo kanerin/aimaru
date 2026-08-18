@@ -257,6 +257,15 @@ Rulesets で設定する場合:
 > 検索窓には「直近で実行実績のあるチェック」しか候補が出ない。
 > 名前が出てこない場合は、一度PRを作ってCIを走らせてから設定する。
 
+**登録名は上の表（＝`ci.yml`の`name:`）と完全に一致させること。** 手で打ち込むなどして実在しない名前を
+登録すると、そのチェックは永久に「未到達」のままになり、CIが4つとも緑でも
+`Required status check "..." is expected.` で一切マージできなくなる（`Cloud Functions (typecheck & test)` と
+登録して、実物の `Cloud Functions (typecheck, unit & integration)` と食い違った実例がある）。
+
+あわせて **Settings → General → Pull Requests → `Allow auto-merge` を有効にする**こと。
+これが無効だと `propose-feature.yml` の `gh pr merge --auto` が
+`GraphQL: Auto merge is not allowed for this repository` で失敗し、CIが緑でもPRが溜まり続ける。
+
 `Require linear history` も併せて入れておくとよい。`promote-to-stg.yml` が
 `release-stg` へ `--ff-only` で昇格するため、`develop` が直線である前提と合う。
 

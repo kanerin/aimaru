@@ -33,7 +33,9 @@ AIエージェント（Claude Code、GitHub Actions上の定期実行エージ�
 
 `release-prd` への直接コミットは禁止。`release-stg`からのfast-forward昇格（本番公開）を経由し、必ず人間が判断すること。
 
-`develop` / `release-stg` への直接コミットは許可する。ユーザーが対話的にClaude Codeへ依頼した変更を直接反映する場合や、`promote-to-stg.yml`が`develop`→`release-stg`へfast-forward昇格する場合はこれに当たる。ただし通常の実装作業（`propose-feature.yml`の自動実装を含む）は作業ブランチ→`develop`へのPR経由を基本とする（CIによる検証を経るため）。
+`develop` への直接コミット（push）もできない。Rulesetの「Require status checks to pass」はマージだけでなくpushにも効き、チェックを通していないコミットを直接載せようとすると拒否されるため。**ユーザーが対話的にClaude Codeへ依頼した変更であっても、必ず作業ブランチを切って`develop`へのPR経由で反映する**（CIによる検証を経るため）。
+
+`release-stg` への直接pushは、`promote-to-stg.yml`が`develop`から`--ff-only`で昇格するためにのみ行う。人間・エージェントを問わず、それ以外の直接コミットはしない。Rulesetの対象ブランチに`release-stg`を含めるとこの自動昇格のpushまで拒否され、テスター配布が止まるので含めないこと。
 
 ## 禁止操作
 
@@ -77,7 +79,9 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 | `backmerge.yml` | `release-prd`へのpush | `release-prd`→`develop`の戻しマージPRを作成。コンフリクトが無ければ自動マージ、あればClaudeが差分を分析してPRにコメントし、人間の判断を待つ | `contents: write`, `pull-requests: write` |
 | `claude-mention.yml` | Issue/PRコメントで`@claude`メンション（書き込み権限者のみ） | 良い提案Issueを人間が明示的に指示して実装させ、`develop`向けPRを作成する | `contents: write`, `pull-requests: write`, `issues: write` |
 
-`propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。CIをdevelopの必須チェックに設定していない場合、この安全装置が機能しないので必ず設定すること（Rulesetsなら「Require status checks to pass」、classicなら「Require status checks to pass before merging」。詳しい手順はREADMEの「必須チェックの設定」を参照）。
+`propose-feature.yml`が実装した変更は、CIのみを関門としてrelease-stgまで無人で到達する。この安全装置は`develop`のRuleset（「Require status checks to pass」＋リポジトリ設定の「Allow auto-merge」）が揃って初めて機能する。詳しい手順はREADMEの「必須チェックの設定」を参照。
+
+**必須チェックに登録する名前は`ci.yml`のジョブ名と完全に一致させること。** 存在しない名前を登録すると、そのチェックは永久に「未到達」のままになり、CIが全て緑でも一切マージできなくなる（実際に `Cloud Functions (typecheck & test)` と登録され、実物の `Cloud Functions (typecheck, unit & integration)` と食い違ってPRが全てブロックされた）。`ci.yml`の`name:`を変更するときは、Rulesetの登録名も同時に直すこと。
 
 **GITHUB_TOKENによるpushはpushトリガーを起動しない**（GitHub Actionsの無限ループ防止仕様）。`promote-to-stg.yml`は`GITHUB_TOKEN`で`release-stg`へpushするため、`release-stg.yml`（テスター配布、`push: branches: [release-stg]`）は自動発火せず、`promote-to-stg.yml`側から`workflow_dispatch`で明示的に起動している。`release-stg`へのpush起点のワークフローを新設する場合はこの制約を踏まえること。
 
