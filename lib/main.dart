@@ -14,7 +14,6 @@ import 'screens/pairing_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/memories_screen.dart';
 import 'screens/todos_screen.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
@@ -159,9 +158,7 @@ class _HomeShellState extends State<_HomeShell> {
       AiChatScreen(coupleId: _coupleId!),
       // ③ カップルチャット
       ChatScreen(coupleId: _coupleId!),
-      // ④ 思い出
-      MemoriesScreen(coupleId: _coupleId!),
-      // ⑤ やりたいことリスト
+      // ④ やりたいことリスト
       TodosScreen(coupleId: _coupleId!),
     ];
 
@@ -180,7 +177,6 @@ class _HomeShellState extends State<_HomeShell> {
           NavigationDestination(icon: Text('🗓', style: TextStyle(fontSize: 20)), label: 'カレンダー'),
           NavigationDestination(icon: Text('✨', style: TextStyle(fontSize: 20)), label: 'AI'),
           NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
-          NavigationDestination(icon: Text('📸', style: TextStyle(fontSize: 20)), label: '思い出'),
           NavigationDestination(icon: Text('📝', style: TextStyle(fontSize: 20)), label: 'やりたい'),
         ],
       ),

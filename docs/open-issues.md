@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **49件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **255件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **245件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -33,8 +33,6 @@ test/services/todo_service_test.dart              5   共有TODOのCRUD・並び
 test/services/theme_controller_test.dart          4   テーマ
 test/screens/todos_screen_test.dart               6   やりたいことリストのロード・エラー・表示状態・カレンダー登録への遷移・削除・完了切替
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
-test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
-test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
 test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
 test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
 test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
@@ -136,10 +134,10 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 今後読み書きできない（データ自体の削除は行っていない）。
 
 旧16（去年の今日の振り返り）は、思い出画面（MemoriesScreen）に「n年前の今日」セクションとして
-実装済みのため表から外した（本PR）。サービス終了したPairyが持っていた「思い出を振り返る」体験の
-穴埋め。新しいFirestoreクエリやCloud Functionsは追加せず、既存の予定購読ストリームから
-クライアント側で抽出するだけにしてある（`lib/utils/on_this_day_finder.dart`）。課題8で指摘した
-`collectionGroup` の新規索引リスクを避けるため、あえてプッシュ通知化はしていない。
+実装していたが、思い出機能自体を2026-08-19にユーザーの判断でメニューごと削除した（本PR）。
+`lib/screens/memories_screen.dart`・`lib/utils/on_this_day_finder.dart`とそれぞれのテスト、
+`lib/main.dart`のボトムナビ5番目のタブを削除している。カレンダー・AI・チャット・
+やりたいことリストの4タブ構成になった。
 
 「ふたりの質問」（QuestionsScreen / QuestionService、`couples/{coupleId}/questionAnswers`）を追加した
 （本PR）。TimeTreeはカレンダー機能主体で「お互いを知る」体験を持たず、サービス終了した

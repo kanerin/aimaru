@@ -28,11 +28,6 @@ class PairingPreviewCards extends StatelessWidget {
       body: '2人だけのチャットルーム',
     ),
     _PreviewItem(
-      emoji: '📸',
-      title: '思い出',
-      body: '写真や「n年前の今日」を振り返れます',
-    ),
-    _PreviewItem(
       emoji: '📝',
       title: 'やりたいことリスト',
       body: '2人でやりたいことを共有して、思いついたらすぐ追加できます',

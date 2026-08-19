@@ -378,7 +378,6 @@ lib/
 │   ├── event_form_screen.dart    # 予定の新規作成・編集フォーム
 │   ├── event_detail_screen.dart  # 予定詳細（写真・メモ・Google同期）
 │   ├── chat_screen.dart          # カップルチャット（AIとは別）
-│   ├── memories_screen.dart      # 思い出アルバム（画像グリッド）
 │   └── settings_screen.dart      # 設定（プロフィール・ログアウト・Googleカレンダー表示設定）
 └── utils/
     └── app_theme.dart            # カラー・テーマ定義
@@ -390,7 +389,7 @@ lib/
 - [x] `EventDetailScreen` — 写真・メモ詳細画面
 - [x] AIデートプラン提案（専用画面は廃止し、AIチャットの自然言語対話に統合）
 - [x] Google Calendar API 同期（push + アプリ内表示、パートラー分もFirestore経由で共有）
-- [x] カップルチャット・思い出アルバム（画像の端末保存対応）
+- [x] カップルチャット（画像の端末保存対応）
 - [x] Firebase Cloud Messaging — 予定登録通知・リマインダー通知（上記「9.」を参照、Cloud Functionsのデプロイが必要）
 - [x] `CalendarScreen` — 全体表示（月グリッドに予定プレビュー）⇔ 選択表示（ドット+下部リスト）のトグル
 - [x] 設定画面（プロフィール・ログアウト・Googleカレンダー表示/同期設定）
