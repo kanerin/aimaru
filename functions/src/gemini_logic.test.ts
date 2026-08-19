@@ -6,6 +6,9 @@ import {
   callGeminiApi,
   classifyGeminiApiError,
   extractGeminiText,
+  GEMINI_MODEL,
+  GeminiCallError,
+  truncateForLog,
   isCoupleMember,
   isOverLimit,
   nextRateLimitState,
@@ -98,6 +101,13 @@ describe("classifyGeminiApiError", () => {
   it("それ以外はinternal", () => {
     assert.equal(classifyGeminiApiError(500), "internal");
     assert.equal(classifyGeminiApiError(400), "internal");
+    assert.equal(classifyGeminiApiError(404), "internal");
+  });
+
+  it("Gemini側の一時障害(502/503/504)はunavailable", () => {
+    assert.equal(classifyGeminiApiError(502), "unavailable");
+    assert.equal(classifyGeminiApiError(503), "unavailable");
+    assert.equal(classifyGeminiApiError(504), "unavailable");
   });
 });
 
@@ -210,19 +220,44 @@ describe("callGeminiApi", () => {
   it("429はresource-exhaustedとして返す", async () => {
     const fetchImpl = fakeFetch(429, { error: "quota" });
     const result = await callGeminiApi([{ role: "user", parts: [{ text: "x" }] }], "dummy-key", fetchImpl);
-    assert.deepEqual(result, { ok: false, kind: "resource-exhausted" });
+    assert.equal(result.ok, false);
+    assert.equal((result as GeminiCallError).kind, "resource-exhausted");
   });
 
   it("403はfailed-preconditionとして返す（サーバー側の鍵の問題）", async () => {
     const fetchImpl = fakeFetch(403, { error: "forbidden" });
     const result = await callGeminiApi([{ role: "user", parts: [{ text: "x" }] }], "bad-key", fetchImpl);
-    assert.deepEqual(result, { ok: false, kind: "failed-precondition" });
+    assert.equal(result.ok, false);
+    assert.equal((result as GeminiCallError).kind, "failed-precondition");
   });
 
   it("200でも本文の形が想定と違えばinternalとして扱う", async () => {
     const fetchImpl = fakeFetch(200, { candidates: [] });
     const result = await callGeminiApi([{ role: "user", parts: [{ text: "x" }] }], "dummy-key", fetchImpl);
-    assert.deepEqual(result, { ok: false, kind: "internal" });
+    assert.equal(result.ok, false);
+    assert.equal((result as GeminiCallError).kind, "internal");
+  });
+
+  // 失敗時にdetailが空だと、本番で「AIとの通信でエラーが発生しました」しか
+  // 残らず原因を追えない。エラー本文とモデル名をログ用に持ち帰ること。
+  it("失敗時はステータス・モデル名・本文をdetailへ残す", async () => {
+    const fetchImpl = fakeFetch(404, { error: { message: "models/xxx is not found" } });
+    const result = await callGeminiApi([{ role: "user", parts: [{ text: "x" }] }], "dummy-key", fetchImpl);
+    assert.equal(result.ok, false);
+    const detail = (result as GeminiCallError).detail;
+    assert.match(detail, /404/);
+    assert.match(detail, new RegExp(GEMINI_MODEL));
+    assert.match(detail, /is not found/);
+  });
+
+  it("fetchが例外を投げた場合はunavailableとして返し、例外を外へ出さない", async () => {
+    const fetchImpl = (async () => {
+      throw new Error("getaddrinfo ENOTFOUND");
+    }) as unknown as typeof fetch;
+    const result = await callGeminiApi([{ role: "user", parts: [{ text: "x" }] }], "dummy-key", fetchImpl);
+    assert.equal(result.ok, false);
+    assert.equal((result as GeminiCallError).kind, "unavailable");
+    assert.match((result as GeminiCallError).detail, /ENOTFOUND/);
   });
 
   it("リクエストにAPIキーとcontentsを渡す", async () => {
@@ -243,5 +278,17 @@ describe("callGeminiApi", () => {
     const parsedBody = JSON.parse(capturedBody!);
     assert.deepEqual(parsedBody.contents, [{ role: "user", parts: [{ text: "こんにちは" }] }]);
     assert.equal(parsedBody.generationConfig.responseMimeType, "application/json");
+  });
+});
+
+describe("truncateForLog", () => {
+  it("短い文字列はそのまま返す", () => {
+    assert.equal(truncateForLog("abc"), "abc");
+  });
+
+  it("上限を超えたら切り詰め、元の長さを添える", () => {
+    const out = truncateForLog("a".repeat(600));
+    assert.ok(out.length < 600);
+    assert.match(out, /600文字/);
   });
 });

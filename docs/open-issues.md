@@ -296,6 +296,8 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 - [ ] Apple Developer 登録、APNs 認証鍵の作成 — 課題13
 - [ ] OAuth 同意画面のテストユーザー登録（上限100人）または審査申請
 - [ ] `android/app/release.keystore` のバックアップ（**紛失するとアプリを二度と更新できない**）
+- [ ] **`GEMINI_API_KEY`をSecret Managerへ登録し、Cloud Functionsを本番へデプロイする** — `firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e` のあと `firebase deploy --only functions --project aimaru-7eb2e`。関数を自動デプロイするステップが`release-stg.yml`に無かったため、`askGemini`（AIチャット）と`submitBugReport`（バグ報告フォーム）が本番に存在せず、どちらも呼び出しに失敗していた。ステップ自体は追加済みだが、下のIAM権限が付くまでは`continue-on-error`で失敗するため手動実行が要る
+- [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロール（Cloud Functions Admin / Service Account User / Secret Manager Secret Accessor など）をGCPコンソールで付与 — 付くまで`release-stg.yml`の`Deploy Cloud Functions`は失敗し続ける（`continue-on-error: true`で配布はブロックしない）
 - [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロール（例: Firebase Rules Admin）をGCPコンソールで付与 — 未付与のため`release-stg.yml`の`Deploy Firestore rules`が403で失敗し続けている（`continue-on-error: true`でビルド・配布はブロックしていない）。それまでは`firestore.rules`変更時に`firebase deploy --only firestore:rules --project aimaru-7eb2e`をローカルから手動実行すること
 
 ## 既知だが直さない判断をしたもの

@@ -326,6 +326,51 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # Cloud Functions（askGemini / submitBugReport / sendReminders など）も
+      # rules・indexesと同じで、リポジトリにコードがあるだけでは本番で動かない。
+      # ここにデプロイ手順が無かったため、AIチャットのAPIキーをサーバー側へ
+      # 移した変更（askGemini）とバグ報告フォーム（submitBugReport）が
+      # 本番へ一度も反映されず、どちらの画面も呼び出しに失敗し続けていた。
+      #
+      # continue-on-error: rules・indexesと同様、サービスアカウントに
+      # Cloud Functionsのデプロイ権限（Cloud Functions Admin / Service Account User /
+      # Secret Manager Secret Accessor など）が揃っていない間は失敗する。
+      # 権限が直るまでテスター配布そのものを止めないため、失敗しても続行し、
+      # 下のステップで必ず可視化する。
+      - name: Deploy Cloud Functions
+        id: deploy_functions
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          firebase deploy --only functions \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --non-interactive
+
+      - name: Warn if Cloud Functions were not deployed
+        if: steps.deploy_functions.outcome != 'success'
+        run: |
+          echo "::warning title=Cloud Functions未デプロイ::Cloud Functionsを本番へ反映できませんでした。AIチャット・バグ報告など関数を呼ぶ画面は本番で失敗します。"
+          {
+            echo "### ⚠️ Cloud Functionsが本番へ反映されていません"
+            echo ""
+            echo "\`firebase deploy --only functions\` が失敗しました。"
+            echo ""
+            echo "**AIチャット（askGemini）・バグ報告フォーム（submitBugReport）・"
+            echo "リマインダー（sendReminders）は、反映されるまで本番で動きません。**"
+            echo "ローカルから手動で反映してください:"
+            echo ""
+            echo '```'
+            echo "firebase deploy --only functions --project aimaru-7eb2e"
+            echo '```'
+            echo ""
+            echo "GEMINI_API_KEYはSecret Managerに登録されている必要があります:"
+            echo ""
+            echo '```'
+            echo "firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
@@ -345,8 +390,7 @@ jobs:
         run: |
           flutter build apk --release \
             --build-name="$APP_VERSION" \
-            --build-number=${{ github.run_number }} \
-            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            --build-number=${{ github.run_number }}
 
       # ノートは複数行になるため --release-notes（1行想定）ではなくファイルで渡す
       - name: Distribute to testers via Firebase App Distribution
