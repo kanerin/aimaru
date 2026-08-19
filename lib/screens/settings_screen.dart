@@ -367,26 +367,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
                     )),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _reminderOptions.entries.map((entry) {
-                        final selected = _reminderMinutesBefore == entry.key;
-                        return ChoiceChip(
-                          label: Text(entry.value, style: TextStyle(
-                            fontSize: 12,
-                            color: selected ? Colors.white : AppColors.textSecond,
-                          )),
-                          selected: selected,
-                          selectedColor: appAccent(context),
-                          backgroundColor: AppColors.navy,
-                          side: const BorderSide(color: AppColors.hairline),
-                          onSelected: (_) async {
-                            setState(() => _reminderMinutesBefore = entry.key);
-                            await _notificationSettingsService.setReminderMinutesBefore(entry.key);
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.navy,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.hairline),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: _reminderMinutesBefore,
+                          isExpanded: true,
+                          dropdownColor: AppColors.navySurface,
+                          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                          items: _reminderOptions.entries
+                              .map((entry) => DropdownMenuItem(
+                                    value: entry.key,
+                                    child: Text(entry.value),
+                                  ))
+                              .toList(),
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            setState(() => _reminderMinutesBefore = value);
+                            await _notificationSettingsService.setReminderMinutesBefore(value);
                           },
-                        );
-                      }).toList(),
+                        ),
+                      ),
                     ),
                   ],
                 ),

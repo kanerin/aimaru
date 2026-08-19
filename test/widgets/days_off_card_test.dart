@@ -39,18 +39,19 @@ void main() {
         ),
       );
 
+  // プルダウン（MenuAnchor）を開き、指定した曜日のCheckboxMenuButtonをタップする
+  Future<void> tapDay(WidgetTester tester, String dayLabel) async {
+    await tester.tap(find.byIcon(Icons.arrow_drop_down));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxMenuButton, '$dayLabel曜日'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('既定では土日が選ばれている', (tester) async {
     await tester.pumpWidget(wrap(_FakeCoupleService()));
 
-    final saturday = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, '土'),
-    );
-    final monday = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, '月'),
-    );
-
-    expect(saturday.selected, isTrue);
-    expect(monday.selected, isFalse);
+    // 閉じた状態のプルダウンには選択中の曜日だけがサマリーとして出る
+    expect(find.text('土・日'), findsOneWidget);
   });
 
   testWidgets('曜日をタップすると休みとして保存される', (tester) async {
@@ -58,8 +59,7 @@ void main() {
     await tester.pumpWidget(wrap(service));
 
     // 平日休みの職種を想定して水曜を追加する
-    await tester.tap(find.widgetWithText(ChoiceChip, '水'));
-    await tester.pumpAndSettle();
+    await tapDay(tester, '水');
 
     expect(service.savedDaysOff, containsAll(<int>[
       DateTime.wednesday,
@@ -73,8 +73,7 @@ void main() {
     final service = _FakeCoupleService();
     await tester.pumpWidget(wrap(service));
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '土'));
-    await tester.pumpAndSettle();
+    await tapDay(tester, '土');
 
     expect(service.savedDaysOff, isNot(contains(DateTime.saturday)));
     expect(service.savedDaysOff, contains(DateTime.sunday));
@@ -93,8 +92,7 @@ void main() {
   testWidgets('保存に失敗したら黙って進まずメッセージを出す', (tester) async {
     await tester.pumpWidget(wrap(_FakeCoupleService(shouldFail: true)));
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '水'));
-    await tester.pumpAndSettle();
+    await tapDay(tester, '水');
 
     expect(find.text('休みの設定を保存できませんでした'), findsOneWidget);
     // 保存中インジケータが出たままにならないこと
