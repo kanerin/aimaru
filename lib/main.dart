@@ -12,6 +12,7 @@ import 'utils/app_theme.dart';
 import 'screens/login_screen.dart';
 import 'screens/pairing_screen.dart';
 import 'screens/ai_chat_screen.dart';
+import 'screens/anniversary_hub_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/todos_screen.dart';
@@ -158,12 +159,14 @@ class _HomeShellState extends State<_HomeShell> {
       AiChatScreen(coupleId: _coupleId!),
       // ③ カップルチャット
       ChatScreen(coupleId: _coupleId!),
-      // ④ やりたいことリスト
+      // ④ 記念日
+      AnniversaryHubScreen(coupleId: _coupleId!),
+      // ⑤ やりたいことリスト
       TodosScreen(coupleId: _coupleId!),
     ];
 
     return Scaffold(
-      // IndexedStackで4画面すべてをマウントしたまま保持する。
+      // IndexedStackで5画面すべてをマウントしたまま保持する。
       // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
       // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
       body: IndexedStack(index: _index, children: pages),
@@ -177,6 +180,7 @@ class _HomeShellState extends State<_HomeShell> {
           NavigationDestination(icon: Text('🗓', style: TextStyle(fontSize: 20)), label: 'カレンダー'),
           NavigationDestination(icon: Text('✨', style: TextStyle(fontSize: 20)), label: 'AI'),
           NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
+          NavigationDestination(icon: Text('💕', style: TextStyle(fontSize: 20)), label: '記念日'),
           NavigationDestination(icon: Text('📝', style: TextStyle(fontSize: 20)), label: 'やりたい'),
         ],
       ),
