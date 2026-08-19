@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **26件**（テストコードのtypecheckは通過。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **47件**（ルール自体はfirestore.rulesとして正しく書けている前提だが、上記と同じ理由でローカル実行未確認。CIのNode 22では要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **263件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **265件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
