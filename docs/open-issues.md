@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **26件すべて通過** |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **11件すべて通過**（エミュレータ上、CIで確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **250件すべて通過**（CIで確認） |
+| セキュリティルール | `cd rules_test && npm test` | **52件すべて通過**（エミュレータ上、CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **257件すべて通過**（CIで確認） |
 
 テストの内訳:
 
@@ -41,13 +41,15 @@ test/utils/daily_question_picker_test.dart        3   デイリー質問の決�
 test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
 test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
+test/services/anniversary_service_test.dart       3   複数記念日のCRUD
+test/screens/anniversaries_screen_test.dart        4   記念日リスト画面のロード・エラー・並び順・空表示
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
 functions/src/reminders.integration.test.ts      10   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外・先読み幅の絞り込み含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
-rules_test/firestore.test.js                     39   Firestoreルールのメンバー境界（todos・expenses・questionAnswers含む）
+rules_test/firestore.test.js                     46   Firestoreルールのメンバー境界（todos・expenses・questionAnswers・anniversaries含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -169,6 +171,16 @@ narrowingしていない。`date` フィールドは予定の**作成時点の�
 で`nextMeetingDate`を持たせているため、新しいFirestoreコレクションやルール変更は増やして
 いない。過ぎた日付は「予定の日を過ぎています」と表示するだけで自動クリアはしない
 （ユーザーが明示的にクリア・更新するまで直近の予定として残す）。
+
+設定画面の「記念日」（付き合い始めた日、`AnniversaryCard`）は1件しか持てなかったが、
+「記念日リスト」（`AnniversariesScreen` / `AnniversaryService`、`couples/{coupleId}/anniversaries`）
+を追加した（本PR）。プロポーズ・入籍・初デートなど、付き合い始めた日以外にも複数の記念日を
+登録し、次の周年までの日数でカウントダウン表示する。TimeTreeにはこの概念自体が無く、
+サービス終了したPairyの移行先として比較されるBetween・Twinest等が持つ複数記念日管理に
+近い差別化要素（2026年8月時点の競合調査）。表示ロジックは既存の`lib/utils/anniversary_calculator.dart`
+の`summarizeAnniversary`をそのまま再利用しており、新しい計算式は増やしていない。
+Firestoreのクエリは絞り込み無しの単純な購読（`snapshots()`）で、並び替え（次の記念日が近い順）は
+クライアント側で行うため、課題8・課題3フェーズ2で問題になった新しい複合索引は要らない。
 
 旧17（ペア未成立時の体験プレビュー）は、ペアリング画面（PairingScreen）に招待コード/QRの
 上に「ペアになるとできること」カード（`lib/widgets/pairing_preview_cards.dart`）を追加し、

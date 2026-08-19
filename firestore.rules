@@ -37,6 +37,11 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
+      match /anniversaries/{anniversaryId} {
+        allow read, write: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
+
       // デイリー質問への回答（ドキュメントID = '${dateKey}_$uid'）。
       // メンバーなら誰でも読めるが、書き込みは自分の回答のみ。相手の回答を
       // 見た後に自分の回答を書き換えられないよう、更新・削除も許可しない。
