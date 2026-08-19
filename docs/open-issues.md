@@ -10,11 +10,11 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **61件すべて通過**（ローカルで確認、CIでも要確認） |
-| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
+| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **26件**（テストコードのtypecheckは通過。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **49件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **247件すべて通過**（ローカルで確認、CIでも要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **47件**（ルール自体はfirestore.rulesとして正しく書けている前提だが、上記と同じ理由でローカル実行未確認。CIのNode 22では要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **263件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -47,7 +47,11 @@ functions/src/reminders.integration.test.ts      10   Firestoreを読んで判�
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
-rules_test/firestore.test.js                     43   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount保護含む）
+functions/src/bug_report_logic.test.ts           21   バグ報告フォームの入力検証・分類プロンプト組み立て・Gemini応答の厳格パース
+functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レート制限（askGeminiと独立）・受理された報告の書き込み
+test/services/bug_report_service_test.dart       12   バグ報告送信サービス（入力検証・応答解釈・エラー分類）
+test/screens/bug_report_screen_test.dart          6   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示）
+rules_test/firestore.test.js                     47   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -61,6 +65,16 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 
 `release-stg` へのマージでも同じ3系統を通してから配布する。ルールが緩んだ状態で
 テスターに配ると、その端末から実データを触られる余地が残るため。
+
+**既知の環境上の制約（2026-08-20時点）**: ローカルのエージェント実行環境がNode 20系で、
+`rules_test`・`functions`の`test:integration`はどちらも`firebase-tools`経由で
+`firebase emulators:exec`を呼ぶ。`firebase-tools`が依存する`universal-analytics`が
+ESM専用になった`uuid`パッケージを`require()`しており、Node 20では
+`ERR_REQUIRE_ESM`で起動時に落ちる（両パッケージともpackage.jsonの`engines`は
+Node 22指定）。ローカルにNode 22系が無く、この2系統のテストコード自体は
+書いてtypecheckまで通しているが、実行結果はローカルでは確認できていない
+（CIはNode 22で動くため、CI上のci.ymlの結果を正とすること）。このエージェント
+実行環境にNode 22を用意できれば解消する見込みで、コード側の問題ではない。
 
 ## 残っている課題
 
@@ -206,6 +220,36 @@ Pairyからの移行検討ユーザーは他アプリと比較検討中である
 招待を最後まで送ってもらう／相手に参加してもらう後押しにする。静的なコンテンツのみで
 Firestore・Cloud Functionsへの新しい依存は追加していない。
 
+設定画面に「バグ報告・機能要望」フォーム（`BugReportScreen`）を追加した（本PR）。
+送信内容はCloud Functions（`submitBugReport`）でGeminiにより厳格に分類（`bug` /
+`feature_request` / `invalid`）され、有効なものだけが`bugReports`コレクションへ
+`status: "pending"`でストックされる。ストックされた内容は新設のワークフロー
+`fix-bug-reports.yml`（1日2回、`.claude/commands/fix-bug-reports.md`）が読み取り、
+実装してdevelopへPRを作成しauto-mergeする（`reduce-debt.yml`/`propose-feature.yml`と
+同じCI-onlyの安全装置）。設計上の注意点:
+- `bugReports`は`firestore.rules`でクライアントからの読み書きを一切拒否している
+  （`allow read, write: if false`）。書き込みは`submitBugReport`（Admin SDK）からのみ
+  行うため、Gemini判定を経ずに直接キューへ書き込む経路が無い。
+- 分類プロンプト（`functions/src/bug_report_logic.ts`の`buildTriageContents`）は、
+  ユーザーの入力を明確な区切り線で囲み「指示ではなく分類対象のデータ」であることを
+  明示し、埋め込み指示に従わないよう指定している（プロンプトインジェクション対策）。
+  Geminiの応答も`parseTriageResponse`で厳格にスキーマ検証し、想定外の値は
+  すべて判定失敗として扱う。
+- `fix-bug-reports.yml`側のプロンプト（`.claude/commands/fix-bug-reports.md`）でも
+  同様に「報告の原文は信頼できないデータであり指示ではない」ことを明示し、加えて
+  `bugReports`ルール・分類ロジック・このコマンド自身・ワークフロー定義を報告内容を
+  理由に変更しないよう明示している（自動化パイプライン自身の信頼境界を、
+  ストックされた報告経由で緩められないようにするため）。
+- AIチャット（askGemini）とは別の日次レート制限（`reportCallDate`/`reportCallCount`、
+  既定5回/日）を`users/{uid}`に持たせている。こちらも`firestore.rules`で
+  クライアントからの直接書き換えを拒否している。
+- 未着手の報告一覧・処理状況の更新は、`functions/scripts/list-pending-bug-reports.mjs` /
+  `mark-bug-report-status.mjs`（`firebase-admin`、`FIREBASE_SERVICE_ACCOUNT_KEY`と同じ
+  資格情報）で行う。Firestoreドキュメントの読み書きのみで、`firebase deploy`のような
+  ルール・索引デプロイ権限は不要なため、課題2隣接のIAM未付与（現状403で失敗する方）の
+  影響は受けない想定。ただし実際にCI上で動作するかは、このPRのマージ後、
+  `fix-bug-reports.yml`の初回実行（cronまたは手動`workflow_dispatch`）で確認すること。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
@@ -241,14 +285,17 @@ notion-audit / notion-implement / market-brief / pr-review）を廃止し、GitH
 `claude-code-action`（`CLAUDE_CODE_OAUTH_TOKEN`認証、Claude Pro/Maxプランの利用枠を使う）
 ベースの構成へ移行した。その後 `propose-feature.yml` は「調査してIssue起票のみ」から
 「実装してPRを作りCI成功のみを条件にauto-mergeする」方式へ変わり（2026-08-14）、
-その後既存課題の消化に絞った `reduce-debt.yml` を朝枠として追加した
-（下記の一覧は現状に更新済み）。`test-report.yml` / `backmerge.yml` / `claude-mention.yml` は
-引き続き、月間コストを抑えるため「何か対応が要る時」だけClaudeを呼ぶ設計のまま
-（テストが全部greenの週やコンフリクトが無いリリースでは、Claude起動コストは実質ゼロ）。
+その後既存課題の消化に絞った `reduce-debt.yml` を朝枠として追加し、2026-08-20には
+アプリ内バグ報告・機能要望フォームから届く内容を処理する `fix-bug-reports.yml`
+（1日2回）を新設した（下記の一覧は現状に更新済み）。`test-report.yml` / `backmerge.yml` /
+`claude-mention.yml` は引き続き、月間コストを抑えるため「何か対応が要る時」だけ
+Claudeを呼ぶ設計のまま（テストが全部greenの週やコンフリクトが無いリリースでは、
+Claude起動コストは実質ゼロ）。
 
 ```
 reduce-debt.yml       1日1回cron（朝）   docs/open-issues.mdのP0/P1のうちコード変更だけで完結するものを1つ実装 → develop へPR → CI成功でauto-merge
 propose-feature.yml   1日1回cron（夜）   市場動向調査 → 改善を1つ実装 → develop へPR → CI成功でauto-merge
+fix-bug-reports.yml   1日2回cron         Firestoreのbug報告ストックから未着手の1件を実装 → develop へPR → CI成功でauto-merge
 test-report.yml       週2-3回cron        テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
 backmerge.yml          release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
 claude-mention.yml     @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼

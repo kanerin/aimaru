@@ -61,8 +61,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
       allow delete: if request.auth.uid == userId;
-      // aiCallDate/aiCallCountはaskGemini（Cloud Functions、Admin SDK経由で
-      // ここを迂回する）が1日あたりのAI呼び出し回数を数えるための場所。
+      // aiCallDate/aiCallCountはaskGemini、reportCallDate/reportCallCountは
+      // submitBugReport（どちらもCloud Functions、Admin SDK経由でここを
+      // 迂回する）が1日あたりの呼び出し回数を数えるための場所。
       // ここを他フィールドと同列に書き込み自由にすると、クライアントが
       // 直接自分のカウントを0へ書き戻してレート制限を無効化できてしまう。
       // set(..., {merge:true})では変更していない既存フィールドも
@@ -71,9 +72,18 @@ service cloud.firestore {
       // これらのフィールドが立った後は無関係な設定変更まで拒否されてしまう）。
       allow create, update: if request.auth.uid == userId &&
         (resource == null
-          ? !request.resource.data.keys().hasAny(['aiCallDate', 'aiCallCount'])
+          ? !request.resource.data.keys().hasAny(
+              ['aiCallDate', 'aiCallCount', 'reportCallDate', 'reportCallCount'])
           : !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['aiCallDate', 'aiCallCount']));
+              .hasAny(['aiCallDate', 'aiCallCount', 'reportCallDate', 'reportCallCount']));
+    }
+
+    // バグ報告・機能要望はsubmitBugReport（Cloud Functions、Admin SDK）からのみ
+    // 書き込む。Gemini判定を経ずにクライアントから直接キューへ書き込めると、
+    // 分類チェックそのものを迂回できてしまうため、クライアントには
+    // 読み書きどちらも一切許可しない（一覧を見せるUIも現状無い）。
+    match /bugReports/{reportId} {
+      allow read, write: if false;
     }
   }
 }

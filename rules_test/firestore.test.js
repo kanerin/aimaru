@@ -428,3 +428,54 @@ describe("users — aiCallDate/aiCallCountはクライアントから書き換�
     );
   });
 });
+
+describe("users — reportCallDate/reportCallCountはクライアントから書き換えられない", () => {
+  it("新規ドキュメント作成時にreportCallCountを含められない", async () => {
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ displayName: "A", reportCallCount: 0 }),
+    );
+  });
+
+  it("既にカウントが付いたドキュメントに対し、カウントをリセットする書き込みは拒否される", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`users/${USER_A}`).set({
+        displayName: "A",
+        reportCallDate: "2026-08-19",
+        reportCallCount: 5,
+      });
+    });
+
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ reportCallCount: 0 }, { merge: true }),
+    );
+  });
+});
+
+describe("bugReports — クライアントからの読み書きは一切拒否される", () => {
+  // submitBugReport（Cloud Functions、Admin SDK）だけが書き込める。
+  // Gemini判定を経ずにクライアントが直接キューへ書き込めると、
+  // 分類チェックそのものを迂回できてしまうため。
+  it("作成できない", async () => {
+    await assertFails(
+      asA().doc("bugReports/report-1").set({
+        rawText: "テスト",
+        classification: "bug",
+        status: "pending",
+        createdBy: USER_A,
+      }),
+    );
+  });
+
+  it("読み取れない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("bugReports/report-1").set({
+        rawText: "テスト",
+        classification: "bug",
+        status: "pending",
+        createdBy: USER_A,
+      });
+    });
+
+    await assertFails(asA().doc("bugReports/report-1").get());
+  });
+});

@@ -1,0 +1,86 @@
+name: Fix reported bugs & feature requests (2x/day)
+
+# アプリ内の「バグ報告・機能要望」フォーム（設定画面）から届き、
+# submitBugReport（Cloud Functions）がGeminiで判定してFirestoreの
+# bugReportsコレクションへストックした内容を1件読み、実装して
+# developへPRを作成してauto-mergeする。
+# developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
+# CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
+#
+# 人間レビューを介さない自動実装のため、安全装置はCIに加えて次の2つ:
+# - bugReportsコレクション自体はクライアントから読み書きできない
+#   （firestore.rules）ため、Gemini判定を経ていない内容が紛れ込むことはない。
+# - .claude/commands/fix-bug-reports.md が、報告の原文（rawText）を
+#   「信頼できないデータ」として扱い、報告経由での指示に従わないことを
+#   明示している（プロンプトインジェクション対策）。
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 毎日 03:00 UTC = 12:00 JST
+    - cron: '0 15 * * *' # 毎日 15:00 UTC = 24:00 JST
+  workflow_dispatch: {}
+
+# workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
+concurrency:
+  group: fix-bug-reports
+  cancel-in-progress: false
+
+jobs:
+  fix-bug-reports:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write # claude-code-action がOIDCトークン取得に使う
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # firebase_options.dart は公開リポジトリに含めていないため、
+      # flutter test の実行（main.dart がimportしている）にはSecretsからの復元が要る
+      - name: Restore firebase_options.dart
+        run: echo "${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}" | base64 -d > lib/firebase_options.dart
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      # bugReportsコレクションの読み書きに使う。release-stg.ymlのFirestoreルール
+      # デプロイと同じ資格情報だが、こちらはFirestoreドキュメントの読み書き
+      # （list-pending-bug-reports.mjs / mark-bug-report-status.mjs）に使うだけで、
+      # ルール・索引のデプロイ権限（現状403で失敗する、docs/open-issues.md参照）は要らない。
+      - name: Write Firebase service account key
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > "$RUNNER_TEMP/firebase-service-account.json"
+
+      - name: Configure git identity for automated commits
+        run: |
+          git config user.name "aimaru-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            .claude/commands/fix-bug-reports.md の指示を読み、その通りに実行してください。
+          display_report: true
+          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(node *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
