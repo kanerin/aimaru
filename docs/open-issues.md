@@ -10,11 +10,11 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **確認中**（マージ後に再測定） |
-| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **確認中**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。ローカルがNode 20環境のため実行未確認、下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **34件**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。ローカルがNode 20環境のため実行未確認、下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **確認中**（マージ後に再測定） |
-| Flutter 単体・ウィジェット | `flutter test` | **確認中**（マージ後に再測定） |
+| セキュリティルール | `cd rules_test && npm test` | **50件**（同上の理由でローカル実行未確認。CIのNode 22では要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **274件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -53,7 +53,7 @@ functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レー�
 functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
 test/services/bug_report_service_test.dart       12   バグ報告送信サービス（入力検証・応答解釈・エラー分類）
 test/screens/bug_report_screen_test.dart          6   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示）
-rules_test/firestore.test.js                     確認中   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否・ペアの解消含む）
+rules_test/firestore.test.js                     50   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否・ペアの解消含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
