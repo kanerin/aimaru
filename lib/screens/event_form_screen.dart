@@ -15,12 +15,16 @@ class EventFormScreen extends StatefulWidget {
   final String coupleId;
   final AimaruEvent? existing;   // null なら新規作成
   final DateTime? initialDate;
+  // やりたいことリストから「カレンダーに登録」した場合など、新規作成時に
+  // タイトルだけ引き継ぎたいケース用。existingがある場合はそちらを優先する。
+  final String? initialTitle;
 
   const EventFormScreen({
     super.key,
     required this.coupleId,
     this.existing,
     this.initialDate,
+    this.initialTitle,
   });
 
   @override
@@ -33,7 +37,8 @@ class _EventFormScreenState extends State<EventFormScreen> {
   final _calendarService = GoogleCalendarService();
   final _picker          = ImagePicker();
 
-  late final _titleCtrl    = TextEditingController(text: widget.existing?.title ?? '');
+  late final _titleCtrl    =
+      TextEditingController(text: widget.existing?.title ?? widget.initialTitle ?? '');
   late final _locationCtrl = TextEditingController(text: widget.existing?.location ?? '');
   late final _memoCtrl     = TextEditingController(text: widget.existing?.memo ?? '');
 
