@@ -13,7 +13,6 @@ import '../widgets/anniversary_card.dart';
 import '../widgets/days_off_card.dart';
 import '../widgets/next_meeting_card.dart';
 import 'anniversaries_screen.dart';
-import 'expenses_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
 import 'trash_screen.dart';
@@ -402,20 +401,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: '毎日1つの質問に2人で回答します。2人とも答えるまで相手の回答は見えません',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => QuestionsScreen(
-                coupleId: widget.coupleId,
-                memberIds: _couple?.memberIds ?? const [],
-                partnerName: _partnerName ?? 'パートナー',
-              )),
-            ),
-          ),
-
-          const SizedBox(height: 28),
-          const _SectionLabel('お金の記録'),
-          _NavigationRow(
-            title: '割り勘・立て替え',
-            subtitle: 'デート代や買い物の立て替えを記録して、精算額を自動で計算します',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => ExpensesScreen(
                 coupleId: widget.coupleId,
                 memberIds: _couple?.memberIds ?? const [],
                 partnerName: _partnerName ?? 'パートナー',

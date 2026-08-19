@@ -418,58 +418,6 @@ class GCalEventSummary {
   );
 }
 
-// ── ExpenseItem（割り勘・立て替えの記録）───────────────
-// デート代や買い物の立て替えを記録し、どちらがいくら多く払っているかを
-// 精算額として計算するための元データ。amountは円単位の整数。
-class ExpenseItem {
-  final String id;
-  final String coupleId;
-  final String title;
-  final int amount;
-  final String paidBy;
-  final String createdBy;
-  final DateTime createdAt;
-  // 立て替えではなく「精算する」から記録した精算そのものかどうか。
-  // trueの場合、calculateBalance側でpaidByの寄与を2倍で数える
-  // （半額分の受け取りではなく全額の直接移動を表すため）。
-  final bool isSettlement;
-
-  ExpenseItem({
-    required this.id,
-    required this.coupleId,
-    required this.title,
-    required this.amount,
-    required this.paidBy,
-    required this.createdBy,
-    required this.createdAt,
-    this.isSettlement = false,
-  });
-
-  factory ExpenseItem.fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    return ExpenseItem(
-      id:           doc.id,
-      coupleId:     d['coupleId'] ?? '',
-      title:        d['title'] ?? '',
-      amount:       (d['amount'] as num?)?.toInt() ?? 0,
-      paidBy:       d['paidBy'] ?? '',
-      createdBy:    d['createdBy'] ?? '',
-      createdAt:    (d['createdAt'] as Timestamp).toDate(),
-      isSettlement: d['isSettlement'] ?? false,
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'coupleId':     coupleId,
-    'title':        title,
-    'amount':       amount,
-    'paidBy':       paidBy,
-    'createdBy':    createdBy,
-    'createdAt':    Timestamp.fromDate(createdAt),
-    'isSettlement': isSettlement,
-  };
-}
-
 // ── QuestionAnswer（デイリー質問への回答）───────────────
 // TimeTreeには無い「お互いを知る」体験。日付ごとに固定の質問
 // （lib/utils/daily_question_picker.dart）を出し、2人とも回答するまでは

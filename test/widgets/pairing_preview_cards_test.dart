@@ -16,7 +16,7 @@ void main() {
     expect(find.text('AIプランナー'), findsOneWidget);
     expect(find.text('カップルチャット'), findsOneWidget);
     expect(find.text('思い出'), findsOneWidget);
-    expect(find.text('やりたいこと・割り勘'), findsOneWidget);
+    expect(find.text('やりたいことリスト'), findsOneWidget);
   });
 
   testWidgets('最後のカードまでスクロールできる', (tester) async {
@@ -25,6 +25,6 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(-2000, 0));
     await tester.pumpAndSettle();
 
-    expect(find.text('やりたいこと・割り勘'), findsOneWidget);
+    expect(find.text('やりたいことリスト'), findsOneWidget);
   });
 }
