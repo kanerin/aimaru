@@ -25,6 +25,12 @@ import {
   RateLimitState,
   validateContents,
 } from "./gemini_logic";
+import {
+  BUG_REPORT_DAILY_LIMIT,
+  buildTriageContents,
+  parseTriageResponse,
+  validateReportText,
+} from "./bug_report_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -359,5 +365,93 @@ export const askGemini = onCall<AskGeminiRequest>(
     }
 
     return { text: result.text };
+  },
+);
+
+// ── バグ報告・機能要望フォーム ───────────────────────────
+// 設定画面から自由記述で送られてきた内容を、Geminiで「バグ報告」
+// 「機能要望」「それ以外（無効）」に厳格に分類し、有効なものだけを
+// bugReportsコレクションへ書き込む。書き込みはこの関数（Admin SDK）
+// からのみ行い、クライアントからの直接書き込みはfirestore.rulesで拒否している
+// （分類を経ずに偽の報告をキューへ紛れ込ませられないようにするため）。
+// ストックされた内容は、別の自動化ワークフロー（fix-bug-reports.yml）が
+// 定期的に読み取り、実装・PR作成・auto-mergeまで行う。
+
+interface BugReportRateLimitDoc {
+  reportCallDate?: string;
+  reportCallCount?: number;
+}
+
+async function checkAndConsumeBugReportRateLimit(uid: string, todayStr: string): Promise<boolean> {
+  const ref = db.collection("users").doc(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() as BugReportRateLimitDoc | undefined;
+    const current: RateLimitState | undefined = data?.reportCallDate
+      ? { date: data.reportCallDate, count: data.reportCallCount ?? 0 }
+      : undefined;
+
+    if (isOverLimit(current, todayStr, BUG_REPORT_DAILY_LIMIT)) return false;
+
+    const next = nextRateLimitState(current, todayStr);
+    tx.set(ref, { reportCallDate: next.date, reportCallCount: next.count }, { merge: true });
+    return true;
+  });
+}
+
+interface SubmitBugReportRequest {
+  text?: unknown;
+}
+
+export const submitBugReport = onCall<SubmitBugReportRequest>(
+  { secrets: [geminiApiKey] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "ログインが必要です");
+    }
+    const uid = request.auth.uid;
+    const { text } = request.data ?? {};
+
+    if (!validateReportText(text)) {
+      throw new HttpsError("invalid-argument", "内容を5〜2000文字で入力してください");
+    }
+
+    const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
+      new Date(),
+    );
+    const allowed = await checkAndConsumeBugReportRateLimit(uid, todayStr);
+    if (!allowed) {
+      throw new HttpsError("resource-exhausted", "本日の送信回数の上限に達しました");
+    }
+
+    const apiKey = geminiApiKey.value();
+    if (!apiKey) {
+      throw new HttpsError("failed-precondition", "AIのAPIキーが設定されていません");
+    }
+
+    const result = await callGeminiApi(buildTriageContents(text), apiKey);
+    if (!result.ok) {
+      throw new HttpsError(result.kind, "判定処理でエラーが発生しました");
+    }
+
+    const triage = parseTriageResponse(result.text);
+    if (!triage) {
+      throw new HttpsError("internal", "判定結果を解釈できませんでした");
+    }
+
+    if (triage.classification === "invalid") {
+      return { accepted: false, classification: triage.classification, summary: triage.summary };
+    }
+
+    await db.collection("bugReports").add({
+      rawText: text,
+      summary: triage.summary,
+      classification: triage.classification,
+      status: "pending",
+      createdBy: uid,
+      createdAt: Timestamp.now(),
+    });
+
+    return { accepted: true, classification: triage.classification, summary: triage.summary };
   },
 );

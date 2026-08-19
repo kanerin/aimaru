@@ -10,6 +10,7 @@ import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
 import '../widgets/days_off_card.dart';
+import 'bug_report_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
 import 'trash_screen.dart';
@@ -364,6 +365,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: '削除した予定を30日間保管します。誤って消してしまっても復元できます',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => TrashScreen(coupleId: widget.coupleId)),
+            ),
+          ),
+
+          const SizedBox(height: 28),
+          const _SectionLabel('フィードバック'),
+          _NavigationRow(
+            title: 'バグ報告・機能要望',
+            subtitle: 'バグを見つけたときや、こんな機能が欲しいときに送れます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const BugReportScreen()),
             ),
           ),
 
