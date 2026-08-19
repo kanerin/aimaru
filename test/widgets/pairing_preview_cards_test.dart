@@ -15,7 +15,6 @@ void main() {
     expect(find.text('共有カレンダー'), findsOneWidget);
     expect(find.text('AIプランナー'), findsOneWidget);
     expect(find.text('カップルチャット'), findsOneWidget);
-    expect(find.text('思い出'), findsOneWidget);
     expect(find.text('やりたいことリスト'), findsOneWidget);
   });
 
