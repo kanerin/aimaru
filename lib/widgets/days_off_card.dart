@@ -96,6 +96,16 @@ class _DaysOffCardState extends State<DaysOffCard> {
     await _save();
   }
 
+  // 選択中の曜日を折り返さない1行のサマリーにして、プルダウンの閉じた
+  // 状態に表示する（月〜日の並び順で表示する）
+  String get _daysOffSummary {
+    if (_daysOff.isEmpty) return '未選択';
+    return _labels.entries
+        .where((e) => _daysOff.contains(e.key))
+        .map((e) => e.value)
+        .join('・');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -126,23 +136,49 @@ class _DaysOffCardState extends State<DaysOffCard> {
             style: TextStyle(fontSize: 11, color: AppColors.textMuted),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _labels.entries.map((e) {
-              final selected = _daysOff.contains(e.key);
-              return ChoiceChip(
-                label: Text(e.value),
-                selected: selected,
-                onSelected: _saving ? null : (_) => _toggleDay(e.key),
-                selectedColor: appAccent(context),
-                backgroundColor: AppColors.navyCard,
-                labelStyle: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : AppColors.textSecond,
-                ),
+          MenuAnchor(
+            style: MenuStyle(
+              backgroundColor: const WidgetStatePropertyAll(AppColors.navySurface),
+              shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
                 side: const BorderSide(color: AppColors.hairline),
+              )),
+            ),
+            builder: (context, controller, child) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _saving
+                    ? null
+                    : () => controller.isOpen ? controller.close() : controller.open(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.navyCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.hairline),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _daysOffSummary,
+                          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: AppColors.textMuted),
+                    ],
+                  ),
+                ),
+              );
+            },
+            menuChildren: _labels.entries.map((e) {
+              final selected = _daysOff.contains(e.key);
+              return CheckboxMenuButton(
+                value: selected,
+                // 選んでもメニューを閉じず、複数の曜日を続けて選べるようにする
+                closeOnActivate: false,
+                onChanged: _saving ? null : (_) => _toggleDay(e.key),
+                child: Text('${e.value}曜日'),
               );
             }).toList(),
           ),
