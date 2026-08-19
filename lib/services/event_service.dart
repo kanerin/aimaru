@@ -38,6 +38,7 @@ class EventService {
       createdBy:  _uid,
       recurring:  event.recurring,
       allDay:     event.allDay,
+      visibility: event.visibility,
     );
     await ref.set({...newEvent.toMap(), ..._freshReminderFields});
     return newEvent;

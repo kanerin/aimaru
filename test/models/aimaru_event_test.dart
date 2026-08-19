@@ -57,6 +57,28 @@ void main() {
 
       expect(copied.endDate, DateTime(2026, 8, 16, 3, 0));
     });
+
+    test('visibilityを指定しなければsharedのまま引き継がれる', () {
+      final e = build();
+
+      expect(e.copyWith(title: '別の予定').visibility, EventVisibility.shared);
+    });
+
+    test('visibilityを明示すれば上書きできる', () {
+      final e = build();
+
+      final copied = e.copyWith(visibility: EventVisibility.private);
+
+      expect(copied.visibility, EventVisibility.private);
+    });
+  });
+
+  group('visibilityの既定値', () {
+    // 課題3フェーズ1: フィールドを追加しただけでまだ enforce していないため、
+    // 未指定ならsharedへ倒れることだけを確認する。
+    test('未指定ならsharedになる', () {
+      expect(build().visibility, EventVisibility.shared);
+    });
   });
 
   group('allDay の後方互換', () {

@@ -29,6 +29,7 @@ void main() {
     bool allDay = false,
     String? location,
     String? memo,
+    EventVisibility visibility = EventVisibility.shared,
   }) =>
       AimaruEvent(
         id: '',
@@ -42,6 +43,7 @@ void main() {
         createdBy: '',
         recurring: recurring,
         allDay: allDay,
+        visibility: visibility,
       );
 
   setUp(() {
@@ -141,6 +143,46 @@ void main() {
 
       expect(created.allDay, isTrue);
       expect((await eventsRef().doc(created.id).get()).data()!['allDay'], true);
+    });
+
+    test('visibilityを指定しなければsharedとして保存される', () async {
+      final created = await service.addEvent(coupleId, buildEvent());
+
+      expect(created.visibility, EventVisibility.shared);
+
+      final doc = await eventsRef().doc(created.id).get();
+      expect(doc.data()!['visibility'], 'shared');
+      expect(AimaruEvent.fromDoc(doc).visibility, EventVisibility.shared);
+    });
+
+    test('visibilityにprivateを指定すればそのまま保存される', () async {
+      final created = await service.addEvent(
+        coupleId,
+        buildEvent(visibility: EventVisibility.private),
+      );
+
+      expect(created.visibility, EventVisibility.private);
+
+      final doc = await eventsRef().doc(created.id).get();
+      expect(doc.data()!['visibility'], 'private');
+      expect(AimaruEvent.fromDoc(doc).visibility, EventVisibility.private);
+    });
+
+    test('visibilityフィールドが無い既存ドキュメントはsharedとして読める', () async {
+      final ref = eventsRef().doc();
+      await ref.set({
+        'coupleId': coupleId,
+        'title': '既存の予定',
+        'date': Timestamp.fromDate(DateTime(2026, 8, 22, 19, 0)),
+        'type': 'date',
+        'createdBy': meUid,
+        'recurring': false,
+        'reminded': false,
+      });
+
+      final loaded = AimaruEvent.fromDoc(await ref.get());
+
+      expect(loaded.visibility, EventVisibility.shared);
     });
   });
 
