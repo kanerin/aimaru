@@ -9,6 +9,7 @@ import {
   USER_C,
   createTestEnv,
   warmUpRulesEngine,
+  seedAnniversary,
   seedChat,
   seedCouple,
   seedEvent,
@@ -206,6 +207,47 @@ describe("expenses — メンバー境界", () => {
     await assertFails(
       asC().collection(`couples/${COUPLE_ID}/expenses`).orderBy("createdAt", "desc").get(),
     );
+  });
+});
+
+describe("anniversaries — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedAnniversary(testEnv);
+  });
+
+  it("メンバーは記念日を読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).get());
+  });
+
+  it("メンバー以外は記念日を読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).get());
+  });
+
+  it("メンバーは記念日を作成・削除できる", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-2`).set({
+        coupleId: COUPLE_ID,
+        title: "初デート",
+        date: new Date("2022-01-01"),
+        createdBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).delete());
+  });
+
+  it("メンバー以外は記念日を作成・更新・削除できない", async () => {
+    const ref = asC().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-3`);
+    await assertFails(ref.set({ title: "勝手な記念日" }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).update({ title: "改ざん" }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).delete());
+  });
+
+  it("未認証は記念日に一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/anniversaries/anniversary-4`).set({ title: "x" }));
   });
 });
 

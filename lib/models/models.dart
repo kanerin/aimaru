@@ -85,6 +85,20 @@ extension EventTypeExt on EventType {
   };
 }
 
+// ── EventVisibility ────────────────────────────────────
+// 課題3（予定ごとの共有範囲）フェーズ1: スキーマにフィールドだけ用意する。
+// Firestoreルールでの読み取り制限・クエリの分割・UIでの切り替えは
+// まだ実装していない（既存の全予定取得クエリにvisibilityでの絞り込みを
+// 加えると新しい複合索引が要るが、firestore.indexes.jsonの本番デプロイは
+// IAM未付与で失敗し続けており（docs/open-issues.md 課題8）、
+// カレンダーの主要クエリでそれをやると本番の全ユーザーの表示が壊れる。
+// IAM解決後にフェーズ2でルール・クエリ・UIを実装する）。
+// それまでは全予定がsharedと同じ扱い（両者に見える）のまま。
+enum EventVisibility {
+  shared,  // ふたりとも見える（既定）
+  private, // 自分だけ見える（未enforced。フェーズ2で対応）
+}
+
 // ── AimaruEvent（予定）────────────────────────────────
 class AimaruEvent {
   final String id;
@@ -103,6 +117,7 @@ class AimaruEvent {
   // null以外なら論理削除済み（ゴミ箱）。deleteEvent/restoreEvent/
   // permanentlyDeleteEvent以外の経路（add/update）では触らない。
   final DateTime? deletedAt;
+  final EventVisibility visibility;
 
   AimaruEvent({
     required this.id,
@@ -119,6 +134,7 @@ class AimaruEvent {
     this.allDay = false,
     this.googleCalendarEventId,
     this.deletedAt,
+    this.visibility = EventVisibility.shared,
   });
 
   factory AimaruEvent.fromDoc(DocumentSnapshot doc) {
@@ -148,6 +164,9 @@ class AimaruEvent {
       deletedAt:             d['deletedAt'] != null
           ? (d['deletedAt'] as Timestamp).toDate()
           : null,
+      // 既存の予定にはこのフィールドが無いのでsharedへフォールバックする
+      visibility:            EventVisibility.values.firstWhere(
+          (v) => v.name == d['visibility'], orElse: () => EventVisibility.shared),
     );
   }
 
@@ -164,12 +183,14 @@ class AimaruEvent {
     'recurring':             recurring,
     'allDay':                allDay,
     'googleCalendarEventId': googleCalendarEventId,
+    'visibility':            visibility.name,
   };
 
   AimaruEvent copyWith({
     String? title, DateTime? date, DateTime? endDate, EventType? type,
     String? location, String? memo, List<String>? imageUrls,
     bool? recurring, bool? allDay, String? googleCalendarEventId,
+    EventVisibility? visibility,
   }) => AimaruEvent(
     id:                    id,
     coupleId:              coupleId,
@@ -186,6 +207,7 @@ class AimaruEvent {
     recurring:             recurring ?? this.recurring,
     allDay:                allDay ?? this.allDay,
     googleCalendarEventId: googleCalendarEventId ?? this.googleCalendarEventId,
+    visibility:            visibility ?? this.visibility,
   );
 }
 
@@ -299,6 +321,51 @@ class TodoItem {
     'coupleId':  coupleId,
     'text':      text,
     'done':      done,
+    'createdBy': createdBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
+// ── AnniversaryItem（複数記念日）────────────────────────
+// CoupleModel.anniversary（付き合い始めた日）は1件しか持てないが、
+// プロポーズ・入籍・初デートなど、カップルは複数の記念日を追いたいことが多い
+// （TimeTreeにはこの概念自体が無く、Pairyの移行先として比較される
+// Between・Twinest等が複数記念日の登録・カウントダウンを持つ）。
+// 表示側はlib/utils/anniversary_calculator.dartのsummarizeAnniversaryを
+// そのまま再利用し、日付ごとの経過日数・次の周年までの日数を計算する。
+class AnniversaryItem {
+  final String id;
+  final String coupleId;
+  final String title;
+  final DateTime date;
+  final String createdBy;
+  final DateTime createdAt;
+
+  AnniversaryItem({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    required this.date,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory AnniversaryItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return AnniversaryItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      title:     d['title'] ?? '',
+      date:      (d['date'] as Timestamp).toDate(),
+      createdBy: d['createdBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'title':     title,
+    'date':      Timestamp.fromDate(date),
     'createdBy': createdBy,
     'createdAt': Timestamp.fromDate(createdAt),
   };

@@ -102,6 +102,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           imageUrls: _existingImages, createdBy: e.createdBy,
           recurring: _recurring, allDay: _allDay,
           googleCalendarEventId: e.googleCalendarEventId,
+          visibility: e.visibility,
         );
         await _eventService.updateEvent(event);
       } else {
