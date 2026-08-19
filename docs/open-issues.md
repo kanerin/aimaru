@@ -112,17 +112,19 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 フォールバックする。UIでの切り替え・Firestoreルールでの読み取り制限は**まだ実装していない**
 （全予定が引き続きペア双方に見える）。
 
-**フェーズ2が着手できない理由**: `private`を実際に隠すには、Firestoreのセキュリティルールが
+**フェーズ2の注意点**: `private`を実際に隠すには、Firestoreのセキュリティルールが
 `resource.data`（このケースでは`visibility`・`createdBy`）を見て判定する必要があるが、`list`
 クエリ（`watchMonthEvents`等、カレンダーの主要な取得経路はすべてこれ）に対する読み取りルールは
 「クエリの`where`句だけから安全性が判定できる」ことが必須で、`visibility`を`where`に含めない限り
 クエリ全体が拒否される。つまり`visibility`で絞り込む`where`句を全ての取得クエリに追加する必要が
-あり、これは新しい複合索引（`firestore.indexes.json`）を要求する。ところが索引の本番デプロイは
-課題8と同じ理由（`FIREBASE_SERVICE_ACCOUNT_KEY`のIAM未付与）で失敗し続けており、この状態で
-カレンダーの主要クエリに新しい索引前提の絞り込みを入れると、IAMが解決するまでの間**本番の
-全ユーザーでカレンダー画面がFAILED_PRECONDITIONになる**（課題8の対象はバックグラウンドの
-リマインダー処理だけだったが、こちらは主要画面そのものが壊れるため影響がより大きい）。
-「人間にしかできない作業」のIAMロール付与が終わってから着手すること。
+あり、これは新しい複合索引（`firestore.indexes.json`）を要求する。索引・ルールの自動デプロイは
+`FIREBASE_SERVICE_ACCOUNT_KEY`のIAM未付与により`release-stg.yml`からは引き続き失敗するが
+（2026-08-19時点も未解決）、**リポジトリオーナーのアカウントでログインしたFirebase CLIからは
+手動デプロイができる**（2026-08-19、`firebase deploy --only firestore:rules,firestore:indexes
+--project aimaru-7eb2e`で実際に本番反映できることを確認した）。フェーズ2に着手する場合は、
+コード変更とあわせて新しい索引の手動デプロイを忘れずに行うこと（自動実装エージェント
+`reduce-debt.yml`/`propose-feature.yml`はこの手動デプロイ権限を持たないため、この課題に
+自動着手させるのは避け、人間が同席するセッションで対応すること）。
 
 ### P1 — 次に効くもの
 
@@ -171,9 +173,12 @@ narrowingしていない。`date` フィールドは予定の**作成時点の�
 「今年の発生日」を求める `nextOccurrence`（月日だけを見る）とは単純な範囲比較が
 噛み合わず、素朴な `date` 範囲条件では絞り込めない。narrowingするなら
 「次の発生日」を別フィールドとして保持するスキーマ変更が要りそうで、今回のPRの
-範囲を超えるため見送った。また、索引デプロイ自体は課題2隣接のIAM未付与
-（rulesと同じ原因）により本番では引き続き失敗する想定で、`continue-on-error: true`
-のまま可視化のみ行っている。IAMロールが付与されたら自動的に効くようになる。
+範囲を超えるため見送った。索引デプロイ自体は課題2隣接のIAM未付与（rulesと同じ原因）により
+`release-stg.yml`からの自動デプロイは引き続き失敗する想定で、`continue-on-error: true`の
+まま可視化のみ行っている。ただし2026-08-19に、リポジトリオーナーのアカウントでログインした
+Firebase CLIから`firebase deploy --only firestore:rules,firestore:indexes --project
+aimaru-7eb2e`を手動実行し、この課題で追加した複合索引（`reminded` ASC, `date` ASC）を含めて
+本番へ反映済み。IAMロールが付与されればCIからも自動的に効くようになる。
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|
