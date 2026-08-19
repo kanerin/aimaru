@@ -16,6 +16,7 @@ dependencies:
   cloud_firestore: ^6.8.0
   firebase_storage: ^13.4.6
   firebase_messaging: ^16.0.4
+  cloud_functions: ^6.3.6
 
   # Google認証
   google_sign_in: ^6.2.1
@@ -24,9 +25,6 @@ dependencies:
   googleapis: ^12.0.0
   googleapis_auth: ^1.4.1
   extension_google_sign_in_as_googleapis_auth: ^2.0.12
-
-  # Gemini AI
-  google_generative_ai: ^0.4.3
 
   # 状態管理
   flutter_riverpod: ^2.4.9

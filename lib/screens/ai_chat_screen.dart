@@ -35,7 +35,7 @@ class AiChatScreen extends StatefulWidget {
 }
 
 class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver {
-  final _gemini             = GeminiService();
+  late final _gemini        = GeminiService(coupleId: widget.coupleId);
   late final _eventService  = widget.eventServiceOverride ?? EventService();
   final _gcalCacheService   = GoogleCalendarCacheService();
   final _picker             = ImagePicker();

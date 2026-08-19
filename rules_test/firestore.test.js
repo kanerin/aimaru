@@ -432,3 +432,56 @@ describe("users — 自分のドキュメントだけ書ける", () => {
     await assertFails(asAnon().doc(`users/${USER_A}`).set({ displayName: "x" }));
   });
 });
+
+// askGemini（Cloud Functions）が1日あたりのAI呼び出し回数を数える場所。
+// クライアントが直接書き換えられると、自分のカウントを0に戻して
+// レート制限を無効化できてしまうため、他フィールドと切り分けて守る。
+describe("users — aiCallDate/aiCallCountはクライアントから書き換えられない", () => {
+  it("新規ドキュメント作成時にaiCallCountを含められない", async () => {
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ displayName: "A", aiCallCount: 0 }),
+    );
+  });
+
+  it("新規ドキュメント作成時にaiCallDateを含められない", async () => {
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ displayName: "A", aiCallDate: "2026-08-19" }),
+    );
+  });
+
+  it("既にカウントが付いたドキュメントに対し、カウントをリセットする書き込みは拒否される", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`users/${USER_A}`).set({
+        displayName: "A",
+        aiCallDate: "2026-08-19",
+        aiCallCount: 50,
+      });
+    });
+
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ aiCallCount: 0 }, { merge: true }),
+    );
+    await assertFails(
+      asA().doc(`users/${USER_A}`).set({ aiCallDate: "2020-01-01", aiCallCount: 0 }, { merge: true }),
+    );
+  });
+
+  it("カウントが既に付いていても、他の設定フィールドは引き続き更新できる", async () => {
+    // merge:trueの書き込みでは、変更していない既存フィールド（ここでは
+    // aiCallDate/aiCallCount）もrequest.resource.dataに含まれてくる。
+    // 値そのものを変更していなければ許可されることを確かめる
+    // （affectedKeys()ではなくkeys()だけで判定すると、ここが壊れて
+    // AI利用済みのユーザーが設定変更できなくなる）。
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`users/${USER_A}`).set({
+        displayName: "A",
+        aiCallDate: "2026-08-19",
+        aiCallCount: 50,
+      });
+    });
+
+    await assertSucceeds(
+      asA().doc(`users/${USER_A}`).set({ remindersEnabled: false }, { merge: true }),
+    );
+  });
+});

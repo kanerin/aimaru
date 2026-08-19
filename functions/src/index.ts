@@ -3,6 +3,8 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import {
   CHECK_INTERVAL_MINUTES,
@@ -14,6 +16,15 @@ import {
   resolveReminderTargets,
 } from "./reminder_logic";
 import { TRASH_RETENTION_MS } from "./trash_logic";
+import {
+  callGeminiApi,
+  GeminiContent,
+  isCoupleMember,
+  isOverLimit,
+  nextRateLimitState,
+  RateLimitState,
+  validateContents,
+} from "./gemini_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -257,5 +268,96 @@ export const purgeTrash = onSchedule(
   { schedule: "every 24 hours", timeZone: "Asia/Tokyo" },
   async () => {
     await purgeDeletedEvents(Date.now());
+  },
+);
+
+// ── AIチャット: Gemini呼び出しをサーバー側に隠す ──────────────
+// 以前はAPIキーを --dart-define でビルドへ渡していたが、これはソースへの
+// 直書きを防ぐだけでAPKからは抽出できる。抜かれると他人に課金され、
+// 止める手段も無い（docs/open-issues.md 課題2）。
+// キーはSecret Managerに置き、呼び出しは認証済み・カップルのメンバーに限り、
+// 1日あたりの呼び出し回数もここで制限する。
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
+
+interface RateLimitDoc {
+  aiCallDate?: string;
+  aiCallCount?: number;
+}
+
+/**
+ * カップルのメンバーかどうかをFirestoreを読んで判定する。
+ * 招待コードを知っているだけの非メンバーからの呼び出しを弾く。
+ */
+async function checkCoupleMembership(coupleId: string, uid: string): Promise<boolean> {
+  const snap = await db.collection("couples").doc(coupleId).get();
+  const memberIds: string[] = (snap.data()?.memberIds as string[] | undefined) ?? [];
+  return isCoupleMember(memberIds, uid);
+}
+
+/**
+ * 1日あたりの呼び出し回数を users/{uid} に記録しながら判定する。
+ * トランザクションにすることで、素早い連打でも上限を超えて通さない。
+ * 許可した場合だけカウントを書き戻す（拒否時は書き込まない）。
+ */
+async function checkAndConsumeRateLimit(uid: string, todayStr: string): Promise<boolean> {
+  const ref = db.collection("users").doc(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() as RateLimitDoc | undefined;
+    const current: RateLimitState | undefined = data?.aiCallDate
+      ? { date: data.aiCallDate, count: data.aiCallCount ?? 0 }
+      : undefined;
+
+    if (isOverLimit(current, todayStr)) return false;
+
+    const next = nextRateLimitState(current, todayStr);
+    tx.set(ref, { aiCallDate: next.date, aiCallCount: next.count }, { merge: true });
+    return true;
+  });
+}
+
+interface AskGeminiRequest {
+  coupleId?: unknown;
+  contents?: unknown;
+}
+
+export const askGemini = onCall<AskGeminiRequest>(
+  { secrets: [geminiApiKey] },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "ログインが必要です");
+    }
+    const uid = request.auth.uid;
+    const { coupleId, contents } = request.data ?? {};
+
+    if (typeof coupleId !== "string" || coupleId.length === 0 || !validateContents(contents)) {
+      throw new HttpsError("invalid-argument", "リクエストの形式が不正です");
+    }
+
+    const isMember = await checkCoupleMembership(coupleId, uid);
+    if (!isMember) {
+      throw new HttpsError("permission-denied", "このカップルのメンバーではありません");
+    }
+
+    // Asia/TokyoでのYYYY-MM-DD。sv-SEロケールがこの並びで整形してくれる。
+    const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
+      new Date(),
+    );
+    const allowed = await checkAndConsumeRateLimit(uid, todayStr);
+    if (!allowed) {
+      throw new HttpsError("resource-exhausted", "AIの利用上限に達しました");
+    }
+
+    const apiKey = geminiApiKey.value();
+    if (!apiKey) {
+      throw new HttpsError("failed-precondition", "AIのAPIキーが設定されていません");
+    }
+
+    const result = await callGeminiApi(contents as GeminiContent[], apiKey);
+    if (!result.ok) {
+      throw new HttpsError(result.kind, "AIとの通信でエラーが発生しました");
+    }
+
+    return { text: result.text };
   },
 );
