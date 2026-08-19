@@ -135,7 +135,16 @@ class EventService {
         .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
   }
 
+  // 複数日にまたがる予定を、カレンダーの各日のMapに載せる際に
+  // 何日ぶんまで展開するかの上限。データ不整合（誤って年単位のendDateが
+  // 入る等）で際限なく展開してカレンダー描画が固まるのを防ぐための保険。
+  // 通常の旅行・帰省を想定すれば十分な余裕がある値。
+  static const _maxEventSpanDays = 60;
+
   // ── 全予定をMapで取得（カレンダー用）────────────
+  // endDateが日付をまたぐ予定は、開始日だけでなく終了日までの各日に
+  // 同じ予定を載せる。以前はdateのキーにしか入れていなかったため、
+  // 複数日の予定が2日目以降カレンダーに表示されなかった。
   Stream<Map<DateTime, List<AimaruEvent>>> watchEventsAsMap(String coupleId) {
     return _eventsRef(coupleId)
         .orderBy('date')
@@ -144,8 +153,19 @@ class EventService {
           final events = _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc));
           final Map<DateTime, List<AimaruEvent>> map = {};
           for (final e in events) {
-            final key = DateTime(e.date.year, e.date.month, e.date.day);
-            map.putIfAbsent(key, () => []).add(e);
+            final startKey = DateTime(e.date.year, e.date.month, e.date.day);
+            final endDate = e.endDate;
+            final endKey = endDate != null
+                ? DateTime(endDate.year, endDate.month, endDate.day)
+                : startKey;
+
+            var day = startKey;
+            var spanDays = 0;
+            while (!day.isAfter(endKey) && spanDays < _maxEventSpanDays) {
+              map.putIfAbsent(day, () => []).add(e);
+              day = day.add(const Duration(days: 1));
+              spanDays++;
+            }
           }
           return map;
         });

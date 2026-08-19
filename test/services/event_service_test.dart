@@ -333,6 +333,61 @@ void main() {
       expect(map[DateTime(2026, 8, 22)]!.map((e) => e.title), ['昼', '夜']);
       expect(map[DateTime(2026, 8, 23)], hasLength(1));
     });
+
+    test('複数日にまたがる予定は、開始日から終了日までの各日に表示される', () async {
+      await service.addEvent(coupleId, buildEvent(
+        title: '旅行',
+        date: DateTime(2026, 8, 22),
+        endDate: DateTime(2026, 8, 24),
+      ));
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+
+      expect(map[DateTime(2026, 8, 22)]!.map((e) => e.title), ['旅行'],
+          reason: '開始日');
+      expect(map[DateTime(2026, 8, 23)]!.map((e) => e.title), ['旅行'],
+          reason: '2日目（以前はここが表示されなかった）');
+      expect(map[DateTime(2026, 8, 24)]!.map((e) => e.title), ['旅行'],
+          reason: '終了日');
+      expect(map[DateTime(2026, 8, 25)], isNull, reason: '終了日の翌日には出ない');
+    });
+
+    test('終了時刻が開始と同じ日なら1日だけに表示される（時刻だけの終了と区別する）', () async {
+      await service.addEvent(coupleId, buildEvent(
+        title: 'ディナー',
+        date: DateTime(2026, 8, 22, 18, 0),
+        endDate: DateTime(2026, 8, 22, 21, 0),
+      ));
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+
+      expect(map[DateTime(2026, 8, 22)]!.map((e) => e.title), ['ディナー']);
+      expect(map[DateTime(2026, 8, 22)], hasLength(1), reason: '同じ日に二重登録しない');
+    });
+
+    test('endDateが無い予定は開始日にしか表示されない（回帰確認）', () async {
+      await service.addEvent(coupleId,
+          buildEvent(title: '単発', date: DateTime(2026, 8, 22)));
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+
+      expect(map[DateTime(2026, 8, 22)]!.map((e) => e.title), ['単発']);
+      expect(map[DateTime(2026, 8, 23)], isNull);
+    });
+
+    test('異常に長いendDateでも展開日数に上限があり固まらない', () async {
+      await service.addEvent(coupleId, buildEvent(
+        title: '壊れたデータ',
+        date: DateTime(2026, 1, 1),
+        endDate: DateTime(2027, 1, 1),
+      ));
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+      final daysWithEvent =
+          map.values.where((list) => list.any((e) => e.title == '壊れたデータ')).length;
+
+      expect(daysWithEvent, lessThanOrEqualTo(60));
+    });
   });
 
   group('今後の予定の取得', () {
