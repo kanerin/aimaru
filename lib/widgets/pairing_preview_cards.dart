@@ -34,8 +34,8 @@ class PairingPreviewCards extends StatelessWidget {
     ),
     _PreviewItem(
       emoji: '📝',
-      title: 'やりたいこと・割り勘',
-      body: '共有TODOと立て替えの精算をまとめて管理',
+      title: 'やりたいことリスト',
+      body: '2人でやりたいことを共有して、思いついたらすぐ追加できます',
     ),
   ];
 

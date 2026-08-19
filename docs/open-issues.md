@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **61件すべて通過**（ローカルで確認、CIでも要確認） |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **56件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **267件すべて通過**（ローカルで確認、CIでも要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **49件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **248件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -30,12 +30,9 @@ test/utils/recurring_events_test.dart            12   毎年繰り返しの展�
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
-test/services/expense_service_test.dart           4   割り勘・立て替え記録・精算記録のCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
-test/utils/expense_balance_test.dart              8   割り勘の精算額計算・精算記録の相殺
 test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
-test/screens/expenses_screen_test.dart            7   割り勘画面のロード・エラー・表示状態・精算額表示・精算する操作
 test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
 test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示
 test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
@@ -52,7 +49,7 @@ functions/src/reminders.integration.test.ts      10   Firestoreを読んで判�
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
-rules_test/firestore.test.js                     50   Firestoreルールのメンバー境界（todos・expenses・questionAnswers・anniversaries・aiCallCount保護含む）
+rules_test/firestore.test.js                     43   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount保護含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -130,17 +127,11 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 それぞれ #9・free_time_finder・#11・#8 で実装済みのため表から外した。棚卸しのたびに
 「新発見」として蒸し返さないよう、ここに記録しておく。
 
-割り勘・立て替え（ExpensesScreen / ExpenseService、`couples/{coupleId}/expenses`）を追加した。
-TimeTreeにはカレンダー機能しか無く、費用共有は他のカップル/夫婦アプリで比較される
-要素のため差別化になる。2人のカップル前提で、支払い合計の差額の半分を精算額として自動計算する
-（`lib/utils/expense_balance.dart`）。
-
-割り勘画面に「精算する」操作を追加した（本PR）。Splitwiseなど専業の割り勘アプリは精算を記録して
-残高をリセットできるが、従来のAIMARUは未精算額を都度計算するだけで記録する手段が無く、記録が
-増え続けると見通しが悪くなっていた。精算は`ExpenseItem`に`isSettlement`フラグを立てて既存の
-`expenses`コレクションにそのまま記録する形にし、新しいFirestoreコレクションやルール変更は
-増やしていない。精算1件はpaidBy側の寄与を2倍で計算することで、以降の`calculateBalance`が
-0円に戻る（`lib/utils/expense_balance.dart`）。履歴は削除せず「精算」ラベルで一覧に残す。
+旧: 割り勘・立て替え（ExpensesScreen / ExpenseService、`couples/{coupleId}/expenses`）を
+追加していたが、2026-08-19にユーザーの判断で機能ごと削除した。画面・サービス・
+`ExpenseItem`モデル・`firestore.rules`の`expenses`ルール・対応するテストをすべて削除している。
+既存のFirestore上の`expenses`データがもし残っていても、ルール削除によりクライアントからは
+今後読み書きできない（データ自体の削除は行っていない）。
 
 旧16（去年の今日の振り返り）は、思い出画面（MemoriesScreen）に「n年前の今日」セクションとして
 実装済みのため表から外した（本PR）。サービス終了したPairyが持っていた「思い出を振り返る」体験の

@@ -32,11 +32,6 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
-      match /expenses/{expenseId} {
-        allow read, write: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
-      }
-
       match /anniversaries/{anniversaryId} {
         allow read, write: if request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
