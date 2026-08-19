@@ -185,51 +185,33 @@ void main() {
   });
 
   group('ペアの解消', () {
-    test('相手がいる場合、自分だけがmemberIdsから外れる', () async {
-      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
+    // 実際の削除（サブコレクション・Storageを含む）はCloud Functions側
+    // （functions/src/index.ts の dissolveCouple、Admin SDK経由）で行う。
+    // ここではCoupleServiceが正しいcoupleIdでその呼び出しを行うことだけを
+    // 検証する。Firestoreルール上questionAnswersはクライアントから削除
+    // できない（意図的な制限）ため、クライアント側で直接削除するテストは
+    // 書かない。
+    test('指定したcoupleIdでdissolveCouple呼び出しを行う', () async {
+      String? capturedCoupleId;
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (coupleId) async => capturedCoupleId = coupleId,
+      );
 
-      await serviceFor(meUid).leaveCouple(id);
+      await service.dissolveCouple('couple-xyz');
 
-      final doc = await db.collection('couples').doc(id).get();
-      expect(doc.exists, isTrue, reason: 'ドキュメント自体は相手のために残す');
-      expect(doc.data()!['memberIds'], [partnerUid]);
+      expect(capturedCoupleId, 'couple-xyz');
     });
 
-    test('相手がいる場合、予定などのサブコレクションは削除しない', () async {
-      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
-      await db.collection('couples').doc(id).collection('events').doc('e1').set({
-        'title': '思い出のデート',
-      });
+    test('呼び出しが失敗すれば例外がそのまま伝わる', () async {
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (_) async => throw Exception('network error'),
+      );
 
-      await serviceFor(meUid).leaveCouple(id);
-
-      final events = await db.collection('couples').doc(id).collection('events').get();
-      expect(events.docs, hasLength(1), reason: '相手の思い出まで消してはいけない');
-    });
-
-    test('自分しかいない場合、ドキュメントごと削除する', () async {
-      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);
-
-      await serviceFor(meUid).leaveCouple(id);
-
-      final doc = await db.collection('couples').doc(id).get();
-      expect(doc.exists, isFalse);
-    });
-
-    test('抜けた後、自分は新しいペアを作り直せる', () async {
-      final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid, partnerUid]);
-      final service = serviceFor(meUid);
-      await service.leaveCouple(id);
-
-      final newCode = await service.createInviteCode();
-
-      expect(newCode, isNot('A3K9PZ'));
-      final mine = await service.getMyCouple();
-      expect(mine!.id, isNot(id), reason: '古いペアではなく新しいペアに属する');
-    });
-
-    test('既に存在しないペアに対して呼んでも例外にならない', () async {
-      await expectLater(serviceFor(meUid).leaveCouple('no-such-couple'), completes);
+      await expectLater(service.dissolveCouple('couple-xyz'), throwsException);
     });
   });
 

@@ -10,8 +10,8 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
-| Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **26件**（テストコードのtypecheckは通過。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **確認中**（マージ後に再測定） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **確認中**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **確認中**（マージ後に再測定） |
 | Flutter 単体・ウィジェット | `flutter test` | **確認中**（マージ後に再測定） |
@@ -24,7 +24,7 @@ test/services/gemini_service_test.dart           12   askGemini呼び出し(coup
 test/utils/free_time_finder_test.dart            15   2人の空き時間検出・提案
 test/widgets/event_datetime_fields_test.dart     15   日時入力ウィジェット
 test/services/event_service_test.dart            18   予定CRUD・終日・期間クエリ・ゴミ箱
-test/services/couple_service_test.dart           20   ペアリング・招待コード・ペアの解消
+test/services/couple_service_test.dart           17   ペアリング・招待コード・ペアの解消（dissolveCouple呼び出し）
 test/services/data_export_service_test.dart       7   データエクスポート(予定・チャット・TODO等のJSON化)
 test/utils/japan_holidays_test.dart              13   祝日計算
 test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
@@ -50,9 +50,10 @@ functions/src/gemini_logic.test.ts               35   askGeminiのレート制�
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
 functions/src/bug_report_logic.test.ts           21   バグ報告フォームの入力検証・分類プロンプト組み立て・Gemini応答の厳格パース
 functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レート制限（askGeminiと独立）・受理された報告の書き込み
+functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
 test/services/bug_report_service_test.dart       12   バグ報告送信サービス（入力検証・応答解釈・エラー分類）
 test/screens/bug_report_screen_test.dart          6   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示）
-rules_test/firestore.test.js                     47   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否含む）
+rules_test/firestore.test.js                     確認中   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否・ペアの解消含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -134,6 +135,9 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 `memberIds`が1人になった後にアクセスする既存コード（`calendar_screen.dart`の`_loadMembers`、
 `couple_service.dart`の`getPartnerName`、`questions_screen.dart`のパートナー回答表示）は、
 いずれも既に「相手がいない」ケースを安全に扱っていた（新規の不具合は見つからなかった）。
+
+破壊的な変更のため当初は他のPRと違いauto-mergeせず人間のレビューを必須にしていたが、
+2026-08-20にユーザー本人がこのPRを確認した上でauto-mergeを有効化した。
 
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|

@@ -152,11 +152,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ── ペアを解消する（自分だけ抜ける）──────────────
-  // 予定・チャットなどの記録はパートナー側にそのまま残ることを、
-  // 実際に削除される前にダイアログで伝える（誤解して押されると
-  // 「せっかくの記録が消えた」という取り返しのつかない不満につながるため）。
-  Future<void> _leaveCouple() async {
+  // ── ペアを解消する ────────────────────────────────
+  // 共有してきたデータ（予定・チャット・写真・TODO・割り勘・ふたりの質問
+  // への回答）を両方のぶんまとめて完全に削除する。パートナー側にも一切
+  // 残らないことを、実際に削除される前にダイアログで明示する。
+  Future<void> _dissolveCouple() async {
     final couple = _couple;
     if (couple == null || _accountActionInProgress) return;
 
@@ -166,13 +166,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: AppColors.navyCard,
         title: const Text('ペアを解消しますか？'),
         content: const Text(
-          'これまでの予定・チャット・写真などの記録は削除されません。パートナー側にはそのまま残ります。',
+          'パートナーを含め、これまでの予定・チャット・写真などの記録は全て完全に削除されます。'
+          '元に戻せません。\n\n'
+          'データを残したい場合は、先に「データをエクスポート」から書き出しておいてください。',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('ペアを解消する', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('完全に削除する', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -181,7 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     setState(() => _accountActionInProgress = true);
     try {
-      await _coupleService.leaveCouple(couple.id);
+      await _coupleService.dissolveCouple(couple.id);
       if (mounted) context.go('/pairing');
     } catch (_) {
       if (mounted) {
@@ -194,20 +196,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ── アカウントを削除する（退会）────────────────────
-  // ペアを組んでいる場合は先に自分だけ抜け（_leaveCoupleと同じ挙動、
-  // パートナー側の記録は残る）、そのあとFirebase Authのアカウントと
-  // 自分のプロフィールを削除する。
+  // ペアを組んでいる場合は先にペアを解消する（_dissolveCoupleと同じ挙動、
+  // パートナー側の記録も含めて完全に削除される）。そのあとFirebase Authの
+  // アカウントと自分のプロフィールを削除する。
   Future<void> _deleteAccount() async {
     if (_accountActionInProgress) return;
+    final pairedWarning = _couple != null
+        ? 'ペアを組んでいる場合、パートナーを含めこれまでの予定・チャット・写真などの記録は'
+            '全て完全に削除されます。\n\n'
+        : '';
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.navyCard,
         title: const Text('アカウントを削除しますか？'),
-        content: const Text(
-          'アカウントを削除すると元に戻せません。ペアを組んでいる場合は自動的に解消されます'
-          '（パートナー側の記録は残ります）。\n\n'
+        content: Text(
+          'アカウントを削除すると元に戻せません。\n\n'
+          '$pairedWarning'
           'データを残したい場合は、先に「データをエクスポート」から書き出しておいてください。',
         ),
         actions: [
@@ -225,7 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final couple = _couple;
       if (couple != null) {
-        await _coupleService.leaveCouple(couple.id);
+        await _coupleService.dissolveCouple(couple.id);
       }
       await _authService.deleteAccount();
       if (mounted) context.go('/login');
@@ -522,7 +528,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_couple != null)
             Center(
               child: TextButton.icon(
-                onPressed: _accountActionInProgress ? null : _leaveCouple,
+                onPressed: _accountActionInProgress ? null : _dissolveCouple,
                 icon: const Icon(Icons.link_off, size: 16, color: Colors.redAccent),
                 label: const Text('ペアを解消する', style: TextStyle(color: Colors.redAccent)),
               ),
