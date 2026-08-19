@@ -12,6 +12,7 @@ import '../utils/app_theme.dart';
 import '../widgets/anniversary_card.dart';
 import '../widgets/days_off_card.dart';
 import '../widgets/next_meeting_card.dart';
+import 'anniversaries_screen.dart';
 import 'expenses_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
@@ -189,6 +190,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               }
             }),
+          ),
+          const SizedBox(height: 12),
+          _NavigationRow(
+            title: '記念日リスト',
+            subtitle: 'プロポーズ・入籍日など、付き合い始めた日以外の記念日も追加できます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => AnniversariesScreen(coupleId: widget.coupleId)),
+            ),
           ),
 
           const SizedBox(height: 28),

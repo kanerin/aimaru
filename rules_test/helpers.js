@@ -116,6 +116,18 @@ export async function seedExpense(testEnv, expenseId = "expense-1") {
   });
 }
 
+export async function seedAnniversary(testEnv, anniversaryId = "anniversary-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/anniversaries/${anniversaryId}`).set({
+      coupleId: COUPLE_ID,
+      title: "プロポーズ記念日",
+      date: new Date("2024-03-10"),
+      createdBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}
+
 export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/questionAnswers/${dateKey}_${uid}`).set({

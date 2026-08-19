@@ -326,6 +326,51 @@ class TodoItem {
   };
 }
 
+// ── AnniversaryItem（複数記念日）────────────────────────
+// CoupleModel.anniversary（付き合い始めた日）は1件しか持てないが、
+// プロポーズ・入籍・初デートなど、カップルは複数の記念日を追いたいことが多い
+// （TimeTreeにはこの概念自体が無く、Pairyの移行先として比較される
+// Between・Twinest等が複数記念日の登録・カウントダウンを持つ）。
+// 表示側はlib/utils/anniversary_calculator.dartのsummarizeAnniversaryを
+// そのまま再利用し、日付ごとの経過日数・次の周年までの日数を計算する。
+class AnniversaryItem {
+  final String id;
+  final String coupleId;
+  final String title;
+  final DateTime date;
+  final String createdBy;
+  final DateTime createdAt;
+
+  AnniversaryItem({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    required this.date,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory AnniversaryItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return AnniversaryItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      title:     d['title'] ?? '',
+      date:      (d['date'] as Timestamp).toDate(),
+      createdBy: d['createdBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'title':     title,
+    'date':      Timestamp.fromDate(date),
+    'createdBy': createdBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── GCalEventSummary（Googleカレンダーの予定の要約）───
 // 自分/パートナーのGoogleカレンダーをカレンダー画面に重ねて
 // 表示するための軽量なキャッシュ用モデル。
