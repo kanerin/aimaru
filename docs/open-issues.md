@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-18 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-19 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **11件すべて通過**（エミュレータ上、CIで確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **45件すべて通過**（エミュレータ上、CIで確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **244件すべて通過**（CIで確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **250件すべて通過**（CIで確認） |
 
 テストの内訳:
 
@@ -86,9 +86,26 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 | # | 課題 | 対応する要件 / ケース | なぜ残っているか |
 |---|---|---|---|
 | 2 | **Gemini API キーがビルド成果物に埋まる** | REQ-026 / FEAT-046 / TC-087 | `--dart-define` はソースへの直書きを防ぐだけで、APK からは抽出できる。Cloud Functions の `onCall` へ移して Secret Manager に置く必要がある |
-| 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する |
+| 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する。フェーズ1（下記）着手済み |
 | 4 | **ペア解消・退会・データエクスポートの導線が無い** | REQ-023 / REQ-024 / FEAT-039 / FEAT-040 | 関係の終わりを迎えるユーザーを扱えていない。個人情報の削除請求への対応義務もある |
 | 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
+
+課題3（予定ごとの共有範囲）はフェーズ1として、`AimaruEvent`に`visibility`（`shared`/既定 or `private`）
+フィールドだけを追加した（本PR、`lib/models/models.dart`）。既存ドキュメントに無ければ`shared`へ
+フォールバックする。UIでの切り替え・Firestoreルールでの読み取り制限は**まだ実装していない**
+（全予定が引き続きペア双方に見える）。
+
+**フェーズ2が着手できない理由**: `private`を実際に隠すには、Firestoreのセキュリティルールが
+`resource.data`（このケースでは`visibility`・`createdBy`）を見て判定する必要があるが、`list`
+クエリ（`watchMonthEvents`等、カレンダーの主要な取得経路はすべてこれ）に対する読み取りルールは
+「クエリの`where`句だけから安全性が判定できる」ことが必須で、`visibility`を`where`に含めない限り
+クエリ全体が拒否される。つまり`visibility`で絞り込む`where`句を全ての取得クエリに追加する必要が
+あり、これは新しい複合索引（`firestore.indexes.json`）を要求する。ところが索引の本番デプロイは
+課題8と同じ理由（`FIREBASE_SERVICE_ACCOUNT_KEY`のIAM未付与）で失敗し続けており、この状態で
+カレンダーの主要クエリに新しい索引前提の絞り込みを入れると、IAMが解決するまでの間**本番の
+全ユーザーでカレンダー画面がFAILED_PRECONDITIONになる**（課題8の対象はバックグラウンドの
+リマインダー処理だけだったが、こちらは主要画面そのものが壊れるため影響がより大きい）。
+「人間にしかできない作業」のIAMロール付与が終わってから着手すること。
 
 ### P1 — 次に効くもの
 
