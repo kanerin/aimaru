@@ -4,7 +4,7 @@ import '../models/models.dart';
 
 // ── データエクスポート ────────────────────────────────
 // カップルで共有しているデータ（予定・思い出＝写真付きの予定・チャット・
-// やりたいことリスト・割り勘・ふたりの質問への回答）をJSONとして書き出す。
+// やりたいことリスト・ふたりの質問への回答）をJSONとして書き出す。
 // AIMARUはカップル2人で作るデータなので、片方の視点だけを切り出すのではなく、
 // カップル全体の共有データをそのまま対象にする。
 //
@@ -28,7 +28,6 @@ class DataExportService {
       coupleRef.collection('events').get(),
       coupleRef.collection('chats').orderBy('timestamp').get(),
       coupleRef.collection('todos').get(),
-      coupleRef.collection('expenses').get(),
       coupleRef.collection('questionAnswers').get(),
     ]);
 
@@ -39,9 +38,8 @@ class DataExportService {
         .toList();
     final chats = results[1].docs.map(ChatMessage.fromDoc).map(_chatToJson).toList();
     final todos = results[2].docs.map(TodoItem.fromDoc).map(_todoToJson).toList();
-    final expenses = results[3].docs.map(ExpenseItem.fromDoc).map(_expenseToJson).toList();
     final questionAnswers =
-        results[4].docs.map(QuestionAnswer.fromDoc).map(_answerToJson).toList();
+        results[3].docs.map(QuestionAnswer.fromDoc).map(_answerToJson).toList();
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -49,7 +47,6 @@ class DataExportService {
       'events': events,
       'chats': chats,
       'todos': todos,
-      'expenses': expenses,
       'questionAnswers': questionAnswers,
     };
 
@@ -85,16 +82,6 @@ class DataExportService {
     'done': t.done,
     'createdBy': t.createdBy,
     'createdAt': t.createdAt.toIso8601String(),
-  };
-
-  Map<String, dynamic> _expenseToJson(ExpenseItem e) => {
-    'id': e.id,
-    'title': e.title,
-    'amount': e.amount,
-    'paidBy': e.paidBy,
-    'createdBy': e.createdBy,
-    'createdAt': e.createdAt.toIso8601String(),
-    'isSettlement': e.isSettlement,
   };
 
   Map<String, dynamic> _answerToJson(QuestionAnswer a) => {

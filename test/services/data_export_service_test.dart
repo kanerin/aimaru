@@ -28,7 +28,6 @@ void main() {
     expect(decoded['events'], isEmpty);
     expect(decoded['chats'], isEmpty);
     expect(decoded['todos'], isEmpty);
-    expect(decoded['expenses'], isEmpty);
     expect(decoded['questionAnswers'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
@@ -131,22 +130,13 @@ void main() {
     expect(chats.map((c) => c['text']), ['1件目', '2件目']);
   });
 
-  test('やりたいことリスト・割り勘・ふたりの質問への回答を書き出す', () async {
+  test('やりたいことリスト・ふたりの質問への回答を書き出す', () async {
     await col('todos').doc('todo-1').set({
       'coupleId': coupleId,
       'text': '水族館に行く',
       'done': false,
       'createdBy': 'user-a',
       'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
-    });
-    await col('expenses').doc('expense-1').set({
-      'coupleId': coupleId,
-      'title': 'ディナー代',
-      'amount': 8000,
-      'paidBy': 'user-a',
-      'createdBy': 'user-a',
-      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 2)),
-      'isSettlement': false,
     });
     await col('questionAnswers').doc('2026-01-01_user-a').set({
       'coupleId': coupleId,
@@ -162,11 +152,6 @@ void main() {
     final todo = (decoded['todos'] as List).single as Map<String, dynamic>;
     expect(todo['text'], '水族館に行く');
     expect(todo['done'], false);
-
-    final expense = (decoded['expenses'] as List).single as Map<String, dynamic>;
-    expect(expense['title'], 'ディナー代');
-    expect(expense['amount'], 8000);
-    expect(expense['isSettlement'], false);
 
     final answer = (decoded['questionAnswers'] as List).single as Map<String, dynamic>;
     expect(answer['dateKey'], '2026-01-01');

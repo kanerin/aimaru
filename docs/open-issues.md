@@ -11,7 +11,7 @@
 | 対象 | コマンド | 結果 |
 |---|---|---|
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **確認中**（マージ後に再測定） |
-| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **確認中**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。実行はローカルのNode 20環境では確認できていない。下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **確認中**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。ローカルがNode 20環境のため実行未確認、下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **確認中**（マージ後に再測定） |
 | Flutter 単体・ウィジェット | `flutter test` | **確認中**（マージ後に再測定） |
