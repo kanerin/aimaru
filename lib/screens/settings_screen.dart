@@ -9,10 +9,7 @@ import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
-import '../widgets/anniversary_card.dart';
 import '../widgets/days_off_card.dart';
-import '../widgets/next_meeting_card.dart';
-import 'anniversaries_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
 import 'trash_screen.dart';
@@ -165,60 +162,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ]),
               ],
             ]),
-          ),
-
-          const SizedBox(height: 28),
-          const _SectionLabel('記念日'),
-          AnniversaryCard(
-            coupleId: widget.coupleId,
-            initialAnniversary: _couple?.anniversary,
-            onSaved: (date) => setState(() {
-              final couple = _couple;
-              if (couple != null) {
-                _couple = CoupleModel(
-                  id: couple.id,
-                  memberIds: couple.memberIds,
-                  inviteCode: couple.inviteCode,
-                  createdAt: couple.createdAt,
-                  anniversary: date,
-                  nextMeetingDate: couple.nextMeetingDate,
-                  // 休みの設定を引き継がないと、記念日を保存しただけで
-                  // 画面上の休み設定が既定値へ戻って見えてしまう
-                  daysOff: couple.daysOff,
-                  holidaysAreDaysOff: couple.holidaysAreDaysOff,
-                );
-              }
-            }),
-          ),
-          const SizedBox(height: 12),
-          _NavigationRow(
-            title: '記念日リスト',
-            subtitle: 'プロポーズ・入籍日など、付き合い始めた日以外の記念日も追加できます',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => AnniversariesScreen(coupleId: widget.coupleId)),
-            ),
-          ),
-
-          const SizedBox(height: 28),
-          const _SectionLabel('次に会う日'),
-          NextMeetingCard(
-            coupleId: widget.coupleId,
-            initialNextMeetingDate: _couple?.nextMeetingDate,
-            onSaved: (date) => setState(() {
-              final couple = _couple;
-              if (couple != null) {
-                _couple = CoupleModel(
-                  id: couple.id,
-                  memberIds: couple.memberIds,
-                  inviteCode: couple.inviteCode,
-                  createdAt: couple.createdAt,
-                  anniversary: couple.anniversary,
-                  nextMeetingDate: date,
-                  daysOff: couple.daysOff,
-                  holidaysAreDaysOff: couple.holidaysAreDaysOff,
-                );
-              }
-            }),
           ),
 
           const SizedBox(height: 28),

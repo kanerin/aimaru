@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **49件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **245件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **247件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -38,7 +38,7 @@ test/services/question_service_test.dart          4   デイリー質問への�
 test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/services/anniversary_service_test.dart       3   複数記念日のCRUD
-test/screens/anniversaries_screen_test.dart        4   記念日リスト画面のロード・エラー・並び順・空表示
+test/screens/anniversary_hub_screen_test.dart      6   記念日タブ（次に会う日・記念日・記念日リスト）のロード・エラー・並び順・空表示
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
@@ -189,6 +189,15 @@ aimaru-7eb2e`を手動実行し、この課題で追加した複合索引（`rem
 の`summarizeAnniversary`をそのまま再利用しており、新しい計算式は増やしていない。
 Firestoreのクエリは絞り込み無しの単純な購読（`snapshots()`）で、並び替え（次の記念日が近い順）は
 クライアント側で行うため、課題8・課題3フェーズ2で問題になった新しい複合索引は要らない。
+
+上記3つ（`NextMeetingCard`・`AnniversaryCard`・記念日リスト）は設定画面の奥に埋もれていたが、
+2026-08-20にユーザーの判断で、思い出タブ削除の跡地に新設した「記念日」タブ
+（`lib/screens/anniversary_hub_screen.dart`）へ1画面に統合した。設定画面からはこれら3セクション
+（記念日・記念日リストへの導線・次に会う日）を削除し、「基本の休日」以降はそのまま残している。
+旧`AnniversariesScreen`（記念日リストの独立全画面）は役目を終えたため削除し、そのタイル描画・
+追加ダイアログ・削除（スワイプ）ロジックは`AnniversaryHubScreen`内の`_AnniversaryListSection`へ
+移した。`NextMeetingCard`・`AnniversaryCard`自体は変更せずそのまま埋め込んでいる。新しい
+Firestoreクエリやコレクションは増やしていない。
 
 旧17（ペア未成立時の体験プレビュー）は、ペアリング画面（PairingScreen）に招待コード/QRの
 上に「ペアになるとできること」カード（`lib/widgets/pairing_preview_cards.dart`）を追加し、
