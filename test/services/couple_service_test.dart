@@ -184,6 +184,37 @@ void main() {
     });
   });
 
+  group('ペアの解消', () {
+    // 実際の削除（サブコレクション・Storageを含む）はCloud Functions側
+    // （functions/src/index.ts の dissolveCouple、Admin SDK経由）で行う。
+    // ここではCoupleServiceが正しいcoupleIdでその呼び出しを行うことだけを
+    // 検証する。Firestoreルール上questionAnswersはクライアントから削除
+    // できない（意図的な制限）ため、クライアント側で直接削除するテストは
+    // 書かない。
+    test('指定したcoupleIdでdissolveCouple呼び出しを行う', () async {
+      String? capturedCoupleId;
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (coupleId) async => capturedCoupleId = coupleId,
+      );
+
+      await service.dissolveCouple('couple-xyz');
+
+      expect(capturedCoupleId, 'couple-xyz');
+    });
+
+    test('呼び出しが失敗すれば例外がそのまま伝わる', () async {
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (_) async => throw Exception('network error'),
+      );
+
+      await expectLater(service.dissolveCouple('couple-xyz'), throwsException);
+    });
+  });
+
   group('記念日', () {
     test('設定した記念日が読み戻せる', () async {
       final id = await seedCouple(code: 'A3K9PZ', memberIds: [meUid]);

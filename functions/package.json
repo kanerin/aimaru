@@ -9,7 +9,7 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test:integration": "firebase emulators:exec --project aimaru-test --only firestore \"node --import tsx --test --test-concurrency=1 src/*.integration.test.ts\""
+    "test:integration": "firebase emulators:exec --project aimaru-test --only firestore,storage \"node --import tsx --test --test-concurrency=1 src/*.integration.test.ts\""
   },
   "engines": {
     "node": "22"

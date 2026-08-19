@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
@@ -277,6 +278,15 @@ export const purgeTrash = onSchedule(
   },
 );
 
+// ── カップルのメンバーかどうかをFirestoreを読んで判定する ──────────
+// 招待コードを知っているだけの非メンバーからの呼び出しを弾く。
+// askGemini・dissolveCoupleの共通ヘルパー。
+async function checkCoupleMembership(coupleId: string, uid: string): Promise<boolean> {
+  const snap = await db.collection("couples").doc(coupleId).get();
+  const memberIds: string[] = (snap.data()?.memberIds as string[] | undefined) ?? [];
+  return isCoupleMember(memberIds, uid);
+}
+
 // ── AIチャット: Gemini呼び出しをサーバー側に隠す ──────────────
 // 以前はAPIキーを --dart-define でビルドへ渡していたが、これはソースへの
 // 直書きを防ぐだけでAPKからは抽出できる。抜かれると他人に課金され、
@@ -288,16 +298,6 @@ const geminiApiKey = defineSecret("GEMINI_API_KEY");
 interface RateLimitDoc {
   aiCallDate?: string;
   aiCallCount?: number;
-}
-
-/**
- * カップルのメンバーかどうかをFirestoreを読んで判定する。
- * 招待コードを知っているだけの非メンバーからの呼び出しを弾く。
- */
-async function checkCoupleMembership(coupleId: string, uid: string): Promise<boolean> {
-  const snap = await db.collection("couples").doc(coupleId).get();
-  const memberIds: string[] = (snap.data()?.memberIds as string[] | undefined) ?? [];
-  return isCoupleMember(memberIds, uid);
 }
 
 /**
@@ -455,3 +455,46 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
     return { accepted: true, classification: triage.classification, summary: triage.summary };
   },
 );
+
+// ── ペアの解消: カップルの共有データをすべて削除する ──────────
+// 「ペアを解消する」は、片方の操作で相手のデータだけ残す・自分だけ抜ける、
+// ではなく、共有してきたデータ（予定・チャット・写真・TODO・
+// ふたりの質問への回答）を両者ぶんまとめて完全に削除する仕様
+// （docs/open-issues.md 課題4）。
+//
+// questionAnswersはクライアントからは削除できない設計
+// （firestore.rulesにallow deleteが無い。相手の回答を見た後に自分の回答を
+// 書き換える抜け道を防ぐため）。解消のときだけはAdmin SDK経由でまとめて
+// 消す必要があるため、複数コレクションにまたがる削除をCloud Functionに
+// 寄せている（クライアント側で1コレクションずつ消すと、途中で失敗したときに
+// 中途半端な状態が残りやすいという理由もある）。
+interface DissolveCoupleRequest {
+  coupleId?: unknown;
+}
+
+export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です");
+  }
+  const uid = request.auth.uid;
+  const { coupleId } = request.data ?? {};
+
+  if (typeof coupleId !== "string" || coupleId.length === 0) {
+    throw new HttpsError("invalid-argument", "リクエストの形式が不正です");
+  }
+
+  const isMember = await checkCoupleMembership(coupleId, uid);
+  if (!isMember) {
+    throw new HttpsError("permission-denied", "このカップルのメンバーではありません");
+  }
+
+  // Storageの写真はFirestoreと別の保管先なので、個別に消す必要がある。
+  // 写真が1枚も無いカップルでも空振りするだけでエラーにはならない。
+  await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/`, force: true });
+
+  // couples/{coupleId} とその配下（events/chats/todos/
+  // questionAnswers/googleCalendarCache）をまとめて削除する。
+  await db.recursiveDelete(db.collection("couples").doc(coupleId));
+
+  return { success: true };
+});

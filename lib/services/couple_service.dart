@@ -1,21 +1,34 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 
 class CoupleService {
   // 引数なしで生成すると本番のFirebaseを使う（既存の呼び出しはそのまま）。
-  // テストからは firestore / uid を差し込んでFirebaseに触れずに検証する。
-  CoupleService({FirebaseFirestore? firestore, String? uid})
-      : _db = firestore ?? FirebaseFirestore.instance,
-        _overrideUid = uid;
+  // テストからは firestore / uid / dissolveCoupleInvoke を差し込んでFirebaseに
+  // 触れずに検証する。
+  CoupleService({
+    FirebaseFirestore? firestore,
+    String? uid,
+    Future<void> Function(String coupleId)? dissolveCoupleInvoke,
+  })  : _db = firestore ?? FirebaseFirestore.instance,
+        _overrideUid = uid,
+        _dissolveCoupleInvoke = dissolveCoupleInvoke ?? _defaultDissolveCoupleInvoke;
 
   final FirebaseFirestore _db;
   final String? _overrideUid;
+  final Future<void> Function(String coupleId) _dissolveCoupleInvoke;
 
   String get _uid => _overrideUid ?? FirebaseAuth.instance.currentUser!.uid;
+
+  static Future<void> _defaultDissolveCoupleInvoke(String coupleId) async {
+    await FirebaseFunctions.instance
+        .httpsCallable('dissolveCouple')
+        .call({'coupleId': coupleId});
+  }
 
   // ── 自分がペアに属しているか確認 ─────────────────
   Future<CoupleModel?> getMyCouple() async {
@@ -115,6 +128,20 @@ class CoupleService {
       'holidaysAreDaysOff': holidaysAreDaysOff,
     });
   }
+
+  // ── ペアを解消する ────────────────────────────────
+  // 共有してきたデータ（予定・チャット・写真・TODO・割り勘・ふたりの質問
+  // への回答）を両方のぶんまとめて完全に削除する。片方の操作で相手の
+  // データだけ残す・自分だけ抜ける、ではなく、解消＝共有の終わりとして
+  // 両者ともペア無しの状態に戻す仕様（元々は「自分だけ抜けて相手のデータは
+  // 残す」設計だったが、レビューで「良くない」と指摘され変更した）。
+  //
+  // questionAnswersはfirestore.rulesにallow deleteが無く
+  // （相手の回答を見た後に自分の回答を書き換える抜け道を防ぐため）、
+  // クライアントからは削除できない。複数コレクションにまたがる削除を
+  // 安全にまとめて行うため、実体はCloud Functions側
+  // （functions/src/index.ts の dissolveCouple、Admin SDK経由）にある。
+  Future<void> dissolveCouple(String coupleId) => _dissolveCoupleInvoke(coupleId);
 
   // ── パートナーの表示名を取得 ──────────────────────
   Future<String?> getPartnerName(CoupleModel couple) async {
