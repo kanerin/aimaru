@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **61件すべて通過**（ローカルで確認、CIでも要確認） |
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **確認中**（マージ後に再計測して更新） |
-| Flutter 単体・ウィジェット | `flutter test` | **確認中**（マージ後に再計測して更新） |
+| セキュリティルール | `cd rules_test && npm test` | **56件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **267件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -52,7 +52,7 @@ functions/src/reminders.integration.test.ts      10   Firestoreを読んで判�
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
-rules_test/firestore.test.js                     確認中   Firestoreルールのメンバー境界（todos・expenses・questionAnswers・anniversaries・aiCallCount保護含む）
+rules_test/firestore.test.js                     50   Firestoreルールのメンバー境界（todos・expenses・questionAnswers・anniversaries・aiCallCount保護含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
