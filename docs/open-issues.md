@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore経路） | `cd functions && npm run test:integration` | **19件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **49件すべて通過**（エミュレータ上、ローカルで確認、CIでも要確認） |
-| Flutter 単体・ウィジェット | `flutter test` | **248件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **255件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -31,7 +31,7 @@ test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
 test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
 test/services/theme_controller_test.dart          4   テーマ
-test/screens/todos_screen_test.dart               3   やりたいことリストのロード・エラー・表示状態
+test/screens/todos_screen_test.dart               6   やりたいことリストのロード・エラー・表示状態・カレンダー登録への遷移・削除・完了切替
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
 test/utils/on_this_day_finder_test.dart           5   n年前の今日の振り返り抽出
 test/screens/memories_screen_test.dart            5   思い出画面のロード・エラー・振り返り表示

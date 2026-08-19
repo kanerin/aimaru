@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/todo_service.dart';
 import '../utils/app_theme.dart';
+import 'event_form_screen.dart';
 
 // ── 共有TODO・やりたいことリスト ──────────────────────
 // 日付がまだ決まっていないアイデアの置き場。カレンダーの予定にするほど
@@ -11,7 +12,14 @@ class TodosScreen extends StatefulWidget {
   // テストからエラー/データを直接流し込むための注入ポイント。
   // 未指定時は本番のFirestoreストリームを使う。
   final Stream<List<TodoItem>>? todosStreamOverride;
-  const TodosScreen({super.key, required this.coupleId, this.todosStreamOverride});
+  // テストからfake_cloud_firestore等を差し込むための注入ポイント。
+  final TodoService? todoServiceOverride;
+  const TodosScreen({
+    super.key,
+    required this.coupleId,
+    this.todosStreamOverride,
+    this.todoServiceOverride,
+  });
 
   @override
   State<TodosScreen> createState() => _TodosScreenState();
@@ -22,7 +30,8 @@ class _TodosScreenState extends State<TodosScreen> {
   // todosStreamOverrideを使うテストではFirebase初期化なしに動けるよう
   // 実際に使うときまで生成を遅らせる。
   TodoService? _todoServiceInstance;
-  TodoService get _todoService => _todoServiceInstance ??= TodoService();
+  TodoService get _todoService =>
+      _todoServiceInstance ??= widget.todoServiceOverride ?? TodoService();
   final _controller = TextEditingController();
 
   late final Stream<List<TodoItem>> _todosStream =
@@ -43,6 +52,22 @@ class _TodosScreenState extends State<TodosScreen> {
 
   Future<void> _delete(TodoItem todo) async {
     await _todoService.deleteTodo(todo);
+  }
+
+  // タイトルをタップしたときに、そのままカレンダーの新規予定として登録できる
+  // ようにする。保存されたら元のTODOはやることが終わったとみなして消す。
+  Future<void> _addToCalendar(TodoItem todo) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => EventFormScreen(
+          coupleId: widget.coupleId,
+          initialTitle: todo.text,
+        ),
+      ),
+    );
+    if (saved == true) {
+      await _delete(todo);
+    }
   }
 
   @override
@@ -149,21 +174,38 @@ class _TodosScreenState extends State<TodosScreen> {
           borderRadius: BorderRadius.circular(16),
           clipBehavior: Clip.antiAlias,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: CheckboxListTile(
-              value: todo.done,
-              onChanged: (v) => _todoService.setDone(todo, v ?? false),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-              activeColor: appAccent(context),
-              title: Text(
-                todo.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
-                  decoration: todo.done ? TextDecoration.lineThrough : null,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Row(
+              children: [
+                Checkbox(
+                  value: todo.done,
+                  onChanged: (v) => _todoService.setDone(todo, v ?? false),
+                  activeColor: appAccent(context),
                 ),
-              ),
+                // タイトルをタップするとカレンダー登録に遷移する
+                // （チェックボックス・削除ボタンとタップ領域を分ける）
+                Expanded(
+                  child: InkWell(
+                    onTap: () => _addToCalendar(todo),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Text(
+                        todo.text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
+                          decoration: todo.done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
+                  tooltip: '削除',
+                  onPressed: () => _delete(todo),
+                ),
+              ],
             ),
           ),
         ),
