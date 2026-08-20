@@ -10,6 +10,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # 日付・時刻ピッカーなどFlutter標準ダイアログの日本語化
+  flutter_localizations:
+    sdk: flutter
+
   # Firebase
   firebase_core: ^4.13.0
   firebase_auth: ^6.5.7
@@ -39,7 +43,9 @@ dependencies:
 
   # その他UI
   go_router: ^13.0.1
-  intl: ^0.19.0
+  # flutter_localizations（SDK同梱）がintlを厳密にピン留めするため、
+  # ここでバージョンを固定すると解決に失敗する。SDK側の指定に合わせる。
+  intl: any
   uuid: ^4.3.3
   share_plus: ^13.3.0
 

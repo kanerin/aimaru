@@ -13,6 +13,7 @@ void main() {
     String id = 'e1',
     String title = 'miwaの誕生日',
     required DateTime date,
+    DateTime? endDate,
     bool recurring = true,
   }) =>
       AimaruEvent(
@@ -20,6 +21,7 @@ void main() {
         coupleId: 'couple-1',
         title: title,
         date: date,
+        endDate: endDate,
         type: EventType.celebrity,
         createdBy: 'user-me',
         recurring: recurring,
@@ -92,6 +94,39 @@ void main() {
       expect(result[DateTime(2027, 6, 15)]?.single.title, 'miwaの誕生日');
       // 元の日付も残す
       expect(result[DateTime(1990, 6, 15)]?.single.title, 'miwaの誕生日');
+    });
+
+    // 日をまたぐ予定を繰り返しにすると、登録年はsource側が全日ぶん持つので
+    // 気づきにくいが、展開先の年では初日にしか出ていなかった。
+    test('日をまたぐ繰り返し予定は、展開先の年でも同じ日数ぶん占める', () {
+      final trip = build(
+        title: '結婚記念日旅行',
+        date: DateTime(2026, 9, 26),
+        endDate: DateTime(2026, 9, 28),
+      );
+      final source = {
+        DateTime(2026, 9, 26): [trip],
+        DateTime(2026, 9, 27): [trip],
+        DateTime(2026, 9, 28): [trip],
+      };
+
+      final result = expandRecurringEvents(source, years: [2027]);
+
+      expect(result[DateTime(2027, 9, 26)]?.single.title, '結婚記念日旅行');
+      expect(result[DateTime(2027, 9, 27)]?.single.title, '結婚記念日旅行');
+      expect(result[DateTime(2027, 9, 28)]?.single.title, '結婚記念日旅行');
+      expect(result[DateTime(2027, 9, 29)], isNull);
+    });
+
+    test('終了日のない繰り返し予定は展開先でも1日だけ', () {
+      final source = {
+        DateTime(1990, 6, 15): [build(date: DateTime(1990, 6, 15))],
+      };
+
+      final result = expandRecurringEvents(source, years: [2027]);
+
+      expect(result[DateTime(2027, 6, 15)]?.single.title, 'miwaの誕生日');
+      expect(result[DateTime(2027, 6, 16)], isNull);
     });
 
     test('繰り返しでない予定は展開しない', () {

@@ -11,6 +11,7 @@ import '../services/google_calendar_service.dart';
 import '../services/google_calendar_cache_service.dart';
 import '../services/settings_service.dart';
 import '../utils/app_theme.dart';
+import '../utils/event_days.dart';
 import '../utils/japan_holidays.dart';
 import '../utils/recurring_events.dart';
 import 'event_detail_screen.dart';
@@ -79,7 +80,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Map<String, _Member> _members = {};
 
-  DateTime _key(DateTime d) => DateTime(d.year, d.month, d.day);
+  DateTime _key(DateTime d) => dayKey(d);
 
   Color _dotColor(EventType t) => switch (t) {
     EventType.date        => AppColors.pink,
@@ -152,8 +153,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final byDate = <DateTime, List<_GcalEntry>>{};
       map.forEach((uid, events) {
         for (final e in events) {
-          final key = _key(e.start);
-          byDate.putIfAbsent(key, () => []).add(_GcalEntry(uid: uid, event: e));
+          // 開始日にしかキーを置かないと、日をまたぐ予定（旅行など）が
+          // 初日にしか出ずドットも初日にしか付かない。終日予定のendは
+          // 翌日を指す排他的な値なので、gcalLastDayで最終日へ直してから展開する。
+          final lastDay = gcalLastDay(start: e.start, end: e.end, allDay: e.allDay);
+          for (final day in daysBetween(e.start, lastDay)) {
+            byDate.putIfAbsent(day, () => []).add(_GcalEntry(uid: uid, event: e));
+          }
         }
       });
       if (mounted) setState(() => _gcalByDate = byDate);
