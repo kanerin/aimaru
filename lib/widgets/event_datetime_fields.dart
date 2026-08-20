@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../utils/app_theme.dart';
+import 'aimaru_time_picker.dart';
 
 // ── 開始を動かしたときの終了の追従先 ────────────────────
 // 長さを保つほうが直感に合う。元の長さが負（壊れた状態）なら1時間に正す。
@@ -70,13 +71,12 @@ class EventDateTimeFields extends StatelessWidget {
   }
 
   Future<DateTime?> _pickTime(BuildContext context, DateTime current) async {
-    final picked = await showTimePicker(
+    // Flutter標準のshowTimePickerは選択円が48dp固定で、数字より大きく
+    // 隣の目盛りに被って読みにくかった。大きさを決められる自前の
+    // ダイヤル（widgets/aimaru_time_picker.dart）を使う。
+    final picked = await showAimaruTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
-      // 目盛りを回して決めるダイヤル表示。以前は選択円と数字が重なって
-      // 読めなかったため入力式にしていたが、timePickerTheme で色を
-      // 与えて解消したのでダイヤルに戻している（キーボード入力にも切替可）。
-      initialEntryMode: TimePickerEntryMode.dial,
     );
     if (picked == null) return null;
     return DateTime(current.year, current.month, current.day, picked.hour, picked.minute);
