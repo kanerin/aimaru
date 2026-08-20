@@ -5,12 +5,22 @@ name: CI
 # このワークフローをPRの必須チェックに設定すること
 # （Settings → Branches → develop → Require status checks to pass）。
 #
-# 4つのジョブに分けているのは、落ちた場所から原因が一目で分かるようにするため。
+# ジョブを分けているのは、落ちた場所から原因が一目で分かるようにするため。
 # 1本にまとめると「CIが赤い」しか分からず、切り分けに時間を取られる。
 #
 # 結合テスト(e2e)を別ワークフローに切り出していないのは、promote-to-stg.yml が
 # 「CIワークフローの成功」だけを条件にrelease-stgへ自動昇格するため。
 # 別ワークフローにすると結合テストが赤いままテスターへ配信されてしまう。
+#
+# 2026-08-21、品質保証の見直しで3点追加した。無人の自動化エージェントが
+# 多数コミットする運用のため、誤ってAPIキー等をコミットした場合に検知する層が
+# 要るという判断:
+# - secretsジョブ（gitleaksによるシークレット漏洩チェック）
+# - functions/rulesジョブに npm audit（devDependencies除外・high/critical限定。
+#   moderate以下はfirebase-admin経由の既知の指摘が残っており追随しない判断）
+# - flutterジョブに dart format チェック（既存コードの大部分が標準スタイルに
+#   沿っておらず、一括整形はlintを新たに発生させることが分かったため
+#   `continue-on-error: true` で可視化のみに留めている。詳細はdocs/open-issues.md）
 
 on:
   pull_request:
@@ -25,6 +35,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # 無人の自動化エージェントが多数コミットする運用のため、誤って
+      # APIキー・秘密鍵等をコミットした場合に検知する層。公開リポジトリの
+      # ためgitleaks-actionはライセンス不要で使える。
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   flutter:
     name: Flutter (analyze & test)
     runs-on: ubuntu-latest
@@ -45,6 +70,16 @@ jobs:
 
       - name: Analyze
         run: flutter analyze
+
+      # 2026-08-21時点で既存コードの大部分がdart formatの標準スタイルに
+      # 沿っていない（値を縦に揃える手書きの独自整形が使われている箇所が多い）。
+      # 一括で機械整形をかけると、if文の中かっこが外れてlintが新たに
+      # 発生するケースが見つかった（例: lib/screens/calendar_screen.dart）ため、
+      # 挙動を変えずに一括修正するには個別の見直しが要る。それまではblockingに
+      # せず、フォーマット崩れを可視化するだけに留める。
+      - name: Check formatting
+        continue-on-error: true
+        run: dart format --output=none --set-exit-if-changed .
 
       # 単体・ウィジェットテスト。結合テスト(integration_test/)は実機が要るため
       # ここでは走らせない。
@@ -81,6 +116,14 @@ jobs:
           java-version: '21'
 
       - run: npm ci
+
+      # devDependencies（firebase-tools等、本番へは含まれないツール類）を
+      # 除外した上で、high/critical のみを対象にする。moderate以下は
+      # firebase-admin経由の間接依存（uuid等、2026-08-21時点で8件）に
+      # 既知の指摘が残っており、解消にはfirebase-adminのメジャーバージョン
+      # 更新（破壊的変更）が要るため、すぐには追随しない判断。
+      - name: Dependency audit (high/critical only)
+        run: npm audit --omit=dev --audit-level=high
 
       # テストコードも含めて型を通す（デプロイ成果物からは除外される）
       - name: Typecheck
@@ -119,6 +162,11 @@ jobs:
           java-version: '21'
 
       - run: npm ci
+
+      # devDependencies（firebase-tools等）除外・high/critical限定。
+      # 詳細はfunctionsジョブの同名ステップのコメントを参照。
+      - name: Dependency audit (high/critical only)
+        run: npm audit --omit=dev --audit-level=high
 
       # ルールはアプリを経由しない直接アクセスに対する最後の砦なので、
       # 実装のテストとは独立に、毎回必ず検証する
