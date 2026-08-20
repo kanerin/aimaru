@@ -15,6 +15,14 @@
         { "fieldPath": "recurring", "order": "ASCENDING" },
         { "fieldPath": "nextOccurrenceMs", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "bugReports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
