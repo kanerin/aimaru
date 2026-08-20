@@ -1,4 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/models.dart';
 
 // ── 設定画面の「バグ報告・機能要望」フォーム ─────────────────
 // 送信内容はサーバー側（functions/src/index.ts の submitBugReport）で
@@ -39,13 +43,40 @@ class BugReportService {
   // テストからは実際のFirebase呼び出しをせずに応答を差し込めるようにしてある。
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data) _invoke;
 
-  BugReportService({Future<Map<String, dynamic>> Function(Map<String, dynamic> data)? invoke})
-      : _invoke = invoke ?? _defaultInvoke;
+  // 自分が送った報告一覧（watchMyReports）用。引数なしで生成すると本番の
+  // Firebaseを使う（既存の呼び出しはそのまま）。テストからは firestore / uid を
+  // 差し込んでFirebaseに触れずに検証する。_dbは実際にwatchMyReports()を呼ぶまで
+  // FirebaseFirestore.instanceへ触れないよう遅延させる（submit()しか使わない
+  // 既存のテスト・呼び出し側でFirebase初期化が要らないようにするため）。
+  final FirebaseFirestore? _firestoreOverride;
+  final String? _overrideUid;
+
+  BugReportService({
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> data)? invoke,
+    FirebaseFirestore? firestore,
+    String? uid,
+  })  : _invoke = invoke ?? _defaultInvoke,
+        _firestoreOverride = firestore,
+        _overrideUid = uid;
+
+  FirebaseFirestore get _db => _firestoreOverride ?? FirebaseFirestore.instance;
+  String get _uid => _overrideUid ?? FirebaseAuth.instance.currentUser!.uid;
 
   static Future<Map<String, dynamic>> _defaultInvoke(Map<String, dynamic> data) async {
     final callable = FirebaseFunctions.instance.httpsCallable('submitBugReport');
     final result = await callable.call<Map<String, dynamic>>(data);
     return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  // ── 自分が送った報告の一覧（新しい順）─────────────────────
+  // firestore.rulesで自分の報告（createdBy == 自分）だけが読める。
+  Stream<List<BugReportRecord>> watchMyReports() {
+    return _db
+        .collection('bugReports')
+        .where('createdBy', isEqualTo: _uid)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(BugReportRecord.fromDoc).toList());
   }
 
   Future<BugReportResult> submit(String text) async {

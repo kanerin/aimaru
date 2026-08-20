@@ -1,4 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aimaru/services/bug_report_service.dart';
@@ -183,6 +185,65 @@ void main() {
         throwsA(predicate((e) =>
             e is BugReportSubmissionException && e.message == kBugReportUnknownMessage)),
       );
+    });
+  });
+
+  group('BugReportService.watchMyReports', () {
+    late FakeFirebaseFirestore db;
+    const uid = 'user-a';
+
+    setUp(() {
+      db = FakeFirebaseFirestore();
+    });
+
+    test('自分の報告だけを新しい順に返す', () async {
+      await db.collection('bugReports').doc('r1').set({
+        'summary': '古い方',
+        'classification': 'bug',
+        'status': 'pending',
+        'createdBy': uid,
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+      });
+      await db.collection('bugReports').doc('r2').set({
+        'summary': '新しい方',
+        'classification': 'feature_request',
+        'status': 'done',
+        'createdBy': uid,
+        'createdAt': Timestamp.fromDate(DateTime(2026, 2, 1)),
+        'prNumber': 42,
+      });
+      await db.collection('bugReports').doc('r3').set({
+        'summary': '他人の報告',
+        'classification': 'bug',
+        'status': 'pending',
+        'createdBy': 'user-b',
+        'createdAt': Timestamp.fromDate(DateTime(2026, 3, 1)),
+      });
+
+      final service = BugReportService(firestore: db, uid: uid);
+      final reports = await service.watchMyReports().first;
+
+      expect(reports, hasLength(2));
+      expect(reports[0].summary, '新しい方');
+      expect(reports[0].status, 'done');
+      expect(reports[0].prNumber, 42);
+      expect(reports[1].summary, '古い方');
+    });
+
+    test('rejectCategoryを保持する', () async {
+      await db.collection('bugReports').doc('r1').set({
+        'summary': '見送られた要望',
+        'classification': 'feature_request',
+        'status': 'rejected',
+        'rejectCategory': 'already_done',
+        'createdBy': uid,
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+      });
+
+      final service = BugReportService(firestore: db, uid: uid);
+      final reports = await service.watchMyReports().first;
+
+      expect(reports.single.rejectCategory, 'already_done');
     });
   });
 }

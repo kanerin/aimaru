@@ -27,7 +27,7 @@ import {
   validateContents,
 } from "./gemini_logic";
 import {
-  BUG_REPORT_DAILY_LIMIT,
+  BUG_REPORT_MONTHLY_LIMIT,
   buildTriageContents,
   parseTriageResponse,
   validateReportText,
@@ -482,23 +482,26 @@ export const askGemini = onCall<AskGeminiRequest>(
 // 定期的に読み取り、実装・PR作成・auto-mergeまで行う。
 
 interface BugReportRateLimitDoc {
-  reportCallDate?: string;
+  reportCallMonth?: string;
   reportCallCount?: number;
 }
 
-async function checkAndConsumeBugReportRateLimit(uid: string, todayStr: string): Promise<boolean> {
+// isOverLimit/nextRateLimitStateは「日付文字列が変わったらリセットする」
+// という汎用ロジックなので、YYYY-MM-DDの代わりにYYYY-MM（月単位）を渡すだけで
+// 月次レート制限として再利用できる（askGeminiの日次制限とは別カウント）。
+async function checkAndConsumeBugReportRateLimit(uid: string, monthStr: string): Promise<boolean> {
   const ref = db.collection("users").doc(uid);
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.data() as BugReportRateLimitDoc | undefined;
-    const current: RateLimitState | undefined = data?.reportCallDate
-      ? { date: data.reportCallDate, count: data.reportCallCount ?? 0 }
+    const current: RateLimitState | undefined = data?.reportCallMonth
+      ? { date: data.reportCallMonth, count: data.reportCallCount ?? 0 }
       : undefined;
 
-    if (isOverLimit(current, todayStr, BUG_REPORT_DAILY_LIMIT)) return false;
+    if (isOverLimit(current, monthStr, BUG_REPORT_MONTHLY_LIMIT)) return false;
 
-    const next = nextRateLimitState(current, todayStr);
-    tx.set(ref, { reportCallDate: next.date, reportCallCount: next.count }, { merge: true });
+    const next = nextRateLimitState(current, monthStr);
+    tx.set(ref, { reportCallMonth: next.date, reportCallCount: next.count }, { merge: true });
     return true;
   });
 }
@@ -520,12 +523,13 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
       throw new HttpsError("invalid-argument", "内容を5〜2000文字で入力してください");
     }
 
-    const todayStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-      new Date(),
-    );
-    const allowed = await checkAndConsumeBugReportRateLimit(uid, todayStr);
+    // Asia/TokyoでのYYYY-MM。sv-SEロケールがYYYY-MM-DDで整形するのでスライスする。
+    const monthStr = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" })
+      .format(new Date())
+      .slice(0, 7);
+    const allowed = await checkAndConsumeBugReportRateLimit(uid, monthStr);
     if (!allowed) {
-      throw new HttpsError("resource-exhausted", "本日の送信回数の上限に達しました");
+      throw new HttpsError("resource-exhausted", "今月の送信回数の上限に達しました");
     }
 
     const apiKey = geminiApiKey.value();

@@ -461,3 +461,57 @@ class QuestionAnswer {
     'createdAt': Timestamp.fromDate(createdAt),
   };
 }
+
+// ── BugReportRecord（自分が送ったバグ報告・機能要望の状況）────────
+// submitBugReport（Cloud Functions）が書き込んだドキュメントを、
+// 送信者本人だけがfirestore.rulesで読める（他人の報告は見えない）。
+// statusは pending（未着手）/ in_progress（対応中）/ done（対応済み）/
+// rejected（見送り）のいずれか。
+class BugReportRecord {
+  final String id;
+  final String summary;
+  final String classification; // 'bug' | 'feature_request'
+  final String status; // 'pending' | 'in_progress' | 'done' | 'rejected'
+  final DateTime createdAt;
+  final int? prNumber;
+  // statusが'rejected'のときだけ入る、大まかな見送り理由の分類。
+  // 詳細な文章ではなく固定の分類（rejectCategoryLabelで日本語ラベルにする）。
+  final String? rejectCategory;
+
+  BugReportRecord({
+    required this.id,
+    required this.summary,
+    required this.classification,
+    required this.status,
+    required this.createdAt,
+    this.prNumber,
+    this.rejectCategory,
+  });
+
+  factory BugReportRecord.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return BugReportRecord(
+      id:             doc.id,
+      summary:        d['summary'] ?? '',
+      classification: d['classification'] ?? '',
+      status:         d['status'] ?? 'pending',
+      createdAt:      (d['createdAt'] as Timestamp).toDate(),
+      prNumber:       d['prNumber'] as int?,
+      rejectCategory: d['rejectCategory'] as String?,
+    );
+  }
+}
+
+// rejectCategoryの固定値と日本語ラベルの対応。
+// functions/scripts/mark-bug-report-status.mjs / .claude/commands/fix-bug-reports.md
+// と一致させること。
+const Map<String, String> bugReportRejectCategoryLabels = {
+  'already_done': 'すでに対応済みの内容でした',
+  'unclear': '内容を具体化できませんでした',
+  'out_of_scope': '自動実装の対象外の変更でした',
+  'duplicate': '既存の報告と重複していました',
+  'other': 'その他の理由で見送りました',
+};
+
+String describeBugReportRejectCategory(String? category) =>
+    bugReportRejectCategoryLabels[category] ?? bugReportRejectCategoryLabels['other']!;
