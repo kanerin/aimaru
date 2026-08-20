@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-19 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-20 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -11,9 +11,9 @@
 | 対象 | コマンド | 結果 |
 |---|---|---|
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
-| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **34件**（テストコードのtypecheckは通過。`test:integration`はStorageエミュレータも起動するよう変更。ローカルがNode 20環境のため実行未確認、下記「既知の環境上の制約」参照。CIのNode 22では要確認） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **36件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **50件**（同上の理由でローカル実行未確認。CIのNode 22では要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **56件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
 | Flutter 単体・ウィジェット | `flutter test` | **274件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
@@ -44,7 +44,7 @@ test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
 functions/src/trash_logic.test.ts                 4   ゴミ箱の保持期間判定
-functions/src/reminders.integration.test.ts      10   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外・先読み幅の絞り込み含む）
+functions/src/reminders.integration.test.ts      12   Firestoreを読んで判定し書き戻す経路（ゴミ箱除外・先読み幅の絞り込み・繰り返し予定のnextOccurrenceMs書き戻し含む）
 functions/src/trash.integration.test.ts           1   保持期限を過ぎた論理削除済み予定の完全削除
 functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
@@ -68,15 +68,16 @@ CI は3ジョブに分けている。落ちた場所から原因が一目で分�
 `release-stg` へのマージでも同じ3系統を通してから配布する。ルールが緩んだ状態で
 テスターに配ると、その端末から実データを触られる余地が残るため。
 
-**既知の環境上の制約（2026-08-20時点）**: ローカルのエージェント実行環境がNode 20系で、
-`rules_test`・`functions`の`test:integration`はどちらも`firebase-tools`経由で
-`firebase emulators:exec`を呼ぶ。`firebase-tools`が依存する`universal-analytics`が
-ESM専用になった`uuid`パッケージを`require()`しており、Node 20では
-`ERR_REQUIRE_ESM`で起動時に落ちる（両パッケージともpackage.jsonの`engines`は
-Node 22指定）。ローカルにNode 22系が無く、この2系統のテストコード自体は
-書いてtypecheckまで通しているが、実行結果はローカルでは確認できていない
-（CIはNode 22で動くため、CI上のci.ymlの結果を正とすること）。このエージェント
-実行環境にNode 22を用意できれば解消する見込みで、コード側の問題ではない。
+**既知の環境上の制約 → 2026-08-20に解消済み**: 以前はローカルのエージェント実行環境が
+Node 20系で、`rules_test`・`functions`の`test:integration`はどちらも`firebase-tools`
+経由で`firebase emulators:exec`を呼ぶが、`firebase-tools`が依存する
+`universal-analytics`がESM専用になった`uuid`パッケージを`require()`しており、
+Node 20では`ERR_REQUIRE_ESM`で起動時に落ちていた（両パッケージともpackage.jsonの
+`engines`はNode 22指定）。2026-08-20時点でこのエージェント実行環境がNode 22系
+（`node -v` で `v22.23.2`）になっていることを確認し、`cd functions && npm run
+test:integration`・`cd rules_test && npm test` とも実際にローカルで実行して
+全件通過することを確認した。以後はCIだけでなくローカルでもこの2系統を実行して
+確認できる。
 
 ## 残っている課題
 
@@ -199,17 +200,38 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 ユーザー数分読み込む問題は解消した。複合索引 `firestore.indexes.json` の
 `indexes`（`reminded` ASC, `date` ASC, `queryScope: COLLECTION_GROUP`）を追加した。
 
-**残っている範囲（フェーズ2）**: `processRecurringEvents`（毎年繰り返す予定）は今回
-narrowingしていない。`date` フィールドは予定の**作成時点の年**を持つため、
-「今年の発生日」を求める `nextOccurrence`（月日だけを見る）とは単純な範囲比較が
-噛み合わず、素朴な `date` 範囲条件では絞り込めない。narrowingするなら
-「次の発生日」を別フィールドとして保持するスキーマ変更が要りそうで、今回のPRの
-範囲を超えるため見送った。索引デプロイ自体は課題2隣接のIAM未付与（rulesと同じ原因）により
+索引デプロイ自体は課題2隣接のIAM未付与（rulesと同じ原因）により
 `release-stg.yml`からの自動デプロイは引き続き失敗する想定で、`continue-on-error: true`の
 まま可視化のみ行っている。ただし2026-08-19に、リポジトリオーナーのアカウントでログインした
 Firebase CLIから`firebase deploy --only firestore:rules,firestore:indexes --project
 aimaru-7eb2e`を手動実行し、この課題で追加した複合索引（`reminded` ASC, `date` ASC）を含めて
 本番へ反映済み。IAMロールが付与されればCIからも自動的に効くようになる。
+
+`processRecurringEvents`（毎年繰り返す予定）はフェーズ1では narrowing していなかった。
+`date` フィールドは予定の**作成時点の年**を持つため、「今年の発生日」を求める
+`nextOccurrence`（月日だけを見る）とは単純な範囲比較が噛み合わず、素朴な `date` 範囲条件
+では絞り込めない。narrowing するには「次の発生日」を別フィールドとして保持するスキーマ
+変更が要る。
+
+フェーズ2として、そのスキーマ変更のうち**書き込み側だけ**に着手した（本PR）。
+`processRecurringEvents`（`functions/src/index.ts`）が発生日を判定するたびに、
+その値を `nextOccurrenceMs` フィールドへ書き戻すようにした。クエリ自体は今回もまだ
+narrowing していない（`recurring == true` の全件走査のまま）。既存ドキュメントには
+`nextOccurrenceMs` が無いため、いきなりこのフィールドで絞り込むと未設定分の通知が
+止まってしまう。全件走査は15分間隔で毎回すべての繰り返し予定を通るため、このPRが
+一定期間デプロイされていれば、専用の移行スクリプトを走らせなくても既存分は自然に
+埋まる（`functions/src/reminders.integration.test.ts` の「nextOccurrenceMsが無い
+繰り返し予定は…」「送信済みの年のまま発生日が翌年へ切り替わったら…」で、書き戻しが
+送信状態（`remindedYear`/`remindedUidsYear`/`remindedUids`）を変えないことを確認済み）。
+複合索引 `firestore.indexes.json` の `indexes`（`recurring` ASC, `nextOccurrenceMs` ASC,
+`queryScope: COLLECTION_GROUP`）もあわせて追加した（フェーズ3のクエリ変更に備えた準備で、
+現時点ではまだどのクエリからも参照していない）。
+
+**残っている範囲（フェーズ3）**: このPRのデプロイから十分な時間（15分間隔の実行が
+最低数回）が経ち、既存の繰り返し予定に `nextOccurrenceMs` が行き渡ったことを確認できたら、
+`processRecurringEvents` のクエリに `.where("nextOccurrenceMs", "<=", 先読みカットオフ)`
+を足して実際に絞り込む。あわせて上記の複合索引を（IAM未付与の間は）手動デプロイする
+必要がある。
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|

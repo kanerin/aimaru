@@ -7,6 +7,14 @@
         { "fieldPath": "reminded", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "recurring", "order": "ASCENDING" },
+        { "fieldPath": "nextOccurrenceMs", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
