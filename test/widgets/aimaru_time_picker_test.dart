@@ -116,8 +116,10 @@ void main() {
   });
 
   testWidgets('時の欄をタップすると時の選択へ戻れる', (tester) async {
+    // 分は00以外にしておく。時を00にしたあと分も00だと、時・分どちらの欄も
+    // 「00」になってfind.textが2件を指してしまう。
     await tester.pumpWidget(
-        host((_) {}, const TimeOfDay(hour: 9, minute: 0)));
+        host((_) {}, const TimeOfDay(hour: 9, minute: 30)));
     await open(tester);
 
     final dial = tester.getRect(find.byType(TimeDial));
