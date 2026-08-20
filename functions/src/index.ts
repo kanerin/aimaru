@@ -67,6 +67,19 @@ interface UserDoc {
   reminderMinutesBefore?: number;
 }
 
+interface AnniversaryDoc {
+  title: string;
+  date: Timestamp;
+  createdBy: string;
+  // processRecurringEvents の remindedYear/remindedUidsYear/remindedUids と
+  // 同じ役割（発生年ごとの送信済み管理）。記念日タブから追加した
+  // couples/{coupleId}/anniversaries はイベント（couples/{coupleId}/events）
+  // とは別コレクションのため、こちらは独自に持つ。
+  remindedYear?: number | null;
+  remindedUidsYear?: number | null;
+  remindedUids?: string[];
+}
+
 async function sendFcm(
   token: string | undefined,
   title: string,
@@ -272,12 +285,79 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
   }
 }
 
+// 記念日タブ（AnniversaryHubScreen / couples/{coupleId}/anniversaries）の
+// 記念日リマインダー。プロポーズ・入籍・初デートなど複数登録できる記念日は、
+// カレンダーの繰り返し予定として登録し直さない限りこれまで通知手段が無く、
+// TimeTreeには無いが Between・Twinest 等の移行先候補が持つ「記念日の
+// カウントダウン通知」という差別化要素が欠けていた。
+//
+// 発生日の判定は processRecurringEvents と同じ nextOccurrence を使うが、
+// 記念日は時刻ではなく「その日」を祝う概念のため、予定のような
+// 「◯分前」の個人設定（reminderMinutesBefore）は使わず、発生時刻ちょうど
+// （minutesBefore: 0）をもって通知タイミングとする。オン/オフの設定は
+// 予定のリマインダーと共有する（remindersEnabled）。
+async function processAnniversaryReminders(nowMs: number): Promise<void> {
+  const snap = await db.collectionGroup("anniversaries").get();
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as AnniversaryDoc;
+    const occurrence = nextOccurrence(data.date.toDate(), nowMs);
+    const occurrenceYear = occurrence.getFullYear();
+    const occurrenceMs = occurrence.getTime();
+
+    if (data.remindedYear === occurrenceYear) continue;
+
+    const coupleId = doc.ref.parent.parent?.id;
+    if (!coupleId) continue;
+    const coupleSnap = await db.collection("couples").doc(coupleId).get();
+    const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+
+    const alreadyRemindedUids =
+      data.remindedUidsYear === occurrenceYear ? new Set(data.remindedUids ?? []) : new Set<string>();
+
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const userSnap = await db.collection("users").doc(uid).get();
+        const user = userSnap.data() as UserDoc | undefined;
+        return {
+          uid,
+          fcmToken: user?.fcmToken,
+          alreadyReminded: alreadyRemindedUids.has(uid),
+          remindersEnabled: !!user && user.remindersEnabled !== false,
+          minutesBefore: 0,
+        };
+      }),
+    );
+
+    const { toRemind, fullySettled } = resolveReminderTargets(members, occurrenceMs, nowMs);
+
+    for (const uid of toRemind) {
+      const member = members.find((m) => m.uid === uid)!;
+      await sendFcm(
+        member.fcmToken,
+        "記念日です",
+        `「${data.title}」を迎えました`,
+        { type: "anniversary", coupleId, anniversaryId: doc.id },
+      );
+    }
+
+    if (toRemind.length > 0 || fullySettled) {
+      await doc.ref.update({
+        remindedUids: [...alreadyRemindedUids, ...toRemind],
+        remindedUidsYear: occurrenceYear,
+        remindedYear: fullySettled ? occurrenceYear : null,
+      });
+    }
+  }
+}
+
 export const sendReminders = onSchedule(
   { schedule: `every ${CHECK_INTERVAL_MINUTES} minutes`, timeZone: "Asia/Tokyo" },
   async () => {
     const nowMs = Date.now();
     await processOneTimeEvents(nowMs);
     await processRecurringEvents(nowMs);
+    await processAnniversaryReminders(nowMs);
   },
 );
 
