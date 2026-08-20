@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -51,7 +50,7 @@ void main() {
     });
 
     test('目盛りの中間は近いほうへ丸める', () {
-      final unit = 2 * math.pi / 60;
+      const unit = 2 * math.pi / 60;
       expect(dialValue(unit * 7.4, 60), 7);
       expect(dialValue(unit * 7.6, 60), 8);
     });
