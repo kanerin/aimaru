@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import 'event_days.dart';
 
 // ── 毎年繰り返す予定を、表示する年にも現れるようにする ──────────
 //
@@ -46,9 +47,15 @@ Map<DateTime, List<AimaruEvent>> expandRecurringEvents(
     for (final event in events) {
       put(key, event);
       if (!event.recurring) continue;
+      // 日をまたぐ予定は、展開先の年でも同じ日数ぶん占めさせる。
+      // 発生日1日だけに置くと、繰り返しにした旅行などが翌年から初日にしか
+      // 出なくなる（登録した年だけはsource側が全日ぶん持っているため気づきにくい）。
+      final spanDays = daysBetween(event.date, event.endDate).length;
       for (final year in years) {
-        final occurrence = occurrenceIn(year, event.date);
-        put(DateTime(occurrence.year, occurrence.month, occurrence.day), event);
+        final occurrence = dayKey(occurrenceIn(year, event.date));
+        for (var i = 0; i < spanDays; i++) {
+          put(DateTime(occurrence.year, occurrence.month, occurrence.day + i), event);
+        }
       }
     }
   });

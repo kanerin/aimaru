@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -109,6 +110,17 @@ class AimaruApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(ThemeController.instance.accent),
         scaffoldMessengerKey: _scaffoldMessengerKey,
+        // 日付・時刻ピッカーのようにFlutterが用意しているダイアログは、
+        // ここでlocalizationsDelegatesを渡さないと英語（DefaultMaterialLocalizations）
+        // のままになる。画面の文言だけ日本語で「Select date / Cancel / OK」が
+        // 混ざって出ていたのはこれが原因。
+        locale: const Locale('ja'),
+        supportedLocales: const [Locale('ja'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         routerConfig: _router,
       ),
     );
