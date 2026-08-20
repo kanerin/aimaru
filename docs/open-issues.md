@@ -297,15 +297,24 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   `mark-bug-report-status.mjs`（`firebase-admin`、`FIREBASE_SERVICE_ACCOUNT_KEY`と同じ
   資格情報）で行う。Firestoreドキュメントの読み書きのみで、`firebase deploy`のような
   ルール・索引デプロイ権限は不要なため、課題2隣接のIAM未付与（現状403で失敗する方）の
-  影響は受けない想定だった。**2026-08-20、実際に`fix-bug-reports.yml`の実行環境で
+  影響は受けない想定だった。2026-08-20、実際に`fix-bug-reports.yml`の実行環境で
   `list-pending-bug-reports.mjs`を動かしたところ`7 PERMISSION_DENIED: Missing or
-  insufficient permissions`で失敗することを確認した**（想定は外れていた）。
+  insufficient permissions`で失敗することを確認した（想定は外れていた）。
   `firebase deploy`権限とは別に、Admin SDK経由のFirestoreドキュメント読み書き自体に
-  必要なIAMロール（例: `roles/datastore.user`）が`FIREBASE_SERVICE_ACCOUNT_KEY`の
-  サービスアカウント（`github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com`）
-  に付与されていないと見られる。付与されるまで`fix-bug-reports.yml`は毎回この時点で
-  停止し、バグ報告フォーム経由の自動実装は一切機能しない。対応は下記「人間にしかできない
-  作業」に記録した。
+  必要なIAMロールが要ることが分かり、同日中に`gcloud projects add-iam-policy-binding
+  aimaru-7eb2e --member="serviceAccount:github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com"
+  --role="roles/datastore.user"`でユーザー本人のGoogleアカウント経由で付与し解消した
+  （**IAM付与自体はGCPコンソール操作が必要な人間専用の作業だが、`gcloud` CLIをインストールして
+  ユーザーにブラウザ認証してもらえば、実際のロール付与コマンド自体はエージェントが代行できる**、
+  という前例になった）。
+  権限付与後、`list-pending-bug-reports.mjs`を再実行したところ**別のエラー**
+  `9 FAILED_PRECONDITION: The query requires an index`が出た。`status`（等価）+
+  `createdAt`（ソート）の複合クエリに対応する索引を`firestore.indexes.json`へ追加し
+  忘れていたのが原因（本PR）で、`bugReports`コレクションに対する
+  `collectionGroup: "bugReports", queryScope: "COLLECTION"`の索引を追加し、
+  `firebase deploy --only firestore:indexes --project aimaru-7eb2e`で本番反映した。
+  IAM権限・索引の両方が揃った状態は次回の`fix-bug-reports.yml`実行（cronまたは
+  手動`workflow_dispatch`）で改めて確認すること。
 
 ### P2 — 余力があれば
 
@@ -328,7 +337,7 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 - [ ] **`GEMINI_API_KEY`をSecret Managerへ登録し、Cloud Functionsを本番へデプロイする** — `firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e` のあと `firebase deploy --only functions --project aimaru-7eb2e`。関数を自動デプロイするステップが`release-stg.yml`に無かったため、`askGemini`（AIチャット）と`submitBugReport`（バグ報告フォーム）が本番に存在せず、どちらも呼び出しに失敗していた。ステップ自体は追加済みだが、下のIAM権限が付くまでは`continue-on-error`で失敗するため手動実行が要る
 - [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロール（Cloud Functions Admin / Service Account User / Secret Manager Secret Accessor など）をGCPコンソールで付与 — 付くまで`release-stg.yml`の`Deploy Cloud Functions`は失敗し続ける（`continue-on-error: true`で配布はブロックしない）
 - [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロール（例: Firebase Rules Admin）をGCPコンソールで付与 — 未付与のため`release-stg.yml`の`Deploy Firestore rules`が403で失敗し続けている（`continue-on-error: true`でビルド・配布はブロックしていない）。それまでは`firestore.rules`変更時に`firebase deploy --only firestore:rules --project aimaru-7eb2e`をローカルから手動実行すること
-- [ ] **`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウント（`github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com`）にFirestoreドキュメント読み書き用のIAMロール（例: `roles/datastore.user`）をGCPコンソールで付与** — 未付与のため`fix-bug-reports.yml`が`functions/scripts/list-pending-bug-reports.mjs`実行時点で`7 PERMISSION_DENIED`となり、バグ報告フォーム経由の自動実装が2026-08-20時点で一度も動いていない。上2つ（Cloud Functionsデプロイ・Firestoreルールデプロイ）とは別種の権限で、`firebase deploy`は使わずAdmin SDKでFirestoreのドキュメントを直接読み書きするだけなので、より狭いロールで足りるはず
+- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウント（`github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com`）にFirestoreドキュメント読み書き用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/datastore.user`を付与して解消（`gcloud` CLIをこのエージェント実行環境にインストールし、ユーザー本人のブラウザ認証のあと`gcloud projects add-iam-policy-binding`で実行）
 
 ## 既知だが直さない判断をしたもの
 
