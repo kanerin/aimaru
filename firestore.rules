@@ -61,21 +61,22 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if request.auth != null;
       allow delete: if request.auth.uid == userId;
-      // aiCallDate/aiCallCountはaskGemini、reportCallDate/reportCallCountは
-      // submitBugReport（どちらもCloud Functions、Admin SDK経由でここを
-      // 迂回する）が1日あたりの呼び出し回数を数えるための場所。
-      // ここを他フィールドと同列に書き込み自由にすると、クライアントが
-      // 直接自分のカウントを0へ書き戻してレート制限を無効化できてしまう。
-      // set(..., {merge:true})では変更していない既存フィールドも
-      // request.resource.dataに含まれてくるため、変更されたキーだけを見る
-      // diff().affectedKeys()で判定する（keys()だけで見ると、一度でも
-      // これらのフィールドが立った後は無関係な設定変更まで拒否されてしまう）。
+      // aiCallDate/aiCallCountはaskGemini（1日あたり）、
+      // reportCallMonth/reportCallCountはsubmitBugReport（1ヶ月あたり）が
+      // それぞれの呼び出し回数を数えるための場所（どちらもCloud Functions、
+      // Admin SDK経由でここを迂回する）。ここを他フィールドと同列に書き込み
+      // 自由にすると、クライアントが直接自分のカウントを0へ書き戻して
+      // レート制限を無効化できてしまう。set(..., {merge:true})では
+      // 変更していない既存フィールドもrequest.resource.dataに含まれてくる
+      // ため、変更されたキーだけを見るdiff().affectedKeys()で判定する
+      // （keys()だけで見ると、一度でもこれらのフィールドが立った後は
+      // 無関係な設定変更まで拒否されてしまう）。
       allow create, update: if request.auth.uid == userId &&
         (resource == null
           ? !request.resource.data.keys().hasAny(
-              ['aiCallDate', 'aiCallCount', 'reportCallDate', 'reportCallCount'])
+              ['aiCallDate', 'aiCallCount', 'reportCallMonth', 'reportCallCount'])
           : !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['aiCallDate', 'aiCallCount', 'reportCallDate', 'reportCallCount']));
+              .hasAny(['aiCallDate', 'aiCallCount', 'reportCallMonth', 'reportCallCount']));
     }
 
     // バグ報告・機能要望はsubmitBugReport（Cloud Functions、Admin SDK）からのみ
@@ -83,7 +84,10 @@ service cloud.firestore {
     // 分類チェックそのものを迂回できてしまうため、クライアントには
     // 読み書きどちらも一切許可しない（一覧を見せるUIも現状無い）。
     match /bugReports/{reportId} {
-      allow read, write: if false;
+      // 送信者本人だけが自分の報告の状況を確認できる。書き込みは引き続き
+      // submitBugReport（Cloud Functions、Admin SDK）からのみ行う。
+      allow read: if request.auth.uid == resource.data.createdBy;
+      allow write: if false;
     }
   }
 }

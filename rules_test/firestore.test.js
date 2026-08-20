@@ -453,7 +453,7 @@ describe("users — aiCallDate/aiCallCountはクライアントから書き換�
   });
 });
 
-describe("users — reportCallDate/reportCallCountはクライアントから書き換えられない", () => {
+describe("users — reportCallMonth/reportCallCountはクライアントから書き換えられない", () => {
   it("新規ドキュメント作成時にreportCallCountを含められない", async () => {
     await assertFails(
       asA().doc(`users/${USER_A}`).set({ displayName: "A", reportCallCount: 0 }),
@@ -464,7 +464,7 @@ describe("users — reportCallDate/reportCallCountはクライアントから書
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc(`users/${USER_A}`).set({
         displayName: "A",
-        reportCallDate: "2026-08-19",
+        reportCallMonth: "2026-08",
         reportCallCount: 5,
       });
     });
@@ -475,7 +475,7 @@ describe("users — reportCallDate/reportCallCountはクライアントから書
   });
 });
 
-describe("bugReports — クライアントからの読み書きは一切拒否される", () => {
+describe("bugReports — 書き込みは常に拒否、読み取りは自分の報告のみ", () => {
   // submitBugReport（Cloud Functions、Admin SDK）だけが書き込める。
   // Gemini判定を経ずにクライアントが直接キューへ書き込めると、
   // 分類チェックそのものを迂回できてしまうため。
@@ -490,7 +490,7 @@ describe("bugReports — クライアントからの読み書きは一切拒否�
     );
   });
 
-  it("読み取れない", async () => {
+  it("自分の報告は読み取れる（送った報告の状況確認用）", async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().doc("bugReports/report-1").set({
         rawText: "テスト",
@@ -500,6 +500,32 @@ describe("bugReports — クライアントからの読み書きは一切拒否�
       });
     });
 
-    await assertFails(asA().doc("bugReports/report-1").get());
+    await assertSucceeds(asA().doc("bugReports/report-1").get());
+  });
+
+  it("他人の報告は読み取れない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("bugReports/report-1").set({
+        rawText: "テスト",
+        classification: "bug",
+        status: "pending",
+        createdBy: USER_A,
+      });
+    });
+
+    await assertFails(asB().doc("bugReports/report-1").get());
+  });
+
+  it("自分の報告でも更新はできない（statusをdoneに書き換える等）", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("bugReports/report-1").set({
+        rawText: "テスト",
+        classification: "bug",
+        status: "pending",
+        createdBy: USER_A,
+      });
+    });
+
+    await assertFails(asA().doc("bugReports/report-1").update({ status: "done" }));
   });
 });

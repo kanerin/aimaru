@@ -13,9 +13,9 @@ import type { GeminiContent } from "./gemini_logic";
 export const BUG_REPORT_TEXT_MIN_LENGTH = 5;
 export const BUG_REPORT_TEXT_MAX_LENGTH = 2000;
 
-// AIチャット（askGemini）とは別の日次上限。頻繁に使う機能ではないため
+// AIチャット（askGemini）とは別の月次上限。頻繁に使う機能ではないため
 // 少なめに設定し、Gemini呼び出しコストの濫用を防ぐ。
-export const BUG_REPORT_DAILY_LIMIT = 5;
+export const BUG_REPORT_MONTHLY_LIMIT = 10;
 
 /**
  * ユーザーが送ってきたテキストが、そもそも分類にかける価値がある形かを

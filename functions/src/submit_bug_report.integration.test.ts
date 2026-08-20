@@ -5,9 +5,9 @@ import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 import { isOverLimit, nextRateLimitState, RateLimitState } from "./gemini_logic";
-import { BUG_REPORT_DAILY_LIMIT } from "./bug_report_logic";
+import { BUG_REPORT_MONTHLY_LIMIT } from "./bug_report_logic";
 
-// submitBugReport の「Firestoreを読み書きする」部分（日次レート制限の
+// submitBugReport の「Firestoreを読み書きする」部分（月次レート制限の
 // トランザクション・受理されたレポートの書き込み）のテスト。分類ロジック
 // 自体（プロンプト組み立て・Gemini応答のパース）は bug_report_logic.test.ts
 // が純粋関数として検証している。
@@ -22,24 +22,24 @@ let app: ReturnType<typeof initializeApp> | undefined;
 let db: FirebaseFirestore.Firestore;
 
 interface BugReportRateLimitDoc {
-  reportCallDate?: string;
+  reportCallMonth?: string;
   reportCallCount?: number;
 }
 
 /** 本番の checkAndConsumeBugReportRateLimit と同じトランザクションを再現する。 */
-async function checkAndConsumeBugReportRateLimit(uid: string, todayStr: string): Promise<boolean> {
+async function checkAndConsumeBugReportRateLimit(uid: string, monthStr: string): Promise<boolean> {
   const ref = db.collection("users").doc(uid);
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.data() as BugReportRateLimitDoc | undefined;
-    const current: RateLimitState | undefined = data?.reportCallDate
-      ? { date: data.reportCallDate, count: data.reportCallCount ?? 0 }
+    const current: RateLimitState | undefined = data?.reportCallMonth
+      ? { date: data.reportCallMonth, count: data.reportCallCount ?? 0 }
       : undefined;
 
-    if (isOverLimit(current, todayStr, BUG_REPORT_DAILY_LIMIT)) return false;
+    if (isOverLimit(current, monthStr, BUG_REPORT_MONTHLY_LIMIT)) return false;
 
-    const next = nextRateLimitState(current, todayStr);
-    tx.set(ref, { reportCallDate: next.date, reportCallCount: next.count }, { merge: true });
+    const next = nextRateLimitState(current, monthStr);
+    tx.set(ref, { reportCallMonth: next.date, reportCallCount: next.count }, { merge: true });
     return true;
   });
 }
@@ -82,18 +82,18 @@ describe("submitBugReportのFirestore経路", { skip: EMULATOR ? false : "エミ
 
   describe("checkAndConsumeBugReportRateLimit", () => {
     it("初回呼び出しは許可し、カウントを1にする", async () => {
-      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
+      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
       assert.equal(allowed, true);
 
       const doc = await db.collection("users").doc(USER_A).get();
-      assert.equal(doc.data()?.reportCallDate, "2026-08-19");
+      assert.equal(doc.data()?.reportCallMonth, "2026-08");
       assert.equal(doc.data()?.reportCallCount, 1);
     });
 
     it("askGemini（aiCallCount）とは独立したカウントを持つ", async () => {
       await db.collection("users").doc(USER_A).set({ aiCallDate: "2026-08-19", aiCallCount: 50 });
 
-      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
+      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
       assert.equal(allowed, true, "AIチャットの上限がbugReportの送信に影響してはいけない");
 
       const doc = await db.collection("users").doc(USER_A).get();
@@ -101,37 +101,37 @@ describe("submitBugReportのFirestore経路", { skip: EMULATOR ? false : "エミ
       assert.equal(doc.data()?.reportCallCount, 1);
     });
 
-    it(`上限（${BUG_REPORT_DAILY_LIMIT}件）に達すると拒否し、カウントは書き換えない`, async () => {
+    it(`上限（${BUG_REPORT_MONTHLY_LIMIT}件）に達すると拒否し、カウントは書き換えない`, async () => {
       await db.collection("users").doc(USER_A).set({
-        reportCallDate: "2026-08-19",
-        reportCallCount: BUG_REPORT_DAILY_LIMIT,
+        reportCallMonth: "2026-08",
+        reportCallCount: BUG_REPORT_MONTHLY_LIMIT,
       });
 
-      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
+      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
       assert.equal(allowed, false);
 
       const doc = await db.collection("users").doc(USER_A).get();
-      assert.equal(doc.data()?.reportCallCount, BUG_REPORT_DAILY_LIMIT, "拒否時はカウントを増やさない");
+      assert.equal(doc.data()?.reportCallCount, BUG_REPORT_MONTHLY_LIMIT, "拒否時はカウントを増やさない");
     });
 
-    it("日付が変わっていれば、前日の上限到達を引き継がず許可する", async () => {
+    it("月が変わっていれば、前月の上限到達を引き継がず許可する", async () => {
       await db.collection("users").doc(USER_A).set({
-        reportCallDate: "2026-08-18",
+        reportCallMonth: "2026-07",
         reportCallCount: 999,
       });
 
-      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
+      const allowed = await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
       assert.equal(allowed, true);
 
       const doc = await db.collection("users").doc(USER_A).get();
-      assert.equal(doc.data()?.reportCallDate, "2026-08-19");
+      assert.equal(doc.data()?.reportCallMonth, "2026-08");
       assert.equal(doc.data()?.reportCallCount, 1);
     });
 
     it("ユーザーごとに独立してカウントする", async () => {
-      await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
-      await checkAndConsumeBugReportRateLimit(USER_A, "2026-08-19");
-      await checkAndConsumeBugReportRateLimit(USER_B, "2026-08-19");
+      await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
+      await checkAndConsumeBugReportRateLimit(USER_A, "2026-08");
+      await checkAndConsumeBugReportRateLimit(USER_B, "2026-08");
 
       const [docA, docB] = await Promise.all([
         db.collection("users").doc(USER_A).get(),

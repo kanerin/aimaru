@@ -10,11 +10,11 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **82件すべて通過**（ローカルで確認、CIでも要確認） |
-| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **36件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **87件すべて通過**（ローカルで確認、CIでも要確認） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **41件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **56件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
-| Flutter 単体・ウィジェット | `flutter test` | **274件すべて通過**（ローカルで確認、CIでも要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **58件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **335件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -51,9 +51,9 @@ functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメ�
 functions/src/bug_report_logic.test.ts           21   バグ報告フォームの入力検証・分類プロンプト組み立て・Gemini応答の厳格パース
 functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レート制限（askGeminiと独立）・受理された報告の書き込み
 functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
-test/services/bug_report_service_test.dart       12   バグ報告送信サービス（入力検証・応答解釈・エラー分類）
-test/screens/bug_report_screen_test.dart          6   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示）
-rules_test/firestore.test.js                     50   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallCount保護・bugReports拒否・ペアの解消含む）
+test/services/bug_report_service_test.dart       15   バグ報告送信サービス（入力検証・応答解釈・エラー分類・自分の報告一覧watchMyReports）
+test/screens/bug_report_screen_test.dart         10   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示・送った報告一覧の表示/エラー）
+rules_test/firestore.test.js                     58   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -316,6 +316,27 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   IAM権限・索引の両方が揃った状態は次回の`fix-bug-reports.yml`実行（cronまたは
   手動`workflow_dispatch`）で改めて確認すること。
 
+2026-08-20、上記の権限・索引が揃った直後にユーザーが実際にアプリから機能要望
+「自分が送った要望をこの画面で見れて、改修されたかも分かるようにしたい」を送信した
+（`fix-bug-reports.yml`自体は当該実行でこれを処理しなかったため、Claudeがこのセッション内で
+直接実装した）。対応した変更:
+- `firestore.rules`の`bugReports`に`allow read: if request.auth.uid ==
+  resource.data.createdBy`を追加した（書き込みは引き続き`if false`のまま）。
+  自分が送った報告だけをアプリから確認できる。
+- `firestore.indexes.json`に`bugReports`の`createdBy`+`createdAt`複合索引を追加した
+  （`status`+`createdAt`の索引とは別物。両方とも本番へデプロイ済み）。
+- `lib/screens/bug_report_screen.dart`のフォーム下に「送った報告」一覧セクションを
+  追加した（`BugReportService.watchMyReports()`）。状況（未着手・対応中・対応済み・
+  見送り）をバッジで表示し、見送りの場合は大まかな理由（`rejectCategory`、固定5分類:
+  `already_done`/`unclear`/`out_of_scope`/`duplicate`/`other`）も表示する。
+  `functions/scripts/mark-bug-report-status.mjs`と`.claude/commands/fix-bug-reports.md`
+  を更新し、`rejected`にする際は必ず`--category`を指定するようにした。
+- 送信のレート制限をAIチャット（askGemini）と同じ「日次」から「月次」へ変更した
+  （`BUG_REPORT_MONTHLY_LIMIT = 10`、Firestoreのフィールド名も
+  `reportCallDate`→`reportCallMonth`にリネーム）。バグ報告フォームは連投で
+  Firestoreへストックされ続けると自動修正パイプラインの負荷が積み上がるため、
+  日次より月次の方が実態に合うという判断。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
@@ -335,8 +356,8 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 - [ ] OAuth 同意画面のテストユーザー登録（上限100人）または審査申請
 - [ ] `android/app/release.keystore` のバックアップ（**紛失するとアプリを二度と更新できない**）
 - [ ] **`GEMINI_API_KEY`をSecret Managerへ登録し、Cloud Functionsを本番へデプロイする** — `firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e` のあと `firebase deploy --only functions --project aimaru-7eb2e`。関数を自動デプロイするステップが`release-stg.yml`に無かったため、`askGemini`（AIチャット）と`submitBugReport`（バグ報告フォーム）が本番に存在せず、どちらも呼び出しに失敗していた。ステップ自体は追加済みだが、下のIAM権限が付くまでは`continue-on-error`で失敗するため手動実行が要る
-- [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロール（Cloud Functions Admin / Service Account User / Secret Manager Secret Accessor など）をGCPコンソールで付与 — 付くまで`release-stg.yml`の`Deploy Cloud Functions`は失敗し続ける（`continue-on-error: true`で配布はブロックしない）
-- [ ] `FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロール（例: Firebase Rules Admin）をGCPコンソールで付与 — 未付与のため`release-stg.yml`の`Deploy Firestore rules`が403で失敗し続けている（`continue-on-error: true`でビルド・配布はブロックしていない）。それまでは`firestore.rules`変更時に`firebase deploy --only firestore:rules --project aimaru-7eb2e`をローカルから手動実行すること
+- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/cloudfunctions.developer`・`roles/iam.serviceAccountUser`・`roles/secretmanager.secretAccessor`・`roles/cloudbuild.builds.editor`を付与して解消（ユーザー本人が直接GCPコンソールで付与）。次回`release-stg.yml`実行の`Deploy Cloud Functions`で成功を確認すること
+- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/firebaserules.admin`・`roles/datastore.indexAdmin`を付与して解消（`roles/firebaserules.admin`の付与コマンドはこのエージェント実行環境のauto-mode classifierにブロックされたため、ユーザー本人が直接GCPコンソールで付与）。次回`release-stg.yml`実行の`Deploy Firestore rules`/`Deploy Firestore indexes`で成功を確認すること
 - [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウント（`github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com`）にFirestoreドキュメント読み書き用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/datastore.user`を付与して解消（`gcloud` CLIをこのエージェント実行環境にインストールし、ユーザー本人のブラウザ認証のあと`gcloud projects add-iam-policy-binding`で実行）
 
 ## 既知だが直さない判断をしたもの
