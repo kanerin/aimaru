@@ -226,6 +226,67 @@ async function runRecurringEventsPass(nowMs: number) {
   return sent;
 }
 
+/**
+ * 本番の processAnniversaryReminders と同じ順序・同じ書き戻しロジックで、
+ * 記念日タブ（couples/{coupleId}/anniversaries）の1回ぶんの実行をシミュレートする。
+ * processRecurringEvents と違い、nextOccurrenceMs のキャッシュは持たない
+ * （記念日は件数が少なく、クエリ自体の絞り込みを必要としないため）。
+ */
+async function runAnniversaryRemindersPass(nowMs: number) {
+  const snap = await db.collectionGroup("anniversaries").get();
+  const sent: Array<{ anniversaryId: string; uid: string }> = [];
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as {
+      date: Timestamp;
+      remindedUids?: string[];
+      remindedYear?: number | null;
+      remindedUidsYear?: number | null;
+    };
+
+    const occurrence = nextOccurrence(data.date.toDate(), nowMs);
+    const occurrenceYear = occurrence.getFullYear();
+    const occurrenceMs = occurrence.getTime();
+
+    if (data.remindedYear === occurrenceYear) continue;
+
+    const coupleId = doc.ref.parent.parent?.id;
+    if (!coupleId) continue;
+    const memberIds: string[] =
+      (await db.collection("couples").doc(coupleId).get()).data()?.memberIds ?? [];
+
+    const alreadyRemindedUids =
+      data.remindedUidsYear === occurrenceYear ? new Set(data.remindedUids ?? []) : new Set<string>();
+
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const user = (await db.collection("users").doc(uid).get()).data() as
+          | { remindersEnabled?: boolean }
+          | undefined;
+        return {
+          uid,
+          alreadyReminded: alreadyRemindedUids.has(uid),
+          remindersEnabled: !!user && user.remindersEnabled !== false,
+          minutesBefore: 0,
+        };
+      }),
+    );
+
+    const { toRemind, fullySettled } = resolveReminderTargets(members, occurrenceMs, nowMs);
+    for (const uid of toRemind) sent.push({ anniversaryId: doc.id, uid });
+
+    if (toRemind.length > 0 || fullySettled) {
+      await doc.ref.update({
+        remindedUids: [...alreadyRemindedUids, ...toRemind],
+        remindedUidsYear: occurrenceYear,
+        remindedYear: fullySettled ? occurrenceYear : null,
+      });
+    }
+  }
+
+  return sent;
+}
+
 describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エミュレータ未起動" }, () => {
   before(() => {
     app = initializeApp({ projectId: "aimaru-test" }, `it-${Date.now()}`);
@@ -498,5 +559,124 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
       .get();
     assert.equal(afterSecondPass.data()?.reminded, true, "両方に送り終えたので完了扱いになる");
     assert.deepEqual(new Set(afterSecondPass.data()?.remindedUids), new Set([USER_A, USER_B]));
+  });
+});
+
+describe("記念日リマインダーのFirestore経路", { skip: EMULATOR ? false : "エミュレータ未起動" }, () => {
+  before(() => {
+    app = initializeApp({ projectId: "aimaru-test" }, `it-anniv-${Date.now()}`);
+    db = getFirestore(app);
+    db.settings({ ignoreUndefinedProperties: true });
+  });
+
+  after(async () => {
+    if (app) await deleteApp(app);
+  });
+
+  afterEach(async () => {
+    for (const path of ["users", "couples"]) {
+      const docs = await db.collection(path).listDocuments();
+      await Promise.all(docs.map((d) => db.recursiveDelete(d)));
+    }
+  });
+
+  async function seedAnniversary({
+    anniversaryDate,
+    users,
+    extra = {},
+  }: {
+    anniversaryDate: Date;
+    users: Record<string, { remindersEnabled?: boolean }>;
+    extra?: Record<string, unknown>;
+  }) {
+    await db.collection("couples").doc(COUPLE_ID).set({
+      memberIds: Object.keys(users),
+      inviteCode: "A3K9PZ",
+    });
+    for (const [uid, settings] of Object.entries(users)) {
+      await db.collection("users").doc(uid).set({ displayName: uid, fcmToken: `token-${uid}`, ...settings });
+    }
+    await db.collection("couples").doc(COUPLE_ID).collection("anniversaries").doc("anniv-1").set({
+      coupleId: COUPLE_ID,
+      title: "プロポーズ記念日",
+      date: Timestamp.fromDate(anniversaryDate),
+      createdBy: USER_A,
+      remindedYear: null,
+      ...extra,
+    });
+  }
+
+  it("発生日当日はメンバー全員に通知される", async () => {
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seedAnniversary({
+      anniversaryDate: new Date(2024, 7, 12, 10, 0),
+      users: { [USER_A]: {}, [USER_B]: {} },
+    });
+
+    const sent = await runAnniversaryRemindersPass(nowMs);
+
+    assert.deepEqual(new Set(sent.map((s) => s.uid)), new Set([USER_A, USER_B]));
+
+    const doc = await db.collection("couples").doc(COUPLE_ID).collection("anniversaries").doc("anniv-1").get();
+    assert.equal(doc.data()?.remindedYear, 2026, "今年分は送信済みとして記録する");
+  });
+
+  it("発生日より前はまだ通知しない", async () => {
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seedAnniversary({
+      anniversaryDate: new Date(2024, 11, 24, 10, 0), // 12月24日、まだ数ヶ月先
+      users: { [USER_A]: {} },
+    });
+
+    const sent = await runAnniversaryRemindersPass(nowMs);
+
+    assert.deepEqual(sent, []);
+  });
+
+  it("送信済みの年は再送しない", async () => {
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seedAnniversary({
+      anniversaryDate: new Date(2024, 7, 12, 10, 0),
+      users: { [USER_A]: {} },
+      extra: { remindedYear: 2026 },
+    });
+
+    const sent = await runAnniversaryRemindersPass(nowMs);
+
+    assert.deepEqual(sent, [], "今年分はすでに送信済み");
+  });
+
+  it("remindersEnabledがfalseのメンバーには送らない", async () => {
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seedAnniversary({
+      anniversaryDate: new Date(2024, 7, 12, 10, 0),
+      users: {
+        [USER_A]: { remindersEnabled: false },
+        [USER_B]: {},
+      },
+    });
+
+    const sent = await runAnniversaryRemindersPass(nowMs);
+
+    assert.deepEqual(sent.map((s) => s.uid), [USER_B]);
+  });
+
+  it("片方だけ先に通知済みでも、もう片方はいずれ通知を受け取れる", async () => {
+    // Aは既に今年分の送信を終えている（remindedUidsYearが今年）が、
+    // まだBが残っているのでremindedYearはnullのまま、という中間状態から始める。
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seedAnniversary({
+      anniversaryDate: new Date(2024, 7, 12, 10, 0),
+      users: { [USER_A]: {}, [USER_B]: {} },
+      extra: { remindedYear: null, remindedUidsYear: 2026, remindedUids: [USER_A] },
+    });
+
+    const sent = await runAnniversaryRemindersPass(nowMs);
+
+    assert.deepEqual(sent.map((s) => s.uid), [USER_B], "Aは送信済みなので対象外");
+
+    const doc = await db.collection("couples").doc(COUPLE_ID).collection("anniversaries").doc("anniv-1").get();
+    assert.equal(doc.data()?.remindedYear, 2026);
+    assert.deepEqual(new Set(doc.data()?.remindedUids), new Set([USER_A, USER_B]));
   });
 });

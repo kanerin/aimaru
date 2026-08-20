@@ -424,8 +424,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
-              title: '予定のリマインダー通知',
-              subtitle: '予定の開始前にプッシュ通知でお知らせします',
+              title: '予定・記念日のリマインダー通知',
+              subtitle: '予定の開始前や記念日の当日にプッシュ通知でお知らせします',
               value: _remindersEnabled,
               onChanged: (v) async {
                 setState(() => _remindersEnabled = v);
