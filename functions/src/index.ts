@@ -51,6 +51,9 @@ interface EventDoc {
   // remindedUids は「年ごと」にリセットする必要がある繰り返し予定でも
   // 使い回すため、どの年についての集計かをここで持つ。
   remindedUidsYear?: number | null;
+  // 繰り返し予定について、直近の発生時刻をキャッシュしたもの
+  // （docs/open-issues.md 課題8フェーズ3向けの準備、現時点では未使用）。
+  nextOccurrenceMs?: Timestamp | null;
   // null以外ならゴミ箱に入っている（論理削除済み）。
   // 保持期間中はまだ復元されうるので、リマインダー送信の対象から外す。
   deletedAt?: Timestamp | null;
@@ -203,8 +206,20 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
     // 今年 or 来年のうち、直近の発生日を採用する
     const occurrence = nextOccurrence(data.date.toDate(), nowMs);
     const occurrenceYear = occurrence.getFullYear();
+    const occurrenceMs = occurrence.getTime();
 
-    if (data.remindedYear === occurrenceYear) continue;
+    // 課題8フェーズ3（このクエリ自体を絞り込む）に備え、直近の発生時刻を
+    // nextOccurrenceMsへ書き戻しておく。全件走査は今回まだ変えておらず、
+    // このフィールドはまだクエリの絞り込みには使っていない（既存ドキュメントに
+    // 未設定のものが残っているため、絞り込むと過去分の通知が止まってしまう）。
+    const needsOccurrenceRefresh = data.nextOccurrenceMs?.toMillis() !== occurrenceMs;
+
+    if (data.remindedYear === occurrenceYear) {
+      if (needsOccurrenceRefresh) {
+        await doc.ref.update({ nextOccurrenceMs: Timestamp.fromMillis(occurrenceMs) });
+      }
+      continue;
+    }
 
     const coupleId = doc.ref.parent.parent?.id;
     if (!coupleId) continue;
@@ -230,7 +245,7 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
       }),
     );
 
-    const { toRemind, fullySettled } = resolveReminderTargets(members, occurrence.getTime(), nowMs);
+    const { toRemind, fullySettled } = resolveReminderTargets(members, occurrenceMs, nowMs);
 
     for (const uid of toRemind) {
       const member = members.find((m) => m.uid === uid)!;
@@ -242,11 +257,16 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
       );
     }
 
-    if (toRemind.length > 0 || fullySettled) {
+    if (toRemind.length > 0 || fullySettled || needsOccurrenceRefresh) {
       await doc.ref.update({
-        remindedUids: [...alreadyRemindedUids, ...toRemind],
-        remindedUidsYear: occurrenceYear,
-        remindedYear: fullySettled ? occurrenceYear : null,
+        ...(toRemind.length > 0 || fullySettled
+          ? {
+              remindedUids: [...alreadyRemindedUids, ...toRemind],
+              remindedUidsYear: occurrenceYear,
+              remindedYear: fullySettled ? occurrenceYear : null,
+            }
+          : {}),
+        nextOccurrenceMs: Timestamp.fromMillis(occurrenceMs),
       });
     }
   }
