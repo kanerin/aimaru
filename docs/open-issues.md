@@ -57,13 +57,15 @@ rules_test/firestore.test.js                     58   Firestoreルールのメ�
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
-CI は3ジョブに分けている。落ちた場所から原因が一目で分かるようにするため。
+CI は5ジョブに分けている。落ちた場所から原因が一目で分かるようにするため。
 
 | ジョブ | 内容 |
 |---|---|
-| Flutter | `analyze` / `test --coverage` |
-| Cloud Functions | 型 / 単体 / 結合（エミュレータ）/ ビルド |
-| Security rules | Firestore・Storage ルール（エミュレータ） |
+| Secret scan | gitleaksによるシークレット漏洩チェック（2026-08-21追加） |
+| Flutter | `analyze` / フォーマットチェック（可視化のみ） / `test --coverage` |
+| Cloud Functions | 依存関係監査（high/critical） / 型 / 単体 / 結合（エミュレータ）/ ビルド |
+| Security rules | 依存関係監査（high/critical） / Firestore・Storage ルール（エミュレータ） |
+| Integration test | Androidエミュレータ上の実機結合テスト |
 
 `release-stg` へのマージでも同じ3系統を通してから配布する。ルールが緩んだ状態で
 テスターに配ると、その端末から実データを触られる余地が残るため。
@@ -366,6 +368,8 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 
 - **`couples` の読み取りルールが緩い**（認証済みなら他人のペアの `memberIds` / `anniversary` が読める）— 招待コード検索を成立させるための意図的な妥協。締めるなら `inviteCode` を別コレクションへ分離する設計変更が要る。TC-072 に記録済みで、`rules_test/firestore.test.js` の【既知】テストが現状を固定している（直したらそのテストが落ちて気づける）
 - **全面 E2E 暗号化は採用しない** — AI 機能と両立しないため。COUPPLY が訴求している点だが追従しない判断
+- **`functions`/`rules_test`のnpm audit（moderate 8件、いずれも`firebase-admin`経由の間接依存の`uuid`関連）を今は解消しない** — 2026-08-21、CIに`npm audit --omit=dev --audit-level=high`を追加した際に判明。解消には`firebase-admin`のメジャーバージョン更新（破壊的変更、動作確認が要る）が必要なため、high/critical未満は当面許容し、CIではhigh/critical限定で監視する
+- **既存コードへの`dart format`の一括適用を見送った** — 2026-08-21、CIにフォーマットチェックを追加しようとした際に判明。このリポジトリのDartコードの多くは値を縦に揃える手書きの独自整形（例: `id:          doc.id,`）を使っており、`dart format`の標準スタイルとは異なる。一括で機械整形をかけたところ、一部の`if`文（例: `lib/screens/calendar_screen.dart`の`if (mounted) setState(...)`）で中かっこが外れ、`curly_braces_in_flow_control_structures`のlintが新たに7件発生することを確認した。挙動を変えずに一括修正するには個別の見直しが要るため、CIのフォーマットチェックは`continue-on-error: true`（可視化のみ）に留めている
 
 ## 自動化の構成
 
