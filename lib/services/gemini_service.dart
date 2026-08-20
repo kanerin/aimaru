@@ -25,6 +25,11 @@ const kGeminiQuotaMessage       = 'AIの利用上限に達しました。しば�
 const kGeminiApiKeyMessage      = 'AIの認証に失敗しました。APIキーの設定を確認してください。';
 const kGeminiNetworkMessage     = '通信に失敗しました。電波状況を確認してもう一度お試しください。';
 const kGeminiNoApiKeyMessage    = 'AIのAPIキーが設定されていないため利用できません。';
+// askGemini関数そのものに到達できなかった場合（本番へデプロイされていない、
+// 関数名の変更で古いAPKから消えた関数を呼んでいる、など）。
+// 「通信エラー」で一括りにすると、利用者からの報告だけでは
+// 「サーバー側の未デプロイ」と「一時的な不調」を区別できない。
+const kGeminiNotDeployedMessage = 'AI機能が現在ご利用いただけません。復旧までしばらくお待ちください。';
 // 上のkGeminiErrorMessageは「応答をJSONとして読めなかった」場合に使う。
 // 呼び出し自体が例外で落ちた場合と区別できるよう、文言を分けている。
 const kGeminiUnknownErrorMessage = 'AIとの通信でエラーが発生しました。もう一度試してください。';
@@ -235,6 +240,11 @@ String describeCallableFailure(Object error) {
       case 'unavailable':
       case 'deadline-exceeded':
         return kGeminiNetworkMessage;
+      // Cloud Functions側に askGemini が存在しない。関数は自動デプロイ
+      // されないため、コードだけ入って本番へ反映されていないと必ずこれになる。
+      case 'not-found':
+      case 'unimplemented':
+        return kGeminiNotDeployedMessage;
     }
   }
   return describeGeminiFailure(error);

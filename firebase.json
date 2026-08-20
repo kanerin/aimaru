@@ -26,6 +26,11 @@
     {
       "source": "functions",
       "codebase": "default",
+      "//": "TypeScriptなので、デプロイ前に必ずlib/へビルドする（lib/はgit管理外）。このpredeployが無いと、firebase deploy --only functions が古い/存在しない成果物を配ってしまう",
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" ci",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
       "ignore": [
         "node_modules",
         ".git",

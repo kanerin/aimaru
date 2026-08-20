@@ -94,14 +94,26 @@ export function validateContents(value: unknown): value is GeminiContent[] {
 }
 
 /** Gemini APIのHTTPステータスから、呼び出し元に返すエラー種別を決める。 */
-export type GeminiErrorKind = "resource-exhausted" | "failed-precondition" | "internal";
+export type GeminiErrorKind =
+  | "resource-exhausted"
+  | "failed-precondition"
+  | "internal"
+  | "unavailable";
 
 export function classifyGeminiApiError(status: number): GeminiErrorKind {
   if (status === 429) return "resource-exhausted";
   // 401/403はこちら（サーバー側）が持つ鍵の問題であり、呼び出したユーザーの
   // 問題ではない。鍵未設定・失効のどちらもここに落ちる。
   if (status === 401 || status === 403) return "failed-precondition";
+  // Gemini側の一時的な障害（503など）は、こちらのコードを直しても意味がない。
+  // 呼び出し元が「時間をおいて再試行」と案内できるようinternalと区別する。
+  if (status === 503 || status === 502 || status === 504) return "unavailable";
   return "internal";
+}
+
+/** ログに残す診断メッセージが際限なく伸びないよう、先頭だけを取る。 */
+export function truncateForLog(value: string, max = 500): string {
+  return value.length <= max ? value : `${value.slice(0, max)}…(${value.length}文字)`;
 }
 
 /**
@@ -127,6 +139,13 @@ export interface GeminiCallResult {
 export interface GeminiCallError {
   ok: false;
   kind: GeminiErrorKind;
+  /**
+   * 何が起きたかを関数のログ（`firebase functions:log`）へ残すための文字列。
+   * 利用者にはHttpsErrorのcodeしか返さないため、ここを残しておかないと
+   * 「AIとの通信でエラーが発生しました」だけが手元にあって原因を追えなくなる。
+   * APIキーは決して含めないこと。
+   */
+  detail: string;
 }
 
 /**
@@ -139,27 +158,63 @@ export async function callGeminiApi(
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GeminiCallResult | GeminiCallError> {
-  const res = await fetchImpl(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-goog-api-key": apiKey,
+  let res: Response;
+  try {
+    res = await fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          contents,
+          generationConfig: { responseMimeType: "application/json" },
+        }),
       },
-      body: JSON.stringify({
-        contents,
-        generationConfig: { responseMimeType: "application/json" },
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    return { ok: false, kind: classifyGeminiApiError(res.status) };
+    );
+  } catch (err) {
+    // Gemini側へ到達すらできなかった場合（DNS・接続断・タイムアウト）。
+    // 例外のまま外へ投げると呼び出し元が握りつぶしてしまい、
+    // 「通信できていない」のか「応答が変」なのかがログから消える。
+    return {
+      ok: false,
+      kind: "unavailable",
+      detail: `Gemini APIへ到達できませんでした: ${truncateForLog(String(err))}`,
+    };
   }
 
-  const body: unknown = await res.json();
+  if (!res.ok) {
+    // エラー本文にはモデル名の誤り・鍵の失効・課金未設定など、
+    // 原因がそのまま書かれていることが多いのでログへ残す。
+    const body = await res.text().catch(() => "(本文を読めませんでした)");
+    return {
+      ok: false,
+      kind: classifyGeminiApiError(res.status),
+      detail: `Gemini APIが${res.status}を返しました（model=${GEMINI_MODEL}）: ${truncateForLog(body)}`,
+    };
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (err) {
+    return {
+      ok: false,
+      kind: "internal",
+      detail: `Gemini APIの応答をJSONとして読めませんでした: ${truncateForLog(String(err))}`,
+    };
+  }
+
   const text = extractGeminiText(body);
-  if (text === null) return { ok: false, kind: "internal" };
+  if (text === null) {
+    // 安全フィルタで候補が空になった場合などもここへ落ちる。
+    return {
+      ok: false,
+      kind: "internal",
+      detail: `Gemini APIの応答から本文を取り出せませんでした: ${truncateForLog(JSON.stringify(body))}`,
+    };
+  }
   return { ok: true, text };
 }

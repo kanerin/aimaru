@@ -376,11 +376,15 @@ export const askGemini = onCall<AskGeminiRequest>(
 
     const apiKey = geminiApiKey.value();
     if (!apiKey) {
+      logger.error("askGemini: GEMINI_API_KEYシークレットが空です。Secret Managerへの登録と再デプロイが必要です");
       throw new HttpsError("failed-precondition", "AIのAPIキーが設定されていません");
     }
 
     const result = await callGeminiApi(contents as GeminiContent[], apiKey);
     if (!result.ok) {
+      // 利用者へ返せるのはHttpsErrorのcodeだけなので、原因はここでログへ残す。
+      // これが無いと「AIとの通信でエラーが発生しました」から先を追えない。
+      logger.error(`askGemini: ${result.detail}`, { kind: result.kind, uid });
       throw new HttpsError(result.kind, "AIとの通信でエラーが発生しました");
     }
 
@@ -446,16 +450,19 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
 
     const apiKey = geminiApiKey.value();
     if (!apiKey) {
+      logger.error("submitBugReport: GEMINI_API_KEYシークレットが空です。Secret Managerへの登録と再デプロイが必要です");
       throw new HttpsError("failed-precondition", "AIのAPIキーが設定されていません");
     }
 
     const result = await callGeminiApi(buildTriageContents(text), apiKey);
     if (!result.ok) {
+      logger.error(`submitBugReport: ${result.detail}`, { kind: result.kind, uid });
       throw new HttpsError(result.kind, "判定処理でエラーが発生しました");
     }
 
     const triage = parseTriageResponse(result.text);
     if (!triage) {
+      logger.error("submitBugReport: 判定結果をJSONとして解釈できませんでした", { uid });
       throw new HttpsError("internal", "判定結果を解釈できませんでした");
     }
 

@@ -30,6 +30,9 @@ const kBugReportQuotaMessage = '本日の送信回数の上限に達しました
 const kBugReportAuthMessage = '送信できませんでした。時間をおいてもう一度お試しください';
 const kBugReportNetworkMessage = '通信に失敗しました。電波状況を確認してもう一度お試しください';
 const kBugReportUnknownMessage = '送信に失敗しました。もう一度お試しください';
+// submitBugReport関数そのものに到達できなかった場合（本番へ未デプロイなど）。
+// 何度やり直しても成功しないので、再試行を促す文言とは分けている。
+const kBugReportUnavailableMessage = 'ただいま送信を受け付けられません。復旧までしばらくお待ちください';
 
 class BugReportService {
   // 本番はFirebase Callable Functions（submitBugReport）を呼ぶ。
@@ -87,6 +90,12 @@ class BugReportService {
         case 'unavailable':
         case 'deadline-exceeded':
           return kBugReportNetworkMessage;
+        // Cloud Functions側に submitBugReport が存在しない。
+        // 関数は自動デプロイされないため、コードだけ入って本番へ
+        // 反映されていないと必ずこれになる。
+        case 'not-found':
+        case 'unimplemented':
+          return kBugReportUnavailableMessage;
       }
     }
     final s = error.toString().toLowerCase();

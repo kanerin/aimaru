@@ -156,6 +156,23 @@ void main() {
       );
     });
 
+    // Cloud Functionsは自動デプロイされないため、submitBugReportが本番に
+    // 存在しないとnot-foundで落ちる。再試行しても直らないので、
+    // 「もう一度お試しください」とは別の案内にする。
+    test('関数が本番に無い場合(not-found/unimplemented)は復旧待ちの案内にする', () async {
+      for (final code in ['not-found', 'unimplemented']) {
+        final service = BugReportService(invoke: (data) async {
+          throw _FakeFunctionsException(code);
+        });
+
+        await expectLater(
+          service.submit('テスト入力です'),
+          throwsA(predicate((e) =>
+              e is BugReportSubmissionException && e.message == kBugReportUnavailableMessage)),
+        );
+      }
+    });
+
     test('未分類の例外は汎用メッセージへ翻訳する', () async {
       final service = BugReportService(invoke: (data) async {
         throw Exception('何か知らないエラー');

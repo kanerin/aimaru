@@ -89,6 +89,10 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 **GITHUB_TOKENによるpushはpushトリガーを起動しない**（GitHub Actionsの無限ループ防止仕様）。`promote-to-stg.yml`は`GITHUB_TOKEN`で`release-stg`へpushするため、`release-stg.yml`（テスター配布、`push: branches: [release-stg]`）は自動発火せず、`promote-to-stg.yml`側から`workflow_dispatch`で明示的に起動している。`release-stg`へのpush起点のワークフローを新設する場合はこの制約を踏まえること。
 
+**Cloud Functionsも「リポジトリにコードがあるだけでは本番で動かない」。** `firestore.rules`と同じ落とし穴で、こちらは長いあいだ自動デプロイのステップ自体が存在しなかった。そのため、AIチャットのAPIキーをサーバー側へ移した`askGemini`とバグ報告フォームの`submitBugReport`が一度も反映されず、どちらの画面も呼び出しに失敗し続けていた（利用者からは「AI機能が疎通しない」と見える）。**Firebaseプロジェクトは`aimaru-7eb2e`ひとつしか無く、テスター配布（`release-stg`）のAPKも本番と同じ関数・同じFirestoreを見る**ので、「開発用の配布だから本番とは別」ということは無い。関数が未デプロイなら両方で同時に壊れる。`release-stg.yml`に`Deploy Cloud Functions`ステップを追加済みだが、rules・indexesと同じくサービスアカウントのIAM権限が揃うまでは`continue-on-error: true`で失敗を可視化するだけなので、**`functions/`を変更したら`firebase deploy --only functions --project aimaru-7eb2e`をローカルから手動実行すること**。`GEMINI_API_KEY`はSecret Managerに登録されている必要がある（`firebase functions:secrets:set GEMINI_API_KEY`）。GitHub Secretsの`GEMINI_API_KEY`はAPKのビルドには不要（Dart側は`String.fromEnvironment`で読んでいないため、`--dart-define`は削除済み）。
+
+**Cloud Functionsの失敗はログに理由を残すこと。** 呼び出し元へ返せるのは`HttpsError`のcodeだけで、利用者の画面には「AIとの通信でエラーが発生しました」しか出ない。`logger.error`でGemini APIのステータス・モデル名・エラー本文まで残しておかないと、`firebase functions:log`を見ても原因にたどり着けない（APIキーそのものは決してログに出さない）。
+
 **`release-stg.yml`の`Deploy Firestore rules`/`Deploy Firestore indexes`ステップは現状 `continue-on-error: true` で失敗を許容している**（2026-08-19時点）。`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルール・索引をデプロイする権限（GCP側のIAMロール）がまだ付与されていないため。IAMロールを付与すれば自動デプロイが機能するようになる（対応は人間の作業として保留中）。それまでは`firestore.rules`/`firestore.indexes.json`を変更したら`firebase deploy --only firestore:rules,firestore:indexes --project aimaru-7eb2e`をローカルから手動で実行すること（このリポジトリのオーナーアカウントでログインしたFirebase CLIには、CIのサービスアカウントに無いデプロイ権限がある。2026-08-19、`questionAnswers`のルール・`sendReminders`絞り込み用の索引が未反映のまま本番へ出ていたことに起因する不具合を、この手動デプロイで解消した）。
 
 いずれも認証は `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`で発行、GitHub Secretsに登録）を使う。`ANTHROPIC_API_KEY`は使わない。

@@ -65,8 +65,7 @@ jobs:
         run: |
           flutter build appbundle --release \
             --build-name="$APP_VERSION" \
-            --build-number=${{ github.run_number }} \
-            --dart-define=GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            --build-number=${{ github.run_number }}
 
       # デフォルトはinternalトラック（審査なし・即時反映）。
       # 本番(production)トラックへ出す場合は track を変更するか、

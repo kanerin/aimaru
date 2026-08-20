@@ -203,6 +203,16 @@ void main() {
           kGeminiNetworkMessage);
     });
 
+    // Cloud Functionsは自動デプロイされないため、コードだけ入って本番へ
+    // 反映されていないと呼び出しがnot-foundで落ちる。これを「通信エラー」で
+    // 一括りにすると、利用者からの報告だけでは原因を切り分けられない。
+    test('関数が本番に無い場合(not-found/unimplemented)は復旧待ちの案内にする', () {
+      expect(describeCallableFailure(_FakeFunctionsException('not-found')),
+          kGeminiNotDeployedMessage);
+      expect(describeCallableFailure(_FakeFunctionsException('unimplemented')),
+          kGeminiNotDeployedMessage);
+    });
+
     test('一般的な例外はdescribeGeminiFailureへフォールバックする', () {
       expect(describeCallableFailure(Exception('Connection timed out')), kGeminiNetworkMessage);
     });
