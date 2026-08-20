@@ -1,7 +1,13 @@
 // ── 日本の祝日を計算するユーティリティ ──────────────────
 // 外部パッケージ・通信に依存せず、法律で定められたルールから算出する。
 // 春分・秋分の日は天文計算の近似式（実用上おおよそ1980〜2099年で誤差1日以内）を使用。
-// 「国民の休日」（祝日に挟まれた平日が休日になる制度）は発生頻度が低いため未対応。
+//
+// 休日は3種類あり、算出する順番に意味がある:
+//   1. 国民の祝日（祝日法第2条）… 元日・敬老の日など、日付や曜日で決まるもの
+//   2. 振替休日（同第3条第2項）… 祝日が日曜のとき、その後の最初の非祝日
+//   3. 国民の休日（同第3条第3項）… 前日と翌日が「国民の祝日」である平日
+// 2と3の判定はどちらも1だけを見る。振替休日や国民の休日は「国民の祝日」ではないので、
+// これらを足したあとの集合で挟まれ判定をすると、休日が芋づる式に増えてしまう。
 class JapanHolidays {
   static final Map<int, Map<DateTime, String>> _cache = {};
 
@@ -17,8 +23,9 @@ class JapanHolidays {
   }
 
   static Map<DateTime, String> _computeYear(int year) {
-    final holidays = <DateTime, String>{};
-    void add(DateTime d, String name) => holidays[DateTime(d.year, d.month, d.day)] = name;
+    // 国民の祝日（祝日法第2条）。振替休日・国民の休日の判定はこれだけを見る。
+    final national = <DateTime, String>{};
+    void add(DateTime d, String name) => national[DateTime(d.year, d.month, d.day)] = name;
 
     add(DateTime(year, 1, 1), '元日');
     add(_nthWeekdayOfMonth(year, 1, DateTime.monday, 2), '成人の日');
@@ -37,21 +44,42 @@ class JapanHolidays {
     add(DateTime(year, 11, 3), '文化の日');
     add(DateTime(year, 11, 23), '勤労感謝の日');
 
+    final holidays = Map<DateTime, String>.from(national);
+
     // 振替休日: 祝日が日曜なら、その後の最初の非祝日を休日にする
     final substitutes = <DateTime, String>{};
-    for (final entry in holidays.entries) {
+    for (final entry in national.entries) {
       if (entry.key.weekday == DateTime.sunday) {
-        var next = entry.key.add(const Duration(days: 1));
-        while (holidays.containsKey(next) || substitutes.containsKey(next)) {
-          next = next.add(const Duration(days: 1));
+        var next = _nextDay(entry.key);
+        while (national.containsKey(next) || substitutes.containsKey(next)) {
+          next = _nextDay(next);
         }
         substitutes[next] = '振替休日';
       }
     }
     holidays.addAll(substitutes);
 
+    // 国民の休日: 前日と翌日がどちらも「国民の祝日」である日を休日にする。
+    // 実際に起きるのは敬老の日（9月第3月曜）と秋分の日が1日空くとき
+    // （2009・2015・2026・2032年など。いわゆるシルバーウィーク）。
+    for (final day in national.keys) {
+      final middle = _nextDay(day);
+      // 前後が祝日でなければ挟まれていない。5/3〜5/5のように祝日が続く場合も、
+      // 真ん中が祝日なので対象外（みどりの日のまま）。
+      if (national.containsKey(middle) || !national.containsKey(_nextDay(middle))) {
+        continue;
+      }
+      // 法の但し書きで、日曜と振替休日は国民の休日にしない。
+      if (middle.weekday == DateTime.sunday || holidays.containsKey(middle)) continue;
+      holidays[middle] = '国民の休日';
+    }
+
     return holidays;
   }
+
+  // 翌日。DateTimeの加算ではなく日付の繰り上げで求める
+  // （Durationの加算はサマータイムのある地域で1日ちょうどにならない）。
+  static DateTime _nextDay(DateTime d) => DateTime(d.year, d.month, d.day + 1);
 
   // 月の第N ○曜日（weekday: DateTime.monday など）
   static DateTime _nthWeekdayOfMonth(int year, int month, int weekday, int n) {
