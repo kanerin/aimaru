@@ -37,6 +37,33 @@ void main() {
     });
   });
 
+  group('編集', () {
+    test('タイトルと日付を差し替えられる', () async {
+      final created = await service.addAnniversary(coupleId, '入籍日', DateTime(2023, 5, 1));
+
+      await service.updateAnniversary(created,
+          title: '結婚記念日', date: DateTime(2023, 5, 3));
+
+      final data = (await anniversariesRef().doc(created.id).get()).data()!;
+      expect(data['title'], '結婚記念日');
+      expect((data['date'] as Timestamp).toDate(), DateTime(2023, 5, 3));
+    });
+
+    // 「誰がいつ登録したか」は編集で書き換わるべき情報ではない。
+    test('createdBy・createdAtは編集しても残る', () async {
+      final created = await service.addAnniversary(coupleId, '入籍日', DateTime(2023, 5, 1));
+      final before = (await anniversariesRef().doc(created.id).get()).data()!;
+
+      await service.updateAnniversary(created,
+          title: '結婚記念日', date: DateTime(2023, 5, 3));
+
+      final after = (await anniversariesRef().doc(created.id).get()).data()!;
+      expect(after['createdBy'], before['createdBy']);
+      expect(after['createdAt'], before['createdAt']);
+      expect(after['coupleId'], coupleId);
+    });
+  });
+
   group('削除', () {
     test('削除するとドキュメントが消える', () async {
       final created = await service.addAnniversary(coupleId, '入籍日', DateTime(2023, 5, 1));

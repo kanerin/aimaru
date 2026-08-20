@@ -80,15 +80,17 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
     }
   }
 
-  Future<void> _addAnniversary() async {
-    final titleController = TextEditingController();
-    final title = await showDialog<String>(
+  // 追加と編集で同じ入力手順（タイトル → 日付）を通すためのヘルパー。
+  // 手順が違うと「追加はできたのに編集の操作が分からない」になりやすい。
+  Future<String?> _promptTitle({String? initial, required String dialogTitle}) async {
+    final controller = TextEditingController(text: initial ?? '');
+    return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.navyCard,
-        title: const Text('記念日を追加'),
+        title: Text(dialogTitle),
         content: TextField(
-          controller: titleController,
+          controller: controller,
           autofocus: true,
           style: const TextStyle(color: AppColors.textPrimary),
           decoration: const InputDecoration(hintText: '例: プロポーズ記念日'),
@@ -96,29 +98,66 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, titleController.text.trim()),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('次へ'),
           ),
         ],
       ),
     );
+  }
+
+  Future<DateTime?> _pickAnniversaryDate(DateTime initial) async {
+    final now = _now;
+    if (widget.pickDateOverride != null) {
+      return widget.pickDateOverride!(context, initial);
+    }
+    return showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(now.year - 50),
+      lastDate: now, // 未来の記念日は選べない（daysTogetherの計算を単純に保つため）
+    );
+  }
+
+  Future<void> _addAnniversary() async {
+    final title = await _promptTitle(dialogTitle: '記念日を追加');
     if (title == null || title.isEmpty || !mounted) return;
 
-    final now = _now;
-    final date = widget.pickDateOverride != null
-        ? await widget.pickDateOverride!(context, now)
-        : await showDatePicker(
-            context: context,
-            initialDate: now,
-            firstDate: DateTime(now.year - 50),
-            lastDate: now, // 未来の記念日は選べない（daysTogetherの計算を単純に保つため）
-          );
+    final date = await _pickAnniversaryDate(_now);
     if (date == null || !mounted) return;
 
     await _anniversaryService.addAnniversary(widget.coupleId, title, date);
   }
 
+  Future<void> _editAnniversary(AnniversaryItem item) async {
+    final title = await _promptTitle(initial: item.title, dialogTitle: '記念日を編集');
+    if (title == null || title.isEmpty || !mounted) return;
+
+    final date = await _pickAnniversaryDate(item.date);
+    if (date == null || !mounted) return;
+
+    await _anniversaryService.updateAnniversary(item, title: title, date: date);
+  }
+
   Future<void> _deleteAnniversary(AnniversaryItem item) async {
+    // 記念日は元に戻せない（予定と違いゴミ箱が無い）ので、必ず確認を挟む。
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.navyCard,
+        title: const Text('記念日を削除'),
+        content: Text('「${item.title}」を削除します。元に戻せません。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('削除', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     await _anniversaryService.deleteAnniversary(item);
   }
 
@@ -186,6 +225,7 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
                   stream: _anniversariesStream,
                   now: _now,
                   onAdd: _addAnniversary,
+                  onEdit: _editAnniversary,
                   onDelete: _deleteAnniversary,
                 ),
               ],
@@ -203,12 +243,14 @@ class _AnniversaryListSection extends StatelessWidget {
   final Stream<List<AnniversaryItem>> stream;
   final DateTime now;
   final VoidCallback onAdd;
+  final void Function(AnniversaryItem item) onEdit;
   final void Function(AnniversaryItem item) onDelete;
 
   const _AnniversaryListSection({
     required this.stream,
     required this.now,
     required this.onAdd,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -237,7 +279,11 @@ class _AnniversaryListSection extends StatelessWidget {
         final items = List<AnniversaryItem>.from(snap.data!)
           ..sort((a, b) => summarizeAnniversary(a.date, now).daysUntilNextAnniversary
               .compareTo(summarizeAnniversary(b.date, now).daysUntilNextAnniversary));
+        // stretch を指定しないとColumnの既定（center）で子が内容幅に縮み、
+        // 上の「次に会う日」「記念日」カードだけ横幅いっぱい・リストだけ
+        // 中央に細長い、というちぐはぐな見た目になる。
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (items.isEmpty)
               const Padding(
@@ -247,7 +293,12 @@ class _AnniversaryListSection extends StatelessWidget {
                   style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
               )
             else
-              ...items.map((item) => _AnniversaryTile(item: item, now: now, onDelete: onDelete)),
+              ...items.map((item) => _AnniversaryTile(
+                    item: item,
+                    now: now,
+                    onEdit: onEdit,
+                    onDelete: onDelete,
+                  )),
             const SizedBox(height: 4),
             OutlinedButton.icon(
               onPressed: onAdd,
@@ -256,6 +307,9 @@ class _AnniversaryListSection extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: appAccent(context),
                 side: BorderSide(color: appAccent(context)),
+                // カードと同じ角丸・同じくらいの高さにして、並びに馴染ませる
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
             ),
           ],
@@ -265,58 +319,76 @@ class _AnniversaryListSection extends StatelessWidget {
   }
 }
 
+// 上の「次に会う日」「記念日」カードと同じ見た目にそろえる
+// （余白14・角丸16・同じ枠線と文字サイズ、右上に操作アイコン）。
+// リストだけ細く小さいと、同じ画面の中で別物のように見えてしまう。
 class _AnniversaryTile extends StatelessWidget {
   final AnniversaryItem item;
   final DateTime now;
+  final void Function(AnniversaryItem item) onEdit;
   final void Function(AnniversaryItem item) onDelete;
 
-  const _AnniversaryTile({required this.item, required this.now, required this.onDelete});
+  const _AnniversaryTile({
+    required this.item,
+    required this.now,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     final summary = summarizeAnniversary(item.date, now);
-    return Dismissible(
-      key: ValueKey(item.id),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        margin: const EdgeInsets.only(bottom: 10),
-        decoration: BoxDecoration(
-          color: Colors.redAccent.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.delete_outline, color: Colors.redAccent),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.navySurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.hairline),
       ),
-      onDismissed: (_) => onDelete(item),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.navySurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.hairline),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(item.title, style: const TextStyle(
-              fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
-            )),
-            const SizedBox(height: 4),
-            Text(
-              '${DateFormat('yyyy年M月d日').format(item.date)}から',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              summary.daysUntilNextAnniversary == 0
-                  ? '🎉 今日は${summary.nextAnniversaryYearCount}周年記念日です！'
-                  : '${summary.nextAnniversaryYearCount}周年まであと${summary.daysUntilNextAnniversary}日',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: appAccent(context)),
-            ),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // 長いタイトルでもアイコンを押し出さないよう、余りを文字側に割り当てる
+              Expanded(
+                child: Text(
+                  '🎉 ${item.title}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Row(children: [
+                IconButton(
+                  tooltip: '記念日を削除',
+                  onPressed: () => onDelete(item),
+                  icon: const Icon(Icons.close, size: 18, color: AppColors.textSecond),
+                ),
+                IconButton(
+                  tooltip: '記念日を編集',
+                  onPressed: () => onEdit(item),
+                  icon: const Icon(Icons.edit_outlined, size: 18, color: AppColors.textSecond),
+                ),
+              ]),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${DateFormat('yyyy年M月d日').format(item.date)}から',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            summary.daysUntilNextAnniversary == 0
+                ? '🎉 今日は${summary.nextAnniversaryYearCount}周年記念日です！'
+                : '${summary.nextAnniversaryYearCount}周年まであと${summary.daysUntilNextAnniversary}日',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: appAccent(context)),
+          ),
+        ],
       ),
     );
   }

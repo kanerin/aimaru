@@ -32,6 +32,20 @@ class AnniversaryService {
     return item;
   }
 
+  // ── 記念日を編集 ──────────────────────────────────
+  // タイトルと日付だけを差し替える。createdBy / createdAt は登録時のまま残す
+  // （「誰がいつ登録したか」は編集で書き換わるべき情報ではない）。
+  Future<void> updateAnniversary(
+    AnniversaryItem item, {
+    required String title,
+    required DateTime date,
+  }) async {
+    await _anniversariesRef(item.coupleId).doc(item.id).update({
+      'title': title,
+      'date': Timestamp.fromDate(date),
+    });
+  }
+
   // ── 記念日を削除 ──────────────────────────────────
   Future<void> deleteAnniversary(AnniversaryItem item) async {
     await _anniversariesRef(item.coupleId).doc(item.id).delete();
