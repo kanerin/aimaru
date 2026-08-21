@@ -71,9 +71,11 @@ EOF
    - **CIが緑でコンフリクトも無い**（`mergeStateStatus` が `BLOCKED` / `CLEAN`）→ **何もしない**。
      マージ待ちである旨を出力して終了する。
 
-3. `cd functions && node scripts/list-pending-bug-reports.mjs` で未着手（`status: "pending"`）の
-   報告を一覧する（`GOOGLE_APPLICATION_CREDENTIALS`はワークフロー側で設定済み）。
-   0件なら「今回は対象なし」で、「実行ログの記録」に従ってIssue #57へコメントしてから終了する。
+3. `cd functions && node scripts/list-pending-bug-reports.mjs` で未着手（`status: "pending"`、
+   および`in_progress`のまま1時間以上更新が無い＝前回の実行が完了しないまま終わった
+   放置ロックも対象に含む）の報告を一覧する（`GOOGLE_APPLICATION_CREDENTIALS`は
+   ワークフロー側で設定済み）。0件なら「今回は対象なし」で、「実行ログの記録」に
+   従ってIssue #57へコメントしてから終了する。
 4. 一覧の中から**最も古い1件**を選ぶ。選んだら他のワークフロー実行と重複着手しないよう、
    実装を始める前にまず次を実行してロックする:
 
