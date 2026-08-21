@@ -256,11 +256,15 @@ jobs:
       # アプリ側が無限ローディングのまま固まる不具合が実際に発生した。
       # テストを通過した内容だけを、ビルドの前にここでデプロイする。
       #
-      # continue-on-error: FIREBASE_SERVICE_ACCOUNT_KEY のサービスアカウントに
-      # Firestoreルールのデプロイ権限（serviceusage等）がまだ付与されておらず、
-      # 現状は403で失敗する（IAM設定は後日人間が対応）。ここを必須にすると
-      # 権限が直るまでテスター配布そのものが止まってしまうため、失敗しても
-      # ビルド・配布は続行する。ルールは当面ローカルから手動デプロイすること。
+      # 2026-08-20、FIREBASE_SERVICE_ACCOUNT_KEY のサービスアカウントに
+      # roles/firebaserules.admin・roles/datastore.indexAdmin を付与し解消した。
+      #
+      # continue-on-error: true にしている。ここを必須にすると、Firestore側の
+      # 一時的な障害・クォータ等でデプロイが失敗しただけで、この後のAPKビルド・
+      # テスター配布までまとめて止まってしまう（テスターは今日の変更を
+      # 一切受け取れなくなる）。配布は独立して常に続行し、デプロイの失敗は
+      # ジョブ末尾の「Fail job if any deploy step did not succeed」でまとめて
+      # 可視化する（配布が終わった後に失敗させるので、テスターへは届く）。
       - name: Deploy Firestore rules
         id: deploy_rules
         continue-on-error: true
@@ -271,33 +275,9 @@ jobs:
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
 
-      # continue-on-error のままだと、ルールのデプロイに失敗してもジョブは緑になり
-      # 誰も気づけない。実際にこれで expenses（割り勘）のルールが本番へ反映されず、
-      # 画面を開くと権限エラーになる不具合が配信された（todos_screenに続いて2度目）。
-      # 配信自体は止めないが、失敗したことは必ず目に見える形で残す。
-      - name: Warn if Firestore rules were not deployed
-        if: steps.deploy_rules.outcome != 'success'
-        run: |
-          echo "::warning title=Firestoreルール未デプロイ::firestore.rules を本番へ反映できませんでした。新しいコレクションを追加している場合、その画面は本番で権限エラーになります。"
-          {
-            echo "### ⚠️ Firestoreルールが本番へ反映されていません"
-            echo ""
-            echo "\`firebase deploy --only firestore:rules\` が失敗しました。"
-            echo "サービスアカウントにGCP側のIAMロールが付与されていないためです。"
-            echo ""
-            echo "**新しいコレクションを追加した変更では、その画面が本番で権限エラーになります。**"
-            echo "ローカルから手動で反映してください:"
-            echo ""
-            echo '```'
-            echo "firebase deploy --only firestore:rules --project aimaru-7eb2e"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # firestore.indexes.json も rules と同じ理由（サービスアカウントに
-      # 権限が無い）で自動デプロイできていない。索引が要るクエリに変更した
-      # 場合、エミュレータでは通っても本番ではFAILED_PRECONDITIONで失敗する
-      # （docs/open-issues.md 課題8）。IAMロールが揃うまでは
-      # continue-on-error のまま、失敗を可視化するだけに留める。
+      # 索引が要るクエリに変更した場合、エミュレータでは通っても本番では
+      # FAILED_PRECONDITIONで失敗する（docs/open-issues.md 課題8）。
+      # rulesと同じ理由でcontinue-on-error: trueにしている。
       - name: Deploy Firestore indexes
         id: deploy_indexes
         continue-on-error: true
@@ -308,35 +288,14 @@ jobs:
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
 
-      - name: Warn if Firestore indexes were not deployed
-        if: steps.deploy_indexes.outcome != 'success'
-        run: |
-          echo "::warning title=Firestore索引未デプロイ::firestore.indexes.json を本番へ反映できませんでした。索引が要る新しいクエリは本番でFAILED_PRECONDITIONになります。"
-          {
-            echo "### ⚠️ Firestore索引が本番へ反映されていません"
-            echo ""
-            echo "\`firebase deploy --only firestore:indexes\` が失敗しました。"
-            echo "サービスアカウントにGCP側のIAMロールが付与されていないためです（rulesと同じ原因）。"
-            echo ""
-            echo "**索引を追加するクエリ変更は、本番でFAILED_PRECONDITIONになります。**"
-            echo "ローカルから手動で反映してください:"
-            echo ""
-            echo '```'
-            echo "firebase deploy --only firestore:indexes --project aimaru-7eb2e"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
       # Cloud Functions（askGemini / submitBugReport / sendReminders など）も
       # rules・indexesと同じで、リポジトリにコードがあるだけでは本番で動かない。
-      # ここにデプロイ手順が無かったため、AIチャットのAPIキーをサーバー側へ
+      # 以前はここにデプロイ手順自体が無く、AIチャットのAPIキーをサーバー側へ
       # 移した変更（askGemini）とバグ報告フォーム（submitBugReport）が
       # 本番へ一度も反映されず、どちらの画面も呼び出しに失敗し続けていた。
-      #
-      # continue-on-error: rules・indexesと同様、サービスアカウントに
-      # Cloud Functionsのデプロイ権限（Cloud Functions Admin / Service Account User /
-      # Secret Manager Secret Accessor など）が揃っていない間は失敗する。
-      # 権限が直るまでテスター配布そのものを止めないため、失敗しても続行し、
-      # 下のステップで必ず可視化する。
+      # 2026-08-20、roles/cloudfunctions.developer・roles/iam.serviceAccountUser・
+      # roles/secretmanager.secretAccessor・roles/cloudbuild.builds.editorを
+      # 付与し解消。rules・indexesと同じ理由でcontinue-on-error: trueにしている。
       - name: Deploy Cloud Functions
         id: deploy_functions
         continue-on-error: true
@@ -346,30 +305,6 @@ jobs:
           firebase deploy --only functions \
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
-
-      - name: Warn if Cloud Functions were not deployed
-        if: steps.deploy_functions.outcome != 'success'
-        run: |
-          echo "::warning title=Cloud Functions未デプロイ::Cloud Functionsを本番へ反映できませんでした。AIチャット・バグ報告など関数を呼ぶ画面は本番で失敗します。"
-          {
-            echo "### ⚠️ Cloud Functionsが本番へ反映されていません"
-            echo ""
-            echo "\`firebase deploy --only functions\` が失敗しました。"
-            echo ""
-            echo "**AIチャット（askGemini）・バグ報告フォーム（submitBugReport）・"
-            echo "リマインダー（sendReminders）は、反映されるまで本番で動きません。**"
-            echo "ローカルから手動で反映してください:"
-            echo ""
-            echo '```'
-            echo "firebase deploy --only functions --project aimaru-7eb2e"
-            echo '```'
-            echo ""
-            echo "GEMINI_API_KEYはSecret Managerに登録されている必要があります:"
-            echo ""
-            echo '```'
-            echo "firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Decode release keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
@@ -412,3 +347,19 @@ jobs:
           git tag -f stg-distributed "$GITHUB_SHA"
           git tag -f "v$APP_VERSION" "$GITHUB_SHA"
           git push -f origin refs/tags/stg-distributed "refs/tags/v$APP_VERSION"
+
+      # テスターへの配布は上のステップまでで完了している。ここから先で
+      # ジョブが赤くなっても配布そのものは巻き戻らない。デプロイの失敗を
+      # 「誰にも気づかれない」状態にしないためだけに、最後にまとめて
+      # ワークフローの実行結果へ反映する。
+      - name: Fail job if any deploy step did not succeed
+        if: always()
+        run: |
+          failed=""
+          [ "${{ steps.deploy_rules.outcome }}" = "success" ]     || failed="${failed}Firestore rules, "
+          [ "${{ steps.deploy_indexes.outcome }}" = "success" ]   || failed="${failed}Firestore indexes, "
+          [ "${{ steps.deploy_functions.outcome }}" = "success" ] || failed="${failed}Cloud Functions, "
+          if [ -n "$failed" ]; then
+            echo "::error title=本番デプロイに失敗しました::${failed%, } の本番デプロイに失敗しました。テスターへの配布は完了していますが、失敗した対象は本番（Firestore/Functions）へ反映されていません。firebase deploy --project aimaru-7eb2e で手動デプロイするか、原因を調査してください。"
+            exit 1
+          fi
