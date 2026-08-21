@@ -257,10 +257,17 @@ jobs:
       # テストを通過した内容だけを、ビルドの前にここでデプロイする。
       #
       # 2026-08-20、FIREBASE_SERVICE_ACCOUNT_KEY のサービスアカウントに
-      # roles/firebaserules.admin・roles/datastore.indexAdmin を付与し解消した
-      # （以前はcontinue-on-error: trueで可視化のみだったが、2026-08-21に
-      # 直近3回のrelease-stg.yml実行で連続成功したことを確認したためblockingにした）。
+      # roles/firebaserules.admin・roles/datastore.indexAdmin を付与し解消した。
+      #
+      # continue-on-error: true にしている。ここを必須にすると、Firestore側の
+      # 一時的な障害・クォータ等でデプロイが失敗しただけで、この後のAPKビルド・
+      # テスター配布までまとめて止まってしまう（テスターは今日の変更を
+      # 一切受け取れなくなる）。配布は独立して常に続行し、デプロイの失敗は
+      # ジョブ末尾の「Fail job if any deploy step did not succeed」でまとめて
+      # 可視化する（配布が終わった後に失敗させるので、テスターへは届く）。
       - name: Deploy Firestore rules
+        id: deploy_rules
+        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
@@ -270,8 +277,10 @@ jobs:
 
       # 索引が要るクエリに変更した場合、エミュレータでは通っても本番では
       # FAILED_PRECONDITIONで失敗する（docs/open-issues.md 課題8）。
-      # rulesと同じ理由・同じタイミングでblockingにした。
+      # rulesと同じ理由でcontinue-on-error: trueにしている。
       - name: Deploy Firestore indexes
+        id: deploy_indexes
+        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
@@ -286,8 +295,10 @@ jobs:
       # 本番へ一度も反映されず、どちらの画面も呼び出しに失敗し続けていた。
       # 2026-08-20、roles/cloudfunctions.developer・roles/iam.serviceAccountUser・
       # roles/secretmanager.secretAccessor・roles/cloudbuild.builds.editorを
-      # 付与し解消。rules・indexesと同じタイミングでblockingにした。
+      # 付与し解消。rules・indexesと同じ理由でcontinue-on-error: trueにしている。
       - name: Deploy Cloud Functions
+        id: deploy_functions
+        continue-on-error: true
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: |
@@ -336,3 +347,19 @@ jobs:
           git tag -f stg-distributed "$GITHUB_SHA"
           git tag -f "v$APP_VERSION" "$GITHUB_SHA"
           git push -f origin refs/tags/stg-distributed "refs/tags/v$APP_VERSION"
+
+      # テスターへの配布は上のステップまでで完了している。ここから先で
+      # ジョブが赤くなっても配布そのものは巻き戻らない。デプロイの失敗を
+      # 「誰にも気づかれない」状態にしないためだけに、最後にまとめて
+      # ワークフローの実行結果へ反映する。
+      - name: Fail job if any deploy step did not succeed
+        if: always()
+        run: |
+          failed=""
+          [ "${{ steps.deploy_rules.outcome }}" = "success" ]     || failed="${failed}Firestore rules, "
+          [ "${{ steps.deploy_indexes.outcome }}" = "success" ]   || failed="${failed}Firestore indexes, "
+          [ "${{ steps.deploy_functions.outcome }}" = "success" ] || failed="${failed}Cloud Functions, "
+          if [ -n "$failed" ]; then
+            echo "::error title=本番デプロイに失敗しました::${failed%, } の本番デプロイに失敗しました。テスターへの配布は完了していますが、失敗した対象は本番（Firestore/Functions）へ反映されていません。firebase deploy --project aimaru-7eb2e で手動デプロイするか、原因を調査してください。"
+            exit 1
+          fi

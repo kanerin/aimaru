@@ -205,7 +205,10 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 この複合索引（`reminded` ASC, `date` ASC）は2026-08-19にリポジトリオーナーのアカウントで
 ログインしたFirebase CLIから手動デプロイして本番へ反映済み。2026-08-20にIAMロールが
 揃って以降は、`release-stg.yml`の`Deploy Firestore indexes`が`develop`→`release-stg`昇格の
-たびに自動デプロイする（2026-08-21、`continue-on-error`を外しblockingにした）ため、
+たびに自動デプロイする（デプロイステップ自体は`continue-on-error: true`のまま。
+失敗してもテスターへのAPK配布は止めず、ジョブ末尾で失敗を可視化する設計。
+詳細はCLAUDE.mdの「Cloud Functionsも『リポジトリにコードがあるだけでは
+本番で動かない』」の項を参照）ため、
 以降の索引追加で手動デプロイは不要。
 
 `processRecurringEvents`（毎年繰り返す予定）はフェーズ1では narrowing していなかった。
@@ -357,8 +360,8 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 - [ ] OAuth 同意画面のテストユーザー登録（上限100人）または審査申請
 - [ ] `android/app/release.keystore` のバックアップ（**紛失するとアプリを二度と更新できない**）
 - [x] ~~`GEMINI_API_KEY`をSecret Managerへ登録し、Cloud Functionsを本番へデプロイする~~ — 2026-08-20、ユーザー本人が`firebase functions:secrets:set GEMINI_API_KEY`のあと`firebase deploy --only functions --project aimaru-7eb2e`を手動実行し解消（`askGemini`・`submitBugReport`含む6関数が本番へ反映済み）。以降は下のIAM権限が揃ったため`release-stg.yml`の`Deploy Cloud Functions`で自動デプロイされる
-- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/cloudfunctions.developer`・`roles/iam.serviceAccountUser`・`roles/secretmanager.secretAccessor`・`roles/cloudbuild.builds.editor`を付与して解消（ユーザー本人が直接GCPコンソールで付与）。2026-08-21、直近3回の`release-stg.yml`実行で`Deploy Cloud Functions`が連続成功したことを確認し、`continue-on-error`を外しblockingにした
-- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/firebaserules.admin`・`roles/datastore.indexAdmin`を付与して解消（`roles/firebaserules.admin`の付与コマンドはこのエージェント実行環境のauto-mode classifierにブロックされたため、ユーザー本人が直接GCPコンソールで付与）。2026-08-21、直近3回の`release-stg.yml`実行で`Deploy Firestore rules`/`Deploy Firestore indexes`が連続成功したことを確認し、`continue-on-error`を外しblockingにした
+- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにCloud Functionsデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/cloudfunctions.developer`・`roles/iam.serviceAccountUser`・`roles/secretmanager.secretAccessor`・`roles/cloudbuild.builds.editor`を付与して解消（ユーザー本人が直接GCPコンソールで付与）。2026-08-21、直近3回の`release-stg.yml`実行で`Deploy Cloud Functions`が連続成功したことを確認済み。デプロイステップ自体は`continue-on-error: true`のまま据え置き、失敗時はジョブ末尾で可視化する設計にした（デプロイ失敗だけでテスターへのAPK配布まで止めないため）
+- [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウントにFirestoreルールデプロイ用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/firebaserules.admin`・`roles/datastore.indexAdmin`を付与して解消（`roles/firebaserules.admin`の付与コマンドはこのエージェント実行環境のauto-mode classifierにブロックされたため、ユーザー本人が直接GCPコンソールで付与）。2026-08-21、直近3回の`release-stg.yml`実行で`Deploy Firestore rules`/`Deploy Firestore indexes`が連続成功したことを確認済み。デプロイステップ自体は`continue-on-error: true`のまま据え置いている（理由は上のCloud Functionsの項と同じ）
 - [x] ~~`FIREBASE_SERVICE_ACCOUNT_KEY`のサービスアカウント（`github-actions-appdistrib@aimaru-7eb2e.iam.gserviceaccount.com`）にFirestoreドキュメント読み書き用のIAMロールをGCPコンソールで付与~~ — 2026-08-20、`roles/datastore.user`を付与して解消（`gcloud` CLIをこのエージェント実行環境にインストールし、ユーザー本人のブラウザ認証のあと`gcloud projects add-iam-policy-binding`で実行）
 
 ## 既知だが直さない判断をしたもの
