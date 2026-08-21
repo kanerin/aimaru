@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../services/couple_service.dart';
 import '../services/image_save_service.dart';
 import '../utils/app_theme.dart';
+import 'image_detail_screen.dart';
 
 // ── カップル間の通常チャット（AIチャットとは別）───────
 class ChatScreen extends StatefulWidget {
@@ -90,6 +91,12 @@ class _ChatScreenState extends State<ChatScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('コピーしました'), duration: Duration(seconds: 1)),
+    );
+  }
+
+  void _openImageDetail(String url) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: url)),
     );
   }
 
@@ -230,6 +237,7 @@ class _ChatScreenState extends State<ChatScreen> {
               bottomRight: isMe ? const Radius.circular(4) : null,
             ),
             child: GestureDetector(
+              onTap: () => _openImageDetail(m.imageUrl!),
               onLongPress: () => _saveImageToDevice(m.imageUrl!),
               child: CachedNetworkImage(
                 imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
