@@ -261,23 +261,23 @@ narrowing していない（`recurring == true` の全件走査のまま）。�
 `queryScope: COLLECTION_GROUP`）もあわせて追加した（フェーズ3のクエリ変更に備えた準備で、
 現時点ではまだどのクエリからも参照していない）。
 
-**残っている範囲（フェーズ3）**: このPRのデプロイから十分な時間（15分間隔の実行が
-最低数回）が経ち、既存の繰り返し予定に `nextOccurrenceMs` が行き渡ったことを確認できたら、
-`processRecurringEvents` のクエリに `.where("nextOccurrenceMs", "<=", 先読みカットオフ)`
-を足して実際に絞り込む。あわせて上記の複合索引を（IAM未付与の間は）手動デプロイする
-必要がある。
+フェーズ3（クエリ絞り込み）は2026-08-21に完了した。確認手段として
+`functions/scripts/check-recurring-events-migration.mjs`を先に追加し
+（`recurring == true`の予定のうち`nextOccurrenceMs`が未設定の件数を数える）、
+本番で実行して`missing: 0`（2件とも移行済み）を確認した上で、
+`processRecurringEvents`のクエリに`.where("nextOccurrenceMs", "<=", 先読みカットオフ)`
+を追加した。上記の複合索引は既に本番でREADYになっていたためデプロイ待ちは無かった。
 
-その確認手段として `functions/scripts/check-recurring-events-migration.mjs` を追加した
-（本PR）。`processRecurringEvents`（`recurring == true`の全件走査、絞り込み無し）は
-実行のたびに対象を無条件で書き戻すため、理屈の上ではコード（PR #41）のデプロイ後、
-スケジュール関数が1回でも走れば全件に行き渡るはずだが、「実際に本番へデプロイされ、
-実行されたか」はコードだけでは分からず、本番Firestoreを見て確認するしかない
-（Cloud Functionsの自動デプロイが安定するまで手動デプロイに頼ってきた経緯があるため、
-デプロイ自体が確実に行われた保証がない）。このスクリプトは`recurring == true`の
-予定（ゴミ箱を除く）のうち`nextOccurrenceMs`が未設定の件数を数え、0件であれば
-フェーズ3（クエリ絞り込み）に進めることを示す（`readyForPhase3Narrowing: true`）。
-このコマンド（reduce-debt）はこのスクリプトを本番に対して実行する権限を持たないため、
-実際の確認とフェーズ3のクエリ変更は次回以降に持ち越す。
+**新規作成分の考慮**: このフィールドで絞り込むと、フィールド自体を持たないドキュメントは
+クエリに一切マッチしなくなる（Firestoreの仕様。既存分の移行だけでは足りず、今後新規に
+作られる繰り返し予定も同じ問題を抱える）。そのため`lib/services/event_service.dart`の
+`_freshReminderFields`（`addEvent`/`updateEvent`の両方で使われる）に
+`nextOccurrenceMs: Timestamp.fromMillisecondsSinceEpoch(0)`を追加し、新規作成・更新の
+たびに必ず絞り込みへ引っかかる過去日時を書き込むようにした。この値は次回の
+`processRecurringEvents`実行で実際の発生日時へ上書きされる。
+`functions/src/reminders.integration.test.ts`に、epoch値を持つドキュメントが正しく
+書き戻る場合と、フィールド自体が無いドキュメントが絞り込みで一切拾われないことの
+両方を確認するテストを追加した。
 
 | # | 課題 | 対応する要件 / ケース | 補足 |
 |---|---|---|---|

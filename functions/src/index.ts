@@ -209,8 +209,22 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
 }
 
 // 毎年繰り返す予定（記念日など、recurring == true）のリマインダー
+//
+// 課題8フェーズ3: nextOccurrenceMsで絞り込む（フェーズ1で追加した索引を使う）。
+// 既存ドキュメントへの書き戻しが行き渡っていることを
+// scripts/check-recurring-events-migration.mjs で確認済み（2026-08-21）。
+// 新規作成時にnextOccurrenceMsが未設定だとこのクエリに一切引っかからず
+// 永久にリマインドされなくなるため、EventService側で作成・更新のたびに
+// 必ずTimestamp.fromMillis(0)（絞り込みに確実に引っかかる過去日時）を
+// 書き込むようにしてある（_freshReminderFields）。このクエリが初めてその
+// ドキュメントを拾った時点で、下の書き戻し処理が実際の発生日時に直す。
 async function processRecurringEvents(nowMs: number): Promise<void> {
-  const snap = await db.collectionGroup("events").where("recurring", "==", true).get();
+  const lookaheadCutoff = Timestamp.fromMillis(nowMs + QUERY_LOOKAHEAD_MS);
+  const snap = await db
+    .collectionGroup("events")
+    .where("recurring", "==", true)
+    .where("nextOccurrenceMs", "<=", lookaheadCutoff)
+    .get();
 
   for (const doc of snap.docs) {
     const data = doc.data() as EventDoc;
