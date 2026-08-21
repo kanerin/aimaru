@@ -665,6 +665,18 @@ export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
   // 写真が1枚も無いカップルでも空振りするだけでエラーにはならない。
   await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/`, force: true });
 
+  // inviteCodes/{code} は couples のサブコレクションではなく別の
+  // トップレベルコレクションなので、recursiveDeleteの対象に入らない。
+  // 消し忘れると、解消済みのcoupleIdを指すミラーだけが孤立して残り、
+  // そのコードで参加しようとした人が「couplesドキュメントが無いのに
+  // 更新しようとして失敗する」という分かりにくいエラーになる。
+  // couples本体を消す前にinviteCodeを読み、対応するミラーも合わせて消す。
+  const coupleSnapForInviteCode = await db.collection("couples").doc(coupleId).get();
+  const inviteCode = coupleSnapForInviteCode.data()?.inviteCode as string | undefined;
+  if (inviteCode) {
+    await db.collection("inviteCodes").doc(inviteCode).delete();
+  }
+
   // couples/{coupleId} とその配下（events/chats/todos/
   // questionAnswers/googleCalendarCache）をまとめて削除する。
   await db.recursiveDelete(db.collection("couples").doc(coupleId));

@@ -64,6 +64,23 @@ export async function seedCouple(testEnv, { members = [USER_A, USER_B], inviteCo
   });
 }
 
+/**
+ * 招待コード参加フロー用の inviteCodes ミラーを1件作る。
+ * couples本体とは独立して用意できるようにし、ミラーの中身だけを
+ * 意図的にcouples本体とズラしたテスト（不整合ケース）も書けるようにする。
+ */
+export async function seedInviteCode(
+  testEnv,
+  { code = "A3K9PZ", coupleId = COUPLE_ID, members = [USER_A, USER_B] } = {},
+) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`inviteCodes/${code}`).set({
+      coupleId,
+      memberIds: members,
+    });
+  });
+}
+
 export async function seedEvent(
   testEnv,
   eventId = "event-1",

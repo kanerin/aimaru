@@ -17,7 +17,8 @@ name: CI
 # 要るという判断:
 # - secretsジョブ（gitleaksによるシークレット漏洩チェック）
 # - functions/rulesジョブに npm audit（devDependencies除外・high/critical限定。
-#   moderate以下はfirebase-admin経由の既知の指摘が残っており追随しない判断）
+#   moderate以下も2026-08-22にoverridesでuuidを固定して解消済み。詳細は
+#   functionsジョブの同名ステップのコメントを参照）
 # - flutterジョブに dart format チェック（既存コードの大部分が標準スタイルに
 #   沿っておらず、一括整形はlintを新たに発生させることが分かったため
 #   `continue-on-error: true` で可視化のみに留めている。詳細はdocs/open-issues.md）
@@ -118,10 +119,15 @@ jobs:
       - run: npm ci
 
       # devDependencies（firebase-tools等、本番へは含まれないツール類）を
-      # 除外した上で、high/critical のみを対象にする。moderate以下は
-      # firebase-admin経由の間接依存（uuid等、2026-08-21時点で8件）に
-      # 既知の指摘が残っており、解消にはfirebase-adminのメジャーバージョン
-      # 更新（破壊的変更）が要るため、すぐには追随しない判断。
+      # 除外した上で、high/critical のみを対象にする。
+      # 2026-08-21〜22: moderate（firebase-admin配下のgaxios/teeny-request
+      # が内部で使うuuid、GHSA-w5hq-g745-h8pq）はfirebase-adminをどこまで
+      # 更新しても解消しないと判明した（Google自身の@google-cloud/storage
+      # 側のuuidピン止めが原因で、firebase-admin@14.3.0=最新でも変わらない）。
+      # firebase-admin/firebase-functionsのメジャー更新はリスクの割に
+      # この件を解消しないため見送り、package.jsonのoverridesでuuidだけを
+      # 安全なバージョンへ強制することで解消した（`npm audit --omit=dev`は
+      # 0件）。
       - name: Dependency audit (high/critical only)
         run: npm audit --omit=dev --audit-level=high
 

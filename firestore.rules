@@ -2,12 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /couples/{coupleId} {
-      // 読み取り: 認証済みユーザーなら可。
-      // 招待コード検索（inviteCodeフィールドでのクエリ）は memberIds を
-      // フィルタ条件に含められないため、resource.data.memberIds による
-      // 絞り込みだとルール評価自体が失敗してしまう（常に拒否される）。
-      // データの安全性は書き込み側（create/update/delete）で担保する。
-      allow read: if request.auth != null;
+      // 読み取り: メンバーのみ。招待コード検索は別コレクション
+      // （inviteCodes、下記）を経由するため、ここをメンバー以外に
+      // 開ける理由はもう無い（2026-08-22、旧TC-072の妥協を解消）。
+      allow read: if request.auth.uid in resource.data.memberIds;
       // 注意: create時は resource がまだ存在せず null になるため、
       // resource.data ではなく request.resource.data で判定すること
       allow delete: if request.auth.uid in resource.data.memberIds;
@@ -76,6 +74,24 @@ service cloud.firestore {
         allow write: if request.auth.uid == uid && request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
+    }
+
+    // 招待コード参加フローの事前確認専用。coupleIdと参加者のuidだけを
+    // ミラーする（ドキュメントID = コード自体）。anniversary等の実データは
+    // ここには置かないため、多少ルールが緩くても実害は小さい。
+    // 本当の安全性は couples 側の create/update ルールが最終防衛線として
+    // 別途担っており、ここが不整合を起こしても couples 側で弾かれる
+    // （例: memberIdsを不正に2件のまま偽装しても、実際のjoinは
+    // couples.updateのresource.data.memberIds.size() < 2で別途判定される）。
+    match /inviteCodes/{code} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.memberIds.size() == 1;
+      allow update: if request.auth.uid in request.resource.data.memberIds
+        && resource.data.memberIds.size() < 2
+        && request.resource.data.coupleId == resource.data.coupleId;
+      allow delete: if false;
     }
 
     match /users/{userId} {

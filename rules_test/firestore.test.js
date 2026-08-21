@@ -18,6 +18,7 @@ import {
   seedChat,
   seedCouple,
   seedEvent,
+  seedInviteCode,
   seedQuestionAnswer,
   seedTodo,
 } from "./helpers.js";
@@ -443,17 +444,102 @@ describe("couples — ペアの作成と参加", () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}`).get());
   });
 
-  // 既知の妥協点。招待コードでの検索を成立させるため couples の read を
-  // request.auth != null まで緩めており、無関係の認証済みユーザーでも
-  // 他人のペアの memberIds / anniversary が読めてしまう。
-  //
-  // これは「直っていない」ことを固定するテスト。締めるなら inviteCode を
-  // 別コレクションへ分離する設計変更が要る。挙動を変えたらここが落ちるので、
-  // 変更したことに気づける。
-  it("【既知】認証済みなら第三者でも他人のペアを読めてしまう", async () => {
-    await seedCouple(testEnv);
+  it("メンバーは自分のペアを読める", async () => {
+    await seedCouple(testEnv, { members: [USER_A, USER_B] });
 
-    await assertSucceeds(asC().doc(`couples/${COUPLE_ID}`).get());
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}`).get());
+  });
+
+  // 2026-08-22解消。招待コードでの検索を inviteCodes（別コレクション、
+  // 下記）へ分離したことで、couples の read をメンバーのみへ締められる
+  // ようになった（旧TC-072）。無関係の認証済みユーザーが他人のペアの
+  // memberIds / anniversary を読めていた状態を固定していたテストを反転する。
+  it("認証済みでもメンバー以外は他人のペアを読めない", async () => {
+    await seedCouple(testEnv, { members: [USER_A, USER_B] });
+
+    await assertFails(asC().doc(`couples/${COUPLE_ID}`).get());
+  });
+});
+
+describe("inviteCodes — 招待コード参加フローの事前確認用ミラー", () => {
+  it("認証済みなら誰でもコードでcoupleIdを引ける（get）", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertSucceeds(asC().doc("inviteCodes/A3K9PZ").get());
+  });
+
+  it("未認証はコードを引けない", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertFails(asAnon().doc("inviteCodes/A3K9PZ").get());
+  });
+
+  it("コレクション全体のlist（総当たり列挙）はできない", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertFails(
+      asC().collection("inviteCodes").get(),
+    );
+  });
+
+  it("自分1人だけのミラーは作れる（ペア作成時）", async () => {
+    await assertSucceeds(
+      asA().doc("inviteCodes/NEWCODE").set({
+        coupleId: "new-couple",
+        memberIds: [USER_A],
+      }),
+    );
+  });
+
+  it("自分を含まないミラーは作れない", async () => {
+    await assertFails(
+      asA().doc("inviteCodes/NEWCODE").set({
+        coupleId: "new-couple",
+        memberIds: [USER_B],
+      }),
+    );
+  });
+
+  it("最初から2人分のミラーは作れない（定員を偽装できない）", async () => {
+    await assertFails(
+      asA().doc("inviteCodes/NEWCODE").set({
+        coupleId: "new-couple",
+        memberIds: [USER_A, USER_B],
+      }),
+    );
+  });
+
+  it("1人のミラーに2人目として自分を追加できる", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertSucceeds(
+      asC().doc("inviteCodes/A3K9PZ").update({ memberIds: [USER_A, USER_C] }),
+    );
+  });
+
+  it("すでに2人埋まっているミラーに3人目は追加できない", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A, USER_B] });
+
+    await assertFails(
+      asC().doc("inviteCodes/A3K9PZ").update({ memberIds: [USER_A, USER_B, USER_C] }),
+    );
+  });
+
+  it("更新でcoupleIdを書き換えられない", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertFails(
+      asC().doc("inviteCodes/A3K9PZ").update({
+        coupleId: "someone-elses-couple",
+        memberIds: [USER_A, USER_C],
+      }),
+    );
+  });
+
+  it("削除できない", async () => {
+    await seedInviteCode(testEnv, { members: [USER_A] });
+
+    await assertFails(asA().doc("inviteCodes/A3K9PZ").delete());
   });
 });
 
