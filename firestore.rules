@@ -17,9 +17,29 @@ service cloud.firestore {
         || (request.auth.uid in request.resource.data.memberIds
             && resource.data.memberIds.size() < 2);
 
+      // 課題3（予定ごとの共有範囲）フェーズ2: visibility == 'private' の予定は
+      // 作成者本人にしか見せない。既存ドキュメント（フィールド自体が無い）は
+      // 存在しないマップキーへの `.` アクセスがルール評価エラーになるため、
+      // 必ず get('visibility', 'shared') で読み、無ければsharedとして扱う
+      // （Dart側 AimaruEvent.fromDoc のフォールバックと合わせている）。
       match /events/{eventId} {
-        allow read, write: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        function isMember() {
+          return request.auth.uid in
+            get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        }
+        function canSeeExisting() {
+          return resource.data.get('visibility', 'shared') != 'private'
+            || resource.data.createdBy == request.auth.uid;
+        }
+
+        allow read, delete: if isMember() && canSeeExisting();
+        // createdByは作成者の固定値として使う（visibilityの可視性判定の土台のため）。
+        // 更新時に書き換えられると、後から誰でも「自分のprivateな予定」に
+        // 差し替えられてしまうので、更新では変更不可にする。
+        allow update: if isMember() && canSeeExisting()
+          && request.resource.data.createdBy == resource.data.createdBy;
+        allow create: if isMember()
+          && request.resource.data.createdBy == request.auth.uid;
       }
 
       match /chats/{msgId} {

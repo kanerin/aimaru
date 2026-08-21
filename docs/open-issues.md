@@ -142,29 +142,59 @@ Dart側がもう読まないため実質無害だが、`release-stg.yml`/`releas
 破壊的な変更のため当初は他のPRと違いauto-mergeせず人間のレビューを必須にしていたが、
 2026-08-20にユーザー本人がこのPRを確認した上でauto-mergeを有効化した。
 
-| # | 課題 | 対応する要件 / ケース | なぜ残っているか |
-|---|---|---|---|
-| 3 | **予定ごとの共有範囲が選べない** | REQ-022 / FEAT-041 | 全予定がペア双方に見える。モデル・Firestore ルール・通知の3経路に影響する。フェーズ1（下記）着手済み |
-| 5 | **`applicationId` が `com.example.aimaru` のまま** | REQ-029 / FEAT-036 | Play Store で `com.example` は避けるべき。変更すると Firebase のアプリ再登録と `google-services.json` 再取得が要る |
+課題5（`applicationId`が`com.example.aimaru`のまま、REQ-029 / FEAT-036）は
+2026-08-21に実現可否を調査した上で、**Play Store提出の直前まで意図的に着手しない**
+判断にした（表からは外した）。
 
-課題3（予定ごとの共有範囲）はフェーズ1として、`AimaruEvent`に`visibility`（`shared`/既定 or `private`）
-フィールドだけを追加した（本PR、`lib/models/models.dart`）。既存ドキュメントに無ければ`shared`へ
-フォールバックする。UIでの切り替え・Firestoreルールでの読み取り制限は**まだ実装していない**
-（全予定が引き続きペア双方に見える）。
+理由: `applicationId`はFirebaseのアプリ登録（Android）と1:1で紐づいており、変更は
+「既存アプリの改名」ではなく「新しいパッケージ名でのアプリ再登録」になる。具体的には
+Firebase側で新しいAndroidアプリを登録し直し、新しい`google-services.json`を取得して
+`GOOGLE_SERVICES_JSON_BASE64`シークレットを差し替え、`firebase_options.dart`も
+再生成して`FIREBASE_OPTIONS_DART_BASE64`を差し替え、Google Sign-InのOAuthクライアント・
+SHA-1登録もやり直す必要がある。何より、Androidはパッケージ名が変わると「別アプリ」
+として扱うため、**今いるテスター全員が既存のアプリをアンインストールして入れ直す**
+ことになる（アップデートとして上書きできない）。
 
-**フェーズ2の注意点**: `private`を実際に隠すには、Firestoreのセキュリティルールが
-`resource.data`（このケースでは`visibility`・`createdBy`）を見て判定する必要があるが、`list`
-クエリ（`watchMonthEvents`等、カレンダーの主要な取得経路はすべてこれ）に対する読み取りルールは
-「クエリの`where`句だけから安全性が判定できる」ことが必須で、`visibility`を`where`に含めない限り
-クエリ全体が拒否される。つまり`visibility`で絞り込む`where`句を全ての取得クエリに追加する必要が
-あり、これは新しい複合索引（`firestore.indexes.json`）を要求する。索引・ルールの自動デプロイは
-`FIREBASE_SERVICE_ACCOUNT_KEY`のIAM未付与により`release-stg.yml`からは引き続き失敗するが
-（2026-08-19時点も未解決）、**リポジトリオーナーのアカウントでログインしたFirebase CLIからは
-手動デプロイができる**（2026-08-19、`firebase deploy --only firestore:rules,firestore:indexes
---project aimaru-7eb2e`で実際に本番反映できることを確認した）。フェーズ2に着手する場合は、
-コード変更とあわせて新しい索引の手動デプロイを忘れずに行うこと（自動実装エージェント
-`reduce-debt.yml`/`propose-feature.yml`はこの手動デプロイ権限を持たないため、この課題に
-自動着手させるのは避け、人間が同席するセッションで対応すること）。
+この「テスターに入れ直してもらう」コストは、いつ変更しても必ず発生する一回限りの
+コストなので、今すぐ払っても、Play Store提出の直前に払っても同じだけかかる。
+一方、今すぐ払うと「まだPlay Store提出の予定が具体化していない段階で、テスターの
+手元のアプリを一度壊す」ことになり、提出直前にまとめて払うほうが実害が小さい
+（Play Store提出自体がPlay Consoleアカウント作成等の人間専用作業を必要とし、
+このタイミングで一緒に段取りすれば二度手間にならない）。そのため、Play Store提出の
+準備が具体的に動くタイミングまで意図的に先送りする。
+
+課題3（予定ごとの共有範囲）はフェーズ1として`AimaruEvent`に`visibility`フィールドを追加し、
+2026-08-21のフェーズ2で読み取り制限・UI・クエリ絞り込みまで実装したため表から外した
+（REQ-022 / FEAT-041）。
+
+- `firestore.rules`の`events`に、visibilityとcreatedByを見る読み取り/更新/削除ルールを追加した。
+  `private`な予定は作成者本人だけが読み書きでき、`create`では`createdBy`が本人のuidであることを
+  強制、`update`では`createdBy`の書き換えを禁止した（所有権の乗っ取り防止）。既存ドキュメント
+  （フィールド自体が無い）は`resource.data.get('visibility', 'shared')`でsharedとして扱う。
+  存在しないマップキーへの`.`アクセスはルール評価エラーになる（`resource.data.visibility`のような
+  直接アクセスは不可）ため、必ず`.get(key, default)`を使うこと。
+- Firestoreのlistクエリはドキュメント単位でルールにより結果をフィルタしてはくれない
+  （`rules_test`で実測: `visibility`で絞り込まない素朴なクエリは、単発`get()`なら拒否される
+  相手のprivateな予定も普通に返してしまう）。そのため`lib/services/event_service.dart`の
+  全取得クエリ（`watchMonthEvents`/`watchUpcomingEvents`/`watchRecurringEvents`/
+  `watchEventsAsMap`/`watchDeletedEvents`）に`Filter.or(visibility=='shared', Filter.and
+  (visibility=='private', createdBy==自分))`を追加し、クライアント側のクエリ自体で
+  見せてはいけないデータを確実に除外するようにした。
+- 上記のOR分岐ごとに複合索引が要るため、`firestore.indexes.json`へ5件追加した
+  （`(visibility,date)` `(visibility,createdBy,date)` `(recurring,visibility)`
+  `(recurring,visibility,createdBy)` `(visibility,createdBy)`）。
+- `Filter`によるOR絞り込みは、クエリ条件に`visibility`フィールドの存在を要求する。既存の
+  イベントドキュメント（フィールドを持たない）は絞り込みクエリにマッチせずカレンダーから
+  消えて見えるため、コードのデプロイ前に`functions/scripts/backfill-event-visibility.mjs`を
+  本番へ一度だけ実行し、既存ドキュメントへ`visibility: 'shared'`を補完した。
+- `event_form_screen.dart`に「自分だけに表示（相手には見えません）」トグルを追加し、
+  `calendar_screen.dart`の一覧に鍵アイコンでprivateな予定を示すようにした。
+- `rules_test/firestore.test.js`にvisibility関連のテストを追加（作成時のcreatedBy強制、
+  update時のcreatedBy不変、shared/privateの読み書き境界、絞り込み無しクエリの漏洩実証、
+  絞り込み済みクエリが正しく除外することの確認）。`test/services/event_service_test.dart`にも
+  「予定の公開範囲（private）」グループを追加した。
+  `event_form_screen.dart`/`calendar_screen.dart`自体は元々テストが無く（外部サービスへの
+  直接依存が多く注入可能な構造になっていない）、このPRでもそこまでは着手していない。
 
 ### P1 — 次に効くもの
 

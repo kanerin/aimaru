@@ -18,6 +18,19 @@ class EventService {
   CollectionReference _eventsRef(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('events');
 
+  // firestore.rulesの読み取り条件（visibility != 'private' ||
+  // createdBy == 自分）と同じ形をクエリ側にも持たせる。Firestoreの
+  // listクエリは「クエリのwhere句だけから安全性が判定できる」ことが
+  // 必須で、この絞り込みが無いと、範囲内に相手のprivateな予定が1件でも
+  // あるだけでクエリ全体がpermission-deniedになる。
+  Filter _visibilityFilter() => Filter.or(
+        Filter('visibility', isEqualTo: 'shared'),
+        Filter.and(
+          Filter('visibility', isEqualTo: 'private'),
+          Filter('createdBy', isEqualTo: _uid),
+        ),
+      );
+
   // 新規作成時にセットするリマインダー管理用フィールド。
   // reminded: 単発の予定用（送信後にCloud Functions側でtrueにする）
   // remindedYear: recurring（毎年繰り返し）の予定用。送信済みの年を記録する
@@ -109,6 +122,7 @@ class EventService {
     return _eventsRef(coupleId)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
         .where('date', isLessThanOrEqualTo: Timestamp.fromDate(end))
+        .where(_visibilityFilter())
         .orderBy('date')
         .snapshots()
         .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
@@ -119,6 +133,7 @@ class EventService {
     final now = DateTime.now();
     return _eventsRef(coupleId)
         .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
+        .where(_visibilityFilter())
         .orderBy('date')
         .limit(limit)
         .snapshots()
@@ -132,6 +147,7 @@ class EventService {
   Stream<List<AimaruEvent>> watchRecurringEvents(String coupleId) {
     return _eventsRef(coupleId)
         .where('recurring', isEqualTo: true)
+        .where(_visibilityFilter())
         .snapshots()
         .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
   }
@@ -144,6 +160,7 @@ class EventService {
   // （Googleカレンダー由来の予定でも同じ展開が要るため）。
   Stream<Map<DateTime, List<AimaruEvent>>> watchEventsAsMap(String coupleId) {
     return _eventsRef(coupleId)
+        .where(_visibilityFilter())
         .orderBy('date')
         .snapshots()
         .map((snap) {
@@ -163,6 +180,7 @@ class EventService {
   // ここもアプリ側フィルタで揃える。
   Stream<List<AimaruEvent>> watchDeletedEvents(String coupleId) {
     return _eventsRef(coupleId)
+        .where(_visibilityFilter())
         .snapshots()
         .map((snap) {
           final events = snap.docs

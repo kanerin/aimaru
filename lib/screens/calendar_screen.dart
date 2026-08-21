@@ -656,9 +656,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text('${e.type.emoji} ${e.title}', style: const TextStyle(
-                                  fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
-                                )),
+                                Row(children: [
+                                  if (e.visibility == EventVisibility.private) ...[
+                                    const Icon(Icons.lock_outline, size: 12, color: AppColors.textMuted),
+                                    const SizedBox(width: 3),
+                                  ],
+                                  Flexible(
+                                    child: Text('${e.type.emoji} ${e.title}', style: const TextStyle(
+                                      fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
+                                    )),
+                                  ),
+                                ]),
                                 const SizedBox(height: 3),
                                 Text(
                                   [
