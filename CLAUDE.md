@@ -95,4 +95,6 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 **`release-stg.yml`の`Deploy Firestore rules`/`Deploy Firestore indexes`ステップは2026-08-20にIAMロール（`roles/firebaserules.admin`・`roles/datastore.indexAdmin`）を付与して以降、`release-stg`昇格のたびに自動デプロイされる**。`firestore.rules`/`firestore.indexes.json`の変更は`develop`→`release-stg`の昇格で本番へ自動反映されるため、ローカルからの手動デプロイはもう不要（Cloud Functionsと同じ理由で、これらのステップも`continue-on-error: true`のまま。デプロイ失敗時の可視化はジョブ末尾の`Fail job if any deploy step did not succeed`ステップにまとめている。詳細は上のCloud Functionsの項を参照）。
 
+**`storage.rules`は上記のFirestore rules/indexesと違い、2026-08-21まで`release-stg.yml`のデプロイ対象に一度も含まれていなかった。** `firestore.rules`と同じ理由（本番に一切自動反映されない）で見落とされていた設定漏れで、`bugReports/{reportId}/`への画像アップロードを許可する変更を出した際に発覚した。`Deploy Storage rules`ステップを追加して解消済み（他のデプロイステップと同様`continue-on-error: true`）。`storage.rules`を変更する場合も、もう手動デプロイは不要。
+
 いずれも認証は `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`で発行、GitHub Secretsに登録）を使う。`ANTHROPIC_API_KEY`は使わない。

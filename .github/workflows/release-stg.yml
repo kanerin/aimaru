@@ -275,6 +275,21 @@ jobs:
             --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
             --non-interactive
 
+      # storage.rulesはこれまでこのワークフローがデプロイ対象に含めておらず、
+      # 変更しても本番へは一度も自動反映されていなかった（2026-08-21に発覚。
+      # bugReports/{reportId}/への画像アップロードを許可する変更を出した際、
+      # firestore.rulesと同じ扱いだと思い込んでいたことで気づいた）。
+      # firestore.rulesと同じ理由でcontinue-on-error: trueにしている。
+      - name: Deploy Storage rules
+        id: deploy_storage_rules
+        continue-on-error: true
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          firebase deploy --only storage \
+            --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --non-interactive
+
       # 索引が要るクエリに変更した場合、エミュレータでは通っても本番では
       # FAILED_PRECONDITIONで失敗する（docs/open-issues.md 課題8）。
       # rulesと同じ理由でcontinue-on-error: trueにしている。
@@ -356,10 +371,11 @@ jobs:
         if: always()
         run: |
           failed=""
-          [ "${{ steps.deploy_rules.outcome }}" = "success" ]     || failed="${failed}Firestore rules, "
-          [ "${{ steps.deploy_indexes.outcome }}" = "success" ]   || failed="${failed}Firestore indexes, "
-          [ "${{ steps.deploy_functions.outcome }}" = "success" ] || failed="${failed}Cloud Functions, "
+          [ "${{ steps.deploy_rules.outcome }}" = "success" ]         || failed="${failed}Firestore rules, "
+          [ "${{ steps.deploy_storage_rules.outcome }}" = "success" ] || failed="${failed}Storage rules, "
+          [ "${{ steps.deploy_indexes.outcome }}" = "success" ]       || failed="${failed}Firestore indexes, "
+          [ "${{ steps.deploy_functions.outcome }}" = "success" ]     || failed="${failed}Cloud Functions, "
           if [ -n "$failed" ]; then
-            echo "::error title=本番デプロイに失敗しました::${failed%, } の本番デプロイに失敗しました。テスターへの配布は完了していますが、失敗した対象は本番（Firestore/Functions）へ反映されていません。firebase deploy --project aimaru-7eb2e で手動デプロイするか、原因を調査してください。"
+            echo "::error title=本番デプロイに失敗しました::${failed%, } の本番デプロイに失敗しました。テスターへの配布は完了していますが、失敗した対象は本番（Firestore/Storage/Functions）へ反映されていません。firebase deploy --project aimaru-7eb2e で手動デプロイするか、原因を調査してください。"
             exit 1
           fi
