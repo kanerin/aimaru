@@ -670,7 +670,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 const SizedBox(height: 3),
                                 Text(
                                   [
-                                    DateFormat('HH:mm').format(e.date),
+                                    e.allDay ? '終日' : DateFormat('HH:mm').format(e.date),
                                     if (e.location != null) e.location!,
                                   ].join(' · '),
                                   style: const TextStyle(fontSize: 11, color: AppColors.textMuted),

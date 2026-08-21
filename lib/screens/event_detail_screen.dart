@@ -73,7 +73,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final e = widget.event;
-    final dateStr = DateFormat('M月d日（E）HH:mm', 'ja').format(e.date);
+    final dateStr = e.allDay
+        ? DateFormat('M月d日（E）', 'ja').format(e.date)
+        : DateFormat('M月d日（E）HH:mm', 'ja').format(e.date);
 
     return Scaffold(
       backgroundColor: AppColors.navy,

@@ -134,8 +134,14 @@ void main() {
       expect(newEnd!.isAfter(sameDay), isTrue);
     });
 
-    testWidgets('終日にするときは終了を動かさない（同日終了は正当）', (tester) async {
-      var endChanged = false;
+    // 終日ONにした直後、開始・終了の時刻を持ち越さず0:00へ揃える。
+    // 時刻ボタンはallDay中は隠れて気づきにくいが、ここを揃えておかないと
+    // 保存されるAimaruEvent.date/endDateに元の時刻が残ったままになり、
+    // 一覧・詳細画面で終日のはずの予定に元の時刻が表示されてしまう
+    // （実際に「終日にした予定が一覧で9:00と表示される」不具合として報告された）。
+    testWidgets('終日にすると開始・終了の時刻が0:00に揃う', (tester) async {
+      DateTime? newStart;
+      DateTime? newEnd;
 
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light(AppColors.lavender),
@@ -144,8 +150,8 @@ void main() {
             start: DateTime(2026, 8, 14, 19, 0),
             end: DateTime(2026, 8, 14, 20, 0),
             allDay: false,
-            onStartChanged: (_) {},
-            onEndChanged: (_) => endChanged = true,
+            onStartChanged: (v) => newStart = v,
+            onEndChanged: (v) => newEnd = v,
             onAllDayChanged: (_) {},
           ),
         ),
@@ -154,7 +160,8 @@ void main() {
       await tester.tap(find.byType(Switch));
       await tester.pump();
 
-      expect(endChanged, isFalse);
+      expect(newStart, DateTime(2026, 8, 14));
+      expect(newEnd, DateTime(2026, 8, 14));
     });
   });
 

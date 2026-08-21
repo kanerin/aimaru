@@ -93,7 +93,18 @@ class EventDateTimeFields extends StatelessWidget {
 
   void _setAllDay(bool next) {
     onAllDayChanged!(next);
-    if (next) return;
+    if (next) {
+      // 終日をONにした直後、開始・終了の時刻をそのまま持ち越さない。
+      // 時刻ボタンはallDay中は隠れるため気づきにくいが、ここで0:00へ
+      // 揃えておかないと、保存されるAimaruEvent.date/endDateに元の時刻が
+      // 残ったままになり、一覧・詳細画面で終日のはずの予定に元の時刻が
+      // 表示されてしまう（見た目は「終日」に切り替えたのに保存内容は
+      // 変わっていない、という不具合として実際に報告された）。
+      final startDay = DateTime(start.year, start.month, start.day);
+      onStartChanged(startDay);
+      onEndChanged(clampEnd(start: startDay, end: end, allDay: true));
+      return;
+    }
     // 終日の間は開始も終了も同じ日の0:00になっている（1日だけの予定は
     // 開始日＝最終日）。そのまま時刻指定へ戻すと end == start になり、
     // Googleは時刻指定の予定に end > start を求めるため保存できない。
