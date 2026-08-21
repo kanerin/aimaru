@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
+// compat（.doc()/.collection()の連鎖）ではFilter.or/andによる複合クエリを
+// 組み立てられないため、そのテストだけmodular APIの関数を使う。
+// rules-unit-testingのfirestore()が返すcompatインスタンスは、この
+// modular関数にそのまま渡せる（Firebase公式の相互運用）。
+import { and, collection, getDocs, or, query, where } from "firebase/firestore";
 
 import {
   COUPLE_ID,
@@ -81,6 +86,105 @@ describe("events — メンバー境界", () => {
     );
     await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/event-1`).update({ title: "変更" }));
     await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/event-1`).delete());
+  });
+});
+
+describe("events — visibility（private/shared）", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+  });
+
+  it("createdBy以外は自分をcreatedByにしてしか作成できない", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/events/spoofed`).set({
+        coupleId: COUPLE_ID,
+        title: "なりすまし",
+        date: new Date("2026-09-01"),
+        type: "date",
+        createdBy: USER_B,
+      }),
+    );
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/events/own`).set({
+        coupleId: COUPLE_ID,
+        title: "自分の予定",
+        date: new Date("2026-09-01"),
+        type: "date",
+        createdBy: USER_A,
+        visibility: "private",
+      }),
+    );
+  });
+
+  it("visibilityフィールドが無い既存ドキュメントはメンバー全員が読める（sharedとして扱う）", async () => {
+    await seedEvent(testEnv, "no-visibility-field");
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/no-visibility-field`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/no-visibility-field`).get());
+  });
+
+  it("sharedな予定はメンバー全員が読み書きできる", async () => {
+    await seedEvent(testEnv, "shared-1", { createdBy: USER_A, visibility: "shared" });
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/shared-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/shared-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/shared-1`).update({ title: "変更" }));
+  });
+
+  it("privateな予定は作成者本人だけが読み書き・削除できる", async () => {
+    await seedEvent(testEnv, "private-1", { createdBy: USER_A, visibility: "private" });
+
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/private-1`).get());
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/events/private-1`).get());
+
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/events/private-1`).update({ title: "改ざん" }));
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/events/private-1`).delete());
+
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/private-1`).update({ title: "自分で編集" }));
+  });
+
+  it("更新でcreatedByを書き換えることはできない（所有権の乗っ取り防止）", async () => {
+    await seedEvent(testEnv, "shared-2", { createdBy: USER_A, visibility: "shared" });
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/events/shared-2`).update({ createdBy: USER_B }),
+    );
+  });
+
+  it("visibilityで絞り込まないlistクエリは、単発getでは拒否される相手のprivateな予定も返してしまう", async () => {
+    // 単発get()なら拒否されるドキュメントでも（上の「privateな予定は作成者本人だけが
+    // 読み書き・削除できる」テストの通り）、visibilityをwhere句に含めないlistクエリは
+    // それを止められない。Firestoreのセキュリティルールはlistクエリの結果を
+    // ドキュメント単位でフィルタしてはくれないため、「見せてはいけないデータを
+    // クライアント側のwhere句で確実に除外する」ことが唯一の防御線になる
+    // （EventService._visibilityFilter()が全クエリに必須な理由）。
+    await seedEvent(testEnv, "shared-x", { createdBy: USER_A, visibility: "shared" });
+    await seedEvent(testEnv, "private-in-range", { createdBy: USER_A, visibility: "private" });
+
+    const snap = await asB()
+      .collection(`couples/${COUPLE_ID}/events`)
+      .where("coupleId", "==", COUPLE_ID)
+      .get();
+    const ids = snap.docs.map((d) => d.id).sort();
+    assert.deepEqual(ids, ["private-in-range", "shared-x"]);
+  });
+
+  it("visibilityで絞り込んだlistクエリなら、相手は自分のsharedと自分のprivateだけ読める", async () => {
+    await seedEvent(testEnv, "a-shared", { createdBy: USER_A, visibility: "shared" });
+    await seedEvent(testEnv, "a-private", { createdBy: USER_A, visibility: "private" });
+    await seedEvent(testEnv, "b-private", { createdBy: USER_B, visibility: "private" });
+
+    // lib/services/event_service.dartの_visibilityFilter()と同じ形。
+    // ここが同じ形でないと、ルールが許可しても本番のFlutter側クエリが
+    // 拒否される（またはその逆）ため、あえてDart側と同型のクエリを組む。
+    const q = query(
+      collection(asB(), `couples/${COUPLE_ID}/events`),
+      or(
+        where("visibility", "==", "shared"),
+        and(where("visibility", "==", "private"), where("createdBy", "==", USER_B)),
+      ),
+    );
+    const snap = await getDocs(q);
+
+    const ids = snap.docs.map((d) => d.id).sort();
+    assert.deepEqual(ids, ["a-shared", "b-private"]);
   });
 });
 

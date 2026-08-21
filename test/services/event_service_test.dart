@@ -277,6 +277,62 @@ void main() {
     });
   });
 
+  group('予定の公開範囲（private）', () {
+    const partnerUid = 'user-partner';
+    late EventService partnerService;
+
+    setUp(() {
+      partnerService = EventService(firestore: db, uid: partnerUid);
+    });
+
+    test('相手が作ったprivateな予定は自分には見えない（月・今後・Map・ゴミ箱）', () async {
+      await service.addEvent(coupleId,
+          buildEvent(title: '自分のshared', date: DateTime(2026, 8, 10)));
+      final partnerPrivate = await partnerService.addEvent(coupleId,
+          buildEvent(title: '相手のprivate', date: DateTime(2026, 8, 15),
+              visibility: EventVisibility.private));
+
+      final month = await service.watchMonthEvents(coupleId, DateTime(2026, 8)).first;
+      expect(month.map((e) => e.title), ['自分のshared']);
+
+      final map = await service.watchEventsAsMap(coupleId).first;
+      expect(map.values.expand((e) => e).map((e) => e.title), ['自分のshared']);
+
+      await partnerService.deleteEvent(partnerPrivate);
+      final trashed = await service.watchDeletedEvents(coupleId).first;
+      expect(trashed, isEmpty);
+    });
+
+    test('自分が作ったprivateな予定は自分には見える', () async {
+      await service.addEvent(coupleId,
+          buildEvent(title: '自分のprivate', date: DateTime(2026, 8, 15),
+              visibility: EventVisibility.private));
+
+      final month = await service.watchMonthEvents(coupleId, DateTime(2026, 8)).first;
+      expect(month.map((e) => e.title), ['自分のprivate']);
+    });
+
+    test('相手のprivateな予定は今後の予定・繰り返し予定にも出ない', () async {
+      final now = DateTime.now();
+      await partnerService.addEvent(coupleId, buildEvent(
+        title: '相手の今後のprivate',
+        date: now.add(const Duration(days: 1)),
+        visibility: EventVisibility.private,
+      ));
+      await partnerService.addEvent(coupleId, buildEvent(
+        title: '相手の繰り返しprivate',
+        recurring: true,
+        visibility: EventVisibility.private,
+      ));
+
+      final upcoming = await service.watchUpcomingEvents(coupleId).first;
+      expect(upcoming, isEmpty);
+
+      final recurring = await service.watchRecurringEvents(coupleId).first;
+      expect(recurring, isEmpty);
+    });
+  });
+
   group('月単位の取得', () {
     test('月初00:00と月末23:59の予定を取りこぼさない', () async {
       await service.addEvent(coupleId,

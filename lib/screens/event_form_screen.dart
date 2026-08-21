@@ -48,6 +48,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
   late EventType _type       = widget.existing?.type ?? EventType.date;
   late bool      _recurring  = widget.existing?.recurring ?? false;
   late bool      _allDay     = widget.existing?.allDay ?? false;
+  late EventVisibility _visibility = widget.existing?.visibility ?? EventVisibility.shared;
   bool _syncGoogle = false;
   late final List<String> _existingImages = List.from(widget.existing?.imageUrls ?? []);
 
@@ -107,7 +108,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           imageUrls: _existingImages, createdBy: e.createdBy,
           recurring: _recurring, allDay: _allDay,
           googleCalendarEventId: e.googleCalendarEventId,
-          visibility: e.visibility,
+          visibility: _visibility,
         );
         await _eventService.updateEvent(event);
       } else {
@@ -116,6 +117,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
           title: _titleCtrl.text.trim(), date: _date, endDate: _endDate,
           type: _type, location: location, memo: memo,
           createdBy: '', recurring: _recurring, allDay: _allDay,
+          visibility: _visibility,
         ));
       }
 
@@ -216,6 +218,20 @@ class _EventFormScreenState extends State<EventFormScreen> {
               Switch(
                 value: _recurring,
                 onChanged: (v) => setState(() => _recurring = v),
+                activeThumbColor: appAccent(context),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('自分だけに表示（相手には見えません）',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+              Switch(
+                value: _visibility == EventVisibility.private,
+                onChanged: (v) => setState(
+                  () => _visibility = v ? EventVisibility.private : EventVisibility.shared,
+                ),
                 activeThumbColor: appAccent(context),
               ),
             ],

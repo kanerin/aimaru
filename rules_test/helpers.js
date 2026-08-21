@@ -64,17 +64,22 @@ export async function seedCouple(testEnv, { members = [USER_A, USER_B], inviteCo
   });
 }
 
-export async function seedEvent(testEnv, eventId = "event-1") {
+export async function seedEvent(
+  testEnv,
+  eventId = "event-1",
+  { createdBy = USER_A, visibility } = {},
+) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/events/${eventId}`).set({
       coupleId: COUPLE_ID,
       title: "デート",
       date: new Date("2026-08-22T19:00:00"),
       type: "date",
-      createdBy: USER_A,
+      createdBy,
       recurring: false,
       reminded: false,
       remindedYear: null,
+      ...(visibility !== undefined ? { visibility } : {}),
     });
   });
 }
