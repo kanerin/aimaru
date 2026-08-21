@@ -18,7 +18,8 @@ void main() {
   CoupleService serviceFor(String uid) =>
       CoupleService(firestore: db, uid: uid);
 
-  // 招待コード付きのペアを1件作る
+  // 招待コード付きのペアを1件作る（inviteCodesのミラーも合わせて作る。
+  // joinWithCodeはcouples本体ではなくこのミラーを見て参加可否を判定するため）
   Future<String> seedCouple({
     required String code,
     required List<String> memberIds,
@@ -29,6 +30,10 @@ void main() {
       'inviteCode': code,
       'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
       'anniversary': null,
+    });
+    await db.collection('inviteCodes').doc(code).set({
+      'coupleId': ref.id,
+      'memberIds': memberIds,
     });
     return ref.id;
   }

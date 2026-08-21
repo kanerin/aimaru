@@ -458,10 +458,14 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 
 毎回の棚卸しで「新発見」として蒸し返さないよう記録しておく。
 
-- **`couples` の読み取りルールが緩い**（認証済みなら他人のペアの `memberIds` / `anniversary` が読める）— 招待コード検索を成立させるための意図的な妥協。締めるなら `inviteCode` を別コレクションへ分離する設計変更が要る。TC-072 に記録済みで、`rules_test/firestore.test.js` の【既知】テストが現状を固定している（直したらそのテストが落ちて気づける）
+- ~~`couples` の読み取りルールが緩い（認証済みなら他人のペアのmemberIds/anniversaryが読める）~~ — 2026-08-22解消（旧TC-072）。招待コード検索を新設の `inviteCodes/{code}` コレクション（coupleIdと参加者uidだけをミラーする最小限のドキュメント、ドキュメントID=コード自体）へ分離し、`couples/{coupleId}` の読み取りを `request.auth.uid in resource.data.memberIds`（メンバーのみ）へ締めた。
+  - `inviteCodes`は`allow get`のみ許可し`list`は禁止（総当たり列挙を防ぐ）。`create`は自分1人だけのmemberIdsでのみ許可（定員の偽装を防ぐ）、`update`は自分を追加する場合かつ現在の人数が2人未満の場合のみ、`coupleId`の書き換えは拒否。実データ（anniversary等）はここには一切置かないため、この分離コレクション側のルールが多少緩くても実害は無く、`couples`側のcreate/updateルールが最終防衛線になる設計。
+  - `lib/services/couple_service.dart`の`createInviteCode`/`joinWithCode`は、`couples`本体と`inviteCodes`ミラーの両方を`WriteBatch`で同時に書き込む（どちらか一方だけ反映される不整合を避けるため）。`joinWithCode`は`couples`本体を読まず`inviteCodes`ミラーだけを見て定員・二重参加を判定する（参加前はメンバーではないため`couples`本体を読めない）。
+  - `functions/src/index.ts`の`dissolveCouple`は、`couples`本体をrecursiveDeleteする前に対応する`inviteCodes/{code}`も削除するようにした（`inviteCodes`は`couples`のサブコレクションではなく別のトップレベルコレクションのため、recursiveDeleteの対象に入らず孤立する）。この追加分はonCall関数のハンドラを直接叩くテストがリポジトリに元々無い（`askGemini`等の他のonCall関数も同様）ため、既存の慣習に合わせて専用テストは追加していない。
+  - `rules_test/firestore.test.js`の【既知】テストは反転し、`rules_test/helpers.js`に`seedInviteCode`を追加した。`test/services/couple_service_test.dart`の`seedCouple`ヘルパーも`inviteCodes`ミラーを合わせて作るよう更新した。
 - **全面 E2E 暗号化は採用しない** — AI 機能と両立しないため。COUPPLY が訴求している点だが追従しない判断
-- **`functions`/`rules_test`のnpm audit（moderate 8件、いずれも`firebase-admin`経由の間接依存の`uuid`関連）を今は解消しない** — 2026-08-21、CIに`npm audit --omit=dev --audit-level=high`を追加した際に判明。解消には`firebase-admin`のメジャーバージョン更新（破壊的変更、動作確認が要る）が必要なため、high/critical未満は当面許容し、CIではhigh/critical限定で監視する
-- **既存コードへの`dart format`の一括適用を見送った** — 2026-08-21、CIにフォーマットチェックを追加しようとした際に判明。このリポジトリのDartコードの多くは値を縦に揃える手書きの独自整形（例: `id:          doc.id,`）を使っており、`dart format`の標準スタイルとは異なる。一括で機械整形をかけたところ、一部の`if`文（例: `lib/screens/calendar_screen.dart`の`if (mounted) setState(...)`）で中かっこが外れ、`curly_braces_in_flow_control_structures`のlintが新たに7件発生することを確認した。挙動を変えずに一括修正するには個別の見直しが要るため、CIのフォーマットチェックは`continue-on-error: true`（可視化のみ）に留めている
+- ~~`functions`/`rules_test`のnpm audit（moderate、firebase-admin経由の間接依存のuuid関連）を今は解消しない~~ — 2026-08-22解消。`firebase-admin`を最新（14.3.0）まで上げても解消しないと判明した（原因はGoogle自身の`@google-cloud/storage`が内部で使う`teeny-request`のuuidピン止めで、firebase-adminのバージョンとは無関係）。メジャーバージョン更新はリスクの割にこの件を解消しないため見送り、`functions/package.json`の`overrides`で`uuid`だけを`^14.0.2`へ強制する形で解消した（`npm audit --omit=dev`が0件になったことを確認済み）。`rules_test`は元々`dependencies`が無く（全てdevDependencies）`--omit=dev`で0件だった。今後もし`overrides`無しでuuidを直接使う依存が増えたら、この対処が効かなくなる可能性がある点に留意
+- **既存コードへの`dart format`の一括適用は見送ったまま** — 2026-08-21、CIにフォーマットチェックを追加しようとした際に判明。このリポジトリのDartコードの多くは値を縦に揃える手書きの独自整形（例: `id:          doc.id,`）を使っており、`dart format`の標準スタイルとは異なる。一括で機械整形をかけると、一部の`if`文（例: `lib/screens/calendar_screen.dart`の`if (mounted) setState(...)`）で中かっこが外れる。一括整形自体は見た目だけの大きな差分で実利が薄いため見送ったままだが（CIのフォーマットチェックは引き続き`continue-on-error: true`）、**そこで見つかった「中かっこが外れると将来のバグを誘発する」というリスクだけは2026-08-22に別途対処した**: `analysis_options.yaml`へ`curly_braces_in_flow_control_structures: true`を追加した。現状のコードはこのlintに違反していない（＝今は中かっこが外れた単文ifは無い）ため個別修正は不要だったが、`flutter analyze`はCI/配布のどちらでも必須（blocking）ステップのため、今後誰か（人間・自動実装エージェントのどちらも）が単文ifの中かっこを省略したり、将来`dart format`の一括適用に踏み切って中かっこが外れたりした場合、その場でCIが落ちて気づける
 
 ## 自動化の構成
 

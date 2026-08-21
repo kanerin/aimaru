@@ -24,5 +24,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.5.4",
     "firebase-tools": "^13.29.1"
+  },
+  "overrides": {
+    "uuid": "^14.0.2"
   }
 }

@@ -53,6 +53,13 @@ class CoupleService {
 
   // ── 招待コードを生成してペアを作る ───────────────
   // 6桁の英数字コード（例: A3K9PZ）
+  //
+  // couples本体とは別に inviteCodes/{code} へ {coupleId, memberIds} の
+  // ミラーを作る。招待コードでの参加は「まだメンバーではない」状態から
+  // 行うため、couples側の読み取りをメンバーのみに締めた後は、参加前の
+  // 人がcouplesドキュメント自体を読むことができない。inviteCodesは
+  // coupleIdと参加者のuidだけを持つ最小限のミラーとして、参加可否の
+  // 事前確認（定員・二重参加チェック）にだけ使う。
   Future<String> createInviteCode() async {
     // すでにペアがある場合は既存コードを返す
     final existing = await getMyCouple();
@@ -61,12 +68,18 @@ class CoupleService {
     final code     = _generateCode();
     final coupleId = const Uuid().v4();
 
-    await _db.collection('couples').doc(coupleId).set({
+    final batch = _db.batch();
+    batch.set(_db.collection('couples').doc(coupleId), {
       'memberIds':  [_uid],
       'inviteCode': code,
       'createdAt':  FieldValue.serverTimestamp(),
       'anniversary': null,
     });
+    batch.set(_db.collection('inviteCodes').doc(code), {
+      'coupleId':  coupleId,
+      'memberIds': [_uid],
+    });
+    await batch.commit();
 
     return code;
   }
@@ -75,29 +88,33 @@ class CoupleService {
   Future<CoupleModel?> joinWithCode(String code) async {
     final upper = code.trim().toUpperCase();
 
-    // コードでカップルを検索
-    final snap = await _db
-        .collection('couples')
-        .where('inviteCode', isEqualTo: upper)
-        .limit(1)
-        .get();
+    // inviteCodesのミラーで存在・定員・二重参加を確認する
+    // （couples本体はメンバー以外読めないため、参加前にはここしか読めない）
+    final codeDoc = await _db.collection('inviteCodes').doc(upper).get();
+    if (!codeDoc.exists) return null;
 
-    if (snap.docs.isEmpty) return null;
-
-    final doc    = snap.docs.first;
-    final couple = CoupleModel.fromDoc(doc);
-
+    final mirrorMemberIds =
+        List<String>.from(codeDoc.data()!['memberIds'] as List? ?? []);
     // すでに2人いる場合はNG
-    if (couple.memberIds.length >= 2) return null;
+    if (mirrorMemberIds.length >= 2) return null;
     // 自分が作ったペアには参加できない
-    if (couple.memberIds.contains(_uid)) return null;
+    if (mirrorMemberIds.contains(_uid)) return null;
 
-    // 自分をメンバーに追加
-    await doc.reference.update({
+    final coupleId = codeDoc.data()!['coupleId'] as String;
+
+    // couples本体とinviteCodesのミラーへ同時に自分を追加する
+    // （どちらか一方だけ反映される状態を避けるためbatchでまとめる）
+    final batch = _db.batch();
+    batch.update(_db.collection('couples').doc(coupleId), {
       'memberIds': FieldValue.arrayUnion([_uid]),
     });
+    batch.update(_db.collection('inviteCodes').doc(upper), {
+      'memberIds': FieldValue.arrayUnion([_uid]),
+    });
+    await batch.commit();
 
-    return CoupleModel.fromDoc(await doc.reference.get());
+    final doc = await _db.collection('couples').doc(coupleId).get();
+    return CoupleModel.fromDoc(doc);
   }
 
   // ── 記念日を設定 ──────────────────────────────────
