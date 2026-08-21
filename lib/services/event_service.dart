@@ -184,6 +184,17 @@ class EventService {
         });
   }
 
+  // ── 全予定をリストで取得（検索用）───────────────
+  // watchEventsAsMapと同じ絞り込みだが、日付キーへ展開せず生の予定リストの
+  // まま返す。タイトル・メモ・場所を横断して検索する画面向け。
+  Stream<List<AimaruEvent>> watchAllEvents(String coupleId) {
+    return _eventsRef(coupleId)
+        .where(_visibilityFilter())
+        .orderBy('date')
+        .snapshots()
+        .map((snap) => _excludeDeleted(snap.docs.map(AimaruEvent.fromDoc)));
+  }
+
   // ── ゴミ箱の一覧（リアルタイム）─────────────────
   // 削除日時の新しい順。件数が多くなりにくい画面のため、
   // ここもアプリ側フィルタで揃える。
