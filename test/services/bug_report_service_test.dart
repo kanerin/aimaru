@@ -119,6 +119,73 @@ void main() {
 
       expect(result.classification, BugReportClassification.invalid);
     });
+
+    test('受理された報告のidを保持する（画像添付にreportIdとして使う）', () async {
+      final service = BugReportService(invoke: (data) async {
+        return {'accepted': true, 'classification': 'bug', 'summary': '要約', 'id': 'report-123'};
+      });
+
+      final result = await service.submit('カレンダーが表示されないバグがあります');
+
+      expect(result.id, 'report-123');
+    });
+
+    test('拒否された場合はidを持たない', () async {
+      final service = BugReportService(invoke: (data) async {
+        return {'accepted': false, 'classification': 'invalid', 'summary': ''};
+      });
+
+      final result = await service.submit('アプリと無関係な内容です');
+
+      expect(result.id, isNull);
+    });
+  });
+
+  group('BugReportService.attachImages', () {
+    test('reportIdとimageUrlsをそのまま渡す', () async {
+      Map<String, dynamic>? captured;
+      final service = BugReportService(invokeAttachImages: (data) async {
+        captured = data;
+        return {'ok': true};
+      });
+
+      await service.attachImages('report-123', ['https://example.com/a.jpg', 'https://example.com/b.jpg']);
+
+      expect(captured!['reportId'], 'report-123');
+      expect(captured!['imageUrls'], ['https://example.com/a.jpg', 'https://example.com/b.jpg']);
+    });
+
+    test('submit用のinvokeとは別の呼び出し口を使う', () async {
+      var submitInvokeCalled = false;
+      var attachInvokeCalled = false;
+      final service = BugReportService(
+        invoke: (data) async {
+          submitInvokeCalled = true;
+          return {'accepted': true, 'classification': 'bug', 'summary': ''};
+        },
+        invokeAttachImages: (data) async {
+          attachInvokeCalled = true;
+          return {'ok': true};
+        },
+      );
+
+      await service.attachImages('report-123', ['https://example.com/a.jpg']);
+
+      expect(attachInvokeCalled, isTrue);
+      expect(submitInvokeCalled, isFalse);
+    });
+
+    test('失敗時はsubmit()と同じくCloud Functionsのエラーコードを翻訳する', () async {
+      final service = BugReportService(invokeAttachImages: (data) async {
+        throw _FakeFunctionsException('permission-denied');
+      });
+
+      await expectLater(
+        service.attachImages('report-123', ['https://example.com/a.jpg']),
+        throwsA(predicate((e) =>
+            e is BugReportSubmissionException && e.message == kBugReportAuthMessage)),
+      );
+    });
   });
 
   group('BugReportService.submit - 失敗時', () {
@@ -244,6 +311,37 @@ void main() {
       final reports = await service.watchMyReports().first;
 
       expect(reports.single.rejectCategory, 'already_done');
+    });
+
+    test('imageUrlsを保持する', () async {
+      await db.collection('bugReports').doc('r1').set({
+        'summary': '画像付きの報告',
+        'classification': 'bug',
+        'status': 'pending',
+        'createdBy': uid,
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+        'imageUrls': ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+      });
+
+      final service = BugReportService(firestore: db, uid: uid);
+      final reports = await service.watchMyReports().first;
+
+      expect(reports.single.imageUrls, ['https://example.com/a.jpg', 'https://example.com/b.jpg']);
+    });
+
+    test('imageUrlsが無い報告は空リストになる', () async {
+      await db.collection('bugReports').doc('r1').set({
+        'summary': '画像無しの報告',
+        'classification': 'bug',
+        'status': 'pending',
+        'createdBy': uid,
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+      });
+
+      final service = BugReportService(firestore: db, uid: uid);
+      final reports = await service.watchMyReports().first;
+
+      expect(reports.single.imageUrls, isEmpty);
     });
   });
 }

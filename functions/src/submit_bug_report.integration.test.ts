@@ -5,7 +5,7 @@ import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 import { isOverLimit, nextRateLimitState, RateLimitState } from "./gemini_logic";
-import { BUG_REPORT_MONTHLY_LIMIT } from "./bug_report_logic";
+import { BUG_REPORT_MONTHLY_LIMIT, MAX_BUG_REPORT_IMAGES, validateImageUrls } from "./bug_report_logic";
 
 // submitBugReport の「Firestoreを読み書きする」部分（月次レート制限の
 // トランザクション・受理されたレポートの書き込み）のテスト。分類ロジック
@@ -60,6 +60,31 @@ async function storeAcceptedReport(
     createdAt: Timestamp.now(),
   });
   return ref.id;
+}
+
+type AttachImagesResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid-argument" | "not-found" | "permission-denied" };
+
+/** 本番の attachBugReportImages の「Firestoreを読み書きする」部分を再現する。 */
+async function attachImages(
+  uid: string,
+  reportId: string,
+  imageUrls: unknown,
+): Promise<AttachImagesResult> {
+  if (!validateImageUrls(imageUrls)) {
+    return { ok: false, reason: "invalid-argument" };
+  }
+  const ref = db.collection("bugReports").doc(reportId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    return { ok: false, reason: "not-found" };
+  }
+  if (snap.data()?.createdBy !== uid) {
+    return { ok: false, reason: "permission-denied" };
+  }
+  await ref.update({ imageUrls });
+  return { ok: true };
 }
 
 describe("submitBugReportのFirestore経路", { skip: EMULATOR ? false : "エミュレータ未起動" }, () => {
@@ -159,6 +184,58 @@ describe("submitBugReportのFirestore経路", { skip: EMULATOR ? false : "エミ
       const doc = await db.collection("bugReports").doc(id).get();
       assert.equal(doc.data()?.classification, "feature_request");
       assert.equal(doc.data()?.status, "pending");
+    });
+  });
+
+  describe("attachBugReportImages", () => {
+    it("作成者本人は画像URLを添付できる", async () => {
+      const id = await storeAcceptedReport(USER_A, "カレンダーが表示されない", "bug", "要約");
+      const urls = ["https://example.com/a.jpg", "https://example.com/b.jpg"];
+
+      const result = await attachImages(USER_A, id, urls);
+
+      assert.deepEqual(result, { ok: true });
+      const doc = await db.collection("bugReports").doc(id).get();
+      assert.deepEqual(doc.data()?.imageUrls, urls);
+    });
+
+    it(`上限（${MAX_BUG_REPORT_IMAGES}件）までは添付できる`, async () => {
+      const id = await storeAcceptedReport(USER_A, "カレンダーが表示されない", "bug", "要約");
+      const urls = Array.from({ length: MAX_BUG_REPORT_IMAGES }, (_, i) => `https://example.com/${i}.jpg`);
+
+      const result = await attachImages(USER_A, id, urls);
+
+      assert.deepEqual(result, { ok: true });
+    });
+
+    it(`上限（${MAX_BUG_REPORT_IMAGES}件）を超えると拒否し、書き込まない`, async () => {
+      const id = await storeAcceptedReport(USER_A, "カレンダーが表示されない", "bug", "要約");
+      const urls = Array.from(
+        { length: MAX_BUG_REPORT_IMAGES + 1 },
+        (_, i) => `https://example.com/${i}.jpg`,
+      );
+
+      const result = await attachImages(USER_A, id, urls);
+
+      assert.deepEqual(result, { ok: false, reason: "invalid-argument" });
+      const doc = await db.collection("bugReports").doc(id).get();
+      assert.equal(doc.data()?.imageUrls, undefined);
+    });
+
+    it("自分の報告でなければ拒否される（他人の報告IDへ画像を投げ込めない）", async () => {
+      const id = await storeAcceptedReport(USER_A, "カレンダーが表示されない", "bug", "要約");
+
+      const result = await attachImages(USER_B, id, ["https://example.com/a.jpg"]);
+
+      assert.deepEqual(result, { ok: false, reason: "permission-denied" });
+      const doc = await db.collection("bugReports").doc(id).get();
+      assert.equal(doc.data()?.imageUrls, undefined);
+    });
+
+    it("存在しない報告IDでは拒否される", async () => {
+      const result = await attachImages(USER_A, "no-such-report", ["https://example.com/a.jpg"]);
+
+      assert.deepEqual(result, { ok: false, reason: "not-found" });
     });
   });
 });
