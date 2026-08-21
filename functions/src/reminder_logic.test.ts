@@ -13,6 +13,7 @@ import {
   resolveMinutesBefore,
   resolveReminderTargets,
   shouldRemindNow,
+  visibleMemberIds,
 } from "./reminder_logic";
 
 const MINUTE = 60000;
@@ -164,6 +165,20 @@ describe("nextOccurrence", () => {
     assert.equal(occurrence.getFullYear(), 2026);
     assert.equal(occurrence.getMonth(), 11);
     assert.equal(occurrence.getDate(), 31);
+  });
+});
+
+describe("visibleMemberIds", () => {
+  it("privateな予定は作成者以外を通知対象から除く", () => {
+    assert.deepEqual(visibleMemberIds(["a", "b"], "a", "private"), ["a"]);
+  });
+
+  it("sharedな予定は全員が通知対象のまま", () => {
+    assert.deepEqual(visibleMemberIds(["a", "b"], "a", "shared"), ["a", "b"]);
+  });
+
+  it("visibilityが無い（既存ドキュメント）場合はshared扱いで全員に送る", () => {
+    assert.deepEqual(visibleMemberIds(["a", "b"], "a", undefined), ["a", "b"]);
   });
 });
 
