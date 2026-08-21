@@ -94,6 +94,25 @@ export function resolveMinutesBefore(value: number | undefined | null): number {
   return value ?? DEFAULT_REMINDER_MINUTES_BEFORE;
 }
 
+/**
+ * 予定の通知（新規追加・リマインダー）を送ってよいメンバーを絞り込む。
+ *
+ * firestore.rulesとevent_service.dartの読み取り制限（visibility === 'private'
+ * な予定は作成者本人にしか見えない）に、Cloud Functionsからの通知経路
+ * （onEventCreated・processOneTimeEvents・processRecurringEvents）も
+ * 合わせる。ここが漏れると、カレンダー上は見えないはずのprivateな予定の
+ * タイトルが、追加通知やリマインダー通知の本文としてパートナーに届いてしまう。
+ * visibilityが無い（既存ドキュメント）場合はsharedとして全員に送る。
+ */
+export function visibleMemberIds(
+  memberIds: string[],
+  createdBy: string,
+  visibility: string | undefined,
+): string[] {
+  if (visibility === "private") return memberIds.filter((uid) => uid === createdBy);
+  return memberIds;
+}
+
 /** メンバー1人ぶんの、リマインダー判定に要る情報。 */
 export interface MemberReminderState {
   uid: string;

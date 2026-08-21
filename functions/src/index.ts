@@ -15,6 +15,7 @@ import {
   QUERY_LOOKAHEAD_MS,
   resolveMinutesBefore,
   resolveReminderTargets,
+  visibleMemberIds,
 } from "./reminder_logic";
 import { TRASH_RETENTION_MS } from "./trash_logic";
 import {
@@ -59,6 +60,9 @@ interface EventDoc {
   // null以外ならゴミ箱に入っている（論理削除済み）。
   // 保持期間中はまだ復元されうるので、リマインダー送信の対象から外す。
   deletedAt?: Timestamp | null;
+  // 'private'なら作成者以外に通知しない（visibleMemberIds参照）。
+  // 既存ドキュメントには無く、その場合はsharedとして扱う。
+  visibility?: string;
 }
 
 interface UserDoc {
@@ -107,7 +111,9 @@ export const onEventCreated = onDocumentCreated(
 
     const coupleSnap = await db.collection("couples").doc(coupleId).get();
     const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
-    const partnerIds = memberIds.filter((id) => id !== data.createdBy);
+    const partnerIds = visibleMemberIds(memberIds, data.createdBy, data.visibility).filter(
+      (id) => id !== data.createdBy,
+    );
     if (partnerIds.length === 0) return;
 
     const creatorSnap = await db.collection("users").doc(data.createdBy).get();
@@ -173,10 +179,11 @@ async function processOneTimeEvents(nowMs: number): Promise<void> {
     if (!coupleId) continue;
     const coupleSnap = await db.collection("couples").doc(coupleId).get();
     const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+    const notifiableMemberIds = visibleMemberIds(memberIds, data.createdBy, data.visibility);
     const alreadyRemindedUids = new Set(data.remindedUids ?? []);
 
     const members = await Promise.all(
-      memberIds.map(async (uid) => {
+      notifiableMemberIds.map(async (uid) => {
         const userSnap = await db.collection("users").doc(uid).get();
         const user = userSnap.data() as UserDoc | undefined;
         return {
@@ -254,6 +261,7 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
     if (!coupleId) continue;
     const coupleSnap = await db.collection("couples").doc(coupleId).get();
     const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+    const notifiableMemberIds = visibleMemberIds(memberIds, data.createdBy, data.visibility);
 
     // remindedUids は発生年が変わったらリセットする（去年の送信済み記録を
     // 今年の判定に持ち越さない）
@@ -261,7 +269,7 @@ async function processRecurringEvents(nowMs: number): Promise<void> {
       data.remindedUidsYear === occurrenceYear ? new Set(data.remindedUids ?? []) : new Set<string>();
 
     const members = await Promise.all(
-      memberIds.map(async (uid) => {
+      notifiableMemberIds.map(async (uid) => {
         const userSnap = await db.collection("users").doc(uid).get();
         const user = userSnap.data() as UserDoc | undefined;
         return {

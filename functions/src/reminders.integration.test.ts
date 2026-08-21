@@ -12,6 +12,7 @@ import {
   resolveMinutesBefore,
   resolveReminderTargets,
   shouldRemindNow,
+  visibleMemberIds,
 } from "./reminder_logic";
 
 // リマインダーの「Firestore を読んで、判定して、書き戻す」経路のテスト。
@@ -51,6 +52,8 @@ async function collectOneTimeTargets(nowMs: number) {
       recurring?: boolean;
       title: string;
       deletedAt?: Timestamp | null;
+      createdBy: string;
+      visibility?: string;
     };
     if (data.recurring) continue;
     if (data.deletedAt) continue;
@@ -66,7 +69,7 @@ async function collectOneTimeTargets(nowMs: number) {
     const memberIds: string[] =
       (await db.collection("couples").doc(coupleId).get()).data()?.memberIds ?? [];
 
-    for (const uid of memberIds) {
+    for (const uid of visibleMemberIds(memberIds, data.createdBy, data.visibility)) {
       const user = (await db.collection("users").doc(uid).get()).data() as
         | { remindersEnabled?: boolean; reminderMinutesBefore?: number }
         | undefined;
@@ -102,6 +105,8 @@ async function runOneTimeEventsPass(nowMs: number) {
       recurring?: boolean;
       remindedUids?: string[];
       deletedAt?: Timestamp | null;
+      createdBy: string;
+      visibility?: string;
     };
     if (data.recurring) continue;
     if (data.deletedAt) continue;
@@ -116,10 +121,11 @@ async function runOneTimeEventsPass(nowMs: number) {
     if (!coupleId) continue;
     const memberIds: string[] =
       (await db.collection("couples").doc(coupleId).get()).data()?.memberIds ?? [];
+    const notifiableMemberIds = visibleMemberIds(memberIds, data.createdBy, data.visibility);
     const alreadyRemindedUids = new Set(data.remindedUids ?? []);
 
     const members = await Promise.all(
-      memberIds.map(async (uid) => {
+      notifiableMemberIds.map(async (uid) => {
         const user = (await db.collection("users").doc(uid).get()).data() as
           | { remindersEnabled?: boolean; reminderMinutesBefore?: number }
           | undefined;
@@ -173,6 +179,8 @@ async function runRecurringEventsPass(nowMs: number) {
       remindedYear?: number | null;
       remindedUidsYear?: number | null;
       nextOccurrenceMs?: Timestamp | null;
+      createdBy: string;
+      visibility?: string;
     };
     if (data.deletedAt) continue;
 
@@ -192,12 +200,13 @@ async function runRecurringEventsPass(nowMs: number) {
     if (!coupleId) continue;
     const memberIds: string[] =
       (await db.collection("couples").doc(coupleId).get()).data()?.memberIds ?? [];
+    const notifiableMemberIds = visibleMemberIds(memberIds, data.createdBy, data.visibility);
 
     const alreadyRemindedUids =
       data.remindedUidsYear === occurrenceYear ? new Set(data.remindedUids ?? []) : new Set<string>();
 
     const members = await Promise.all(
-      memberIds.map(async (uid) => {
+      notifiableMemberIds.map(async (uid) => {
         const user = (await db.collection("users").doc(uid).get()).data() as
           | { remindersEnabled?: boolean; reminderMinutesBefore?: number }
           | undefined;
@@ -314,6 +323,7 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     recurring = false,
     reminded = false,
     deletedAt = null,
+    visibility,
     users,
     extra = {},
   }: {
@@ -321,6 +331,7 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     recurring?: boolean;
     reminded?: boolean;
     deletedAt?: Timestamp | null;
+    visibility?: string;
     users: Record<string, { remindersEnabled?: boolean; reminderMinutesBefore?: number }>;
     // 既に一部処理が進んだ状態（remindedYear等）を再現するための上書き用。
     extra?: Record<string, unknown>;
@@ -342,6 +353,7 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
       reminded,
       remindedYear: null,
       deletedAt,
+      visibility,
       ...extra,
     });
   }
@@ -445,6 +457,41 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     assert.deepEqual(cleanedUp, [], "片付け対象でもない（クエリに乗っていないだけ）");
   });
 
+  // 予定を「自分だけに表示」にしても、カレンダーの読み取り制限だけでは
+  // 通知経路が塞がらない。予定のタイトルを含むリマインダーがパートナーへ
+  // 届いてしまうと、限定公開にした意味が無くなる（実際に届いた報告あり）。
+  it("privateな予定は作成者以外にリマインダーが届かない", async () => {
+    const nowMs = Date.now();
+    await seed({
+      eventDate: new Date(nowMs + 60 * MINUTE),
+      visibility: "private",
+      users: {
+        [USER_A]: { reminderMinutesBefore: 60 },
+        [USER_B]: { reminderMinutesBefore: 60 },
+      },
+    });
+
+    const { sent } = await collectOneTimeTargets(nowMs);
+
+    assert.deepEqual(sent.map((s) => s.uid), [USER_A], "作成者本人にだけ届く");
+  });
+
+  it("sharedな予定は従来通り両方に届く", async () => {
+    const nowMs = Date.now();
+    await seed({
+      eventDate: new Date(nowMs + 60 * MINUTE),
+      visibility: "shared",
+      users: {
+        [USER_A]: { reminderMinutesBefore: 60 },
+        [USER_B]: { reminderMinutesBefore: 60 },
+      },
+    });
+
+    const { sent } = await collectOneTimeTargets(nowMs);
+
+    assert.deepEqual(new Set(sent.map((s) => s.uid)), new Set([USER_A, USER_B]));
+  });
+
   it("recurring の予定は単発の経路では拾わない", async () => {
     const nowMs = Date.now();
     await seed({
@@ -540,6 +587,24 @@ describe("リマインダーのFirestore経路", { skip: EMULATOR ? false : "エ
     assert.equal((doc.data()?.nextOccurrenceMs as Timestamp).toMillis(), expectedMs, "翌年の発生日へ進む");
     assert.equal(doc.data()?.remindedYear, 2026, "2026年分の送信済み記録はそのまま残す");
     assert.deepEqual(doc.data()?.remindedUids, [USER_A]);
+  });
+
+  it("privateな繰り返し予定は作成者以外にリマインダーが届かない", async () => {
+    const nowMs = new Date(2026, 7, 12, 10, 0).getTime();
+    await seed({
+      eventDate: new Date(2020, 7, 12, 11, 0), // 今日のちょうど1時間後
+      recurring: true,
+      visibility: "private",
+      users: {
+        [USER_A]: { reminderMinutesBefore: 60 },
+        [USER_B]: { reminderMinutesBefore: 60 },
+      },
+      extra: { nextOccurrenceMs: Timestamp.fromMillis(0) },
+    });
+
+    const sent = await runRecurringEventsPass(nowMs);
+
+    assert.deepEqual(sent.map((s) => s.uid), [USER_A], "作成者本人にだけ届く");
   });
 
   // メンバーごとに送信タイミングが異なる場合でも、両方が通知を受け取れることの確認。
