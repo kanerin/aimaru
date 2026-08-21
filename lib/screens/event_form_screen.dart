@@ -225,8 +225,10 @@ class _EventFormScreenState extends State<EventFormScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('自分だけに表示（相手には見えません）',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+              const Expanded(
+                child: Text('自分だけに表示（相手には見えません）',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+              ),
               Switch(
                 value: _visibility == EventVisibility.private,
                 onChanged: (v) => setState(
