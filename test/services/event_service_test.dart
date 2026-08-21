@@ -446,6 +446,35 @@ void main() {
     });
   });
 
+  group('全予定のリスト取得（検索用）', () {
+    test('日付の昇順で、削除済みを除いたリストが返る', () async {
+      await service.addEvent(coupleId,
+          buildEvent(title: '後', date: DateTime(2026, 8, 20)));
+      final deleted = await service.addEvent(coupleId,
+          buildEvent(title: '削除済み', date: DateTime(2026, 8, 10)));
+      await service.deleteEvent(deleted);
+      await service.addEvent(coupleId,
+          buildEvent(title: '先', date: DateTime(2026, 8, 5)));
+
+      final events = await service.watchAllEvents(coupleId).first;
+
+      expect(events.map((e) => e.title), ['先', '後']);
+    });
+
+    test('相手のprivateな予定は含まれない', () async {
+      final partnerService = EventService(firestore: db, uid: 'user-partner');
+      await service.addEvent(coupleId,
+          buildEvent(title: '自分のshared', date: DateTime(2026, 8, 10)));
+      await partnerService.addEvent(coupleId,
+          buildEvent(title: '相手のprivate', date: DateTime(2026, 8, 15),
+              visibility: EventVisibility.private));
+
+      final events = await service.watchAllEvents(coupleId).first;
+
+      expect(events.map((e) => e.title), ['自分のshared']);
+    });
+  });
+
   group('今後の予定の取得', () {
     test('過去の予定を含めず、件数上限を守る', () async {
       final now = DateTime.now();
