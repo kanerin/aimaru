@@ -383,6 +383,29 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   Firestoreへストックされ続けると自動修正パイプラインの負荷が積み上がるため、
   日次より月次の方が実態に合うという判断。
 
+2026-08-21、バグ報告・機能要望フォームに画像添付（最大`MAX_BUG_REPORT_IMAGES = 5`件）を
+追加した。`bugReports`は`submitBugReport`（Admin SDK）経由でしか書き込めない設計を
+維持したまま画像だけ追加できるよう、次の2段階にした:
+1. `submitBugReport`が受理（`accepted: true`）した場合、作成した`bugReports`
+   ドキュメントのIDをレスポンスへ含めるようにした。
+2. クライアントはそのIDを使い、画像を`Storage`の`bugReports/{reportId}/`へ直接
+   アップロードする（`storage.rules`に`firestore.get()`でそのドキュメントの
+   `createdBy`と一致する本人だけに許可する新しいmatchブロックを追加、
+   `couples/{coupleId}/`と同じ設計）。アップロードが終わったら新設の
+   `attachBugReportImages`（Cloud Functions、Admin SDK）を呼び、`imageUrls`を
+   そのドキュメントへ書き戻す（作成者本人以外からの呼び出し・存在しない
+   報告ID・上限超過はすべて拒否する）。
+   画像のアップロード・添付は受理された後の追加ステップなので、そこだけ失敗しても
+   テキストの報告自体は既に受け付けられている（別メッセージで案内し、送信全体が
+   失敗したかのような誤解を避ける）。
+- `StorageService`の`_storage`フィールドが`FirebaseStorage.instance`を生成時に
+  即座に参照していたため、テスト用サブクラスを作るだけでFirebase未初期化のまま
+  落ちる問題があった。他のサービス（`EventService`等）と同じ遅延getterパターンに直した。
+- `BugReportScreen`に画像選択UI（`ImagePicker`、最大5件・個別に取り除ける）を追加した。
+  実機の`ImagePicker`はテストから差し込めないため、`initialImagesForTest`という
+  テスト専用の注入ポイントを追加し、「画像が選択済み」の状態から送信フローを検証できる
+  ようにした（既存の`serviceOverride`等と同じ設計方針）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

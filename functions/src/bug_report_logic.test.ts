@@ -4,8 +4,10 @@ import { describe, it } from "node:test";
 import {
   BUG_REPORT_TEXT_MAX_LENGTH,
   BUG_REPORT_TEXT_MIN_LENGTH,
+  MAX_BUG_REPORT_IMAGES,
   buildTriageContents,
   parseTriageResponse,
+  validateImageUrls,
   validateReportText,
 } from "./bug_report_logic";
 
@@ -143,5 +145,35 @@ describe("parseTriageResponse", () => {
       ),
       null,
     );
+  });
+});
+
+describe("validateImageUrls", () => {
+  it("配列以外は拒否する", () => {
+    assert.equal(validateImageUrls("https://example.com/a.jpg"), false);
+    assert.equal(validateImageUrls(null), false);
+    assert.equal(validateImageUrls(undefined), false);
+  });
+
+  it("空配列は拒否する（呼ぶなら1件以上）", () => {
+    assert.equal(validateImageUrls([]), false);
+  });
+
+  it(`上限（${MAX_BUG_REPORT_IMAGES}件）までは許可する`, () => {
+    const urls = Array.from({ length: MAX_BUG_REPORT_IMAGES }, (_, i) => `https://example.com/${i}.jpg`);
+    assert.equal(validateImageUrls(urls), true);
+  });
+
+  it(`上限（${MAX_BUG_REPORT_IMAGES}件）を超えると拒否する`, () => {
+    const urls = Array.from({ length: MAX_BUG_REPORT_IMAGES + 1 }, (_, i) => `https://example.com/${i}.jpg`);
+    assert.equal(validateImageUrls(urls), false);
+  });
+
+  it("文字列以外の要素が混ざっていれば拒否する", () => {
+    assert.equal(validateImageUrls(["https://example.com/a.jpg", 123]), false);
+  });
+
+  it("空文字の要素が混ざっていれば拒否する", () => {
+    assert.equal(validateImageUrls(["https://example.com/a.jpg", ""]), false);
   });
 });

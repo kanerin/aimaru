@@ -13,6 +13,8 @@ import {
   warmUpRulesEngine,
 } from "./helpers.js";
 
+const REPORT_ID = "report-1";
+
 // Storage セキュリティルールのテスト。
 //
 // 写真はこのアプリで最もプライベートなデータで、URL さえ知られれば
@@ -68,6 +70,50 @@ describe("couples 配下の画像", () => {
   });
 
   it("未認証は読み書きできない", async () => {
+    await assertFails(uploadBytes(ref(storageFor(null), path), bytes));
+  });
+});
+
+describe("bugReports 配下の画像", () => {
+  const path = `bugReports/${REPORT_ID}/photo.png`;
+
+  async function seedReport(createdBy = USER_A) {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`bugReports/${REPORT_ID}`).set({
+        rawText: "テスト",
+        summary: "要約",
+        classification: "bug",
+        status: "pending",
+        createdBy,
+      });
+    });
+  }
+
+  it("報告の作成者はアップロード・閲覧できる", async () => {
+    await seedReport(USER_A);
+    await assertSucceeds(uploadBytes(ref(storageFor(USER_A), path), bytes));
+    await assertSucceeds(getBytes(ref(storageFor(USER_A), path)));
+  });
+
+  it("作成者以外はアップロードできない（自分のカップルの相手であっても）", async () => {
+    await seedReport(USER_A);
+    await assertFails(uploadBytes(ref(storageFor(USER_B), path), bytes));
+  });
+
+  it("作成者以外は読めない", async () => {
+    await seedReport(USER_A);
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(ref(ctx.storage(), path), bytes);
+    });
+    await assertFails(getBytes(ref(storageFor(USER_B), path)));
+  });
+
+  it("報告自体が存在しなければアップロードできない", async () => {
+    await assertFails(uploadBytes(ref(storageFor(USER_A), `bugReports/no-such-report/photo.png`), bytes));
+  });
+
+  it("未認証は読み書きできない", async () => {
+    await seedReport(USER_A);
     await assertFails(uploadBytes(ref(storageFor(null), path), bytes));
   });
 });

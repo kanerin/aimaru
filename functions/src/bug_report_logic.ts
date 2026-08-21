@@ -17,6 +17,20 @@ export const BUG_REPORT_TEXT_MAX_LENGTH = 2000;
 // 少なめに設定し、Gemini呼び出しコストの濫用を防ぐ。
 export const BUG_REPORT_MONTHLY_LIMIT = 10;
 
+// 報告に添付できる画像の上限枚数。
+export const MAX_BUG_REPORT_IMAGES = 5;
+
+/**
+ * attachBugReportImagesへ渡す画像URLの配列が妥当か検証する。
+ * 空配列（画像なしでの呼び出し自体は想定しない。呼ぶなら1件以上）・
+ * 上限超過・文字列以外の要素はすべて拒否する。
+ */
+export function validateImageUrls(value: unknown): value is string[] {
+  if (!Array.isArray(value)) return false;
+  if (value.length === 0 || value.length > MAX_BUG_REPORT_IMAGES) return false;
+  return value.every((v) => typeof v === "string" && v.length > 0);
+}
+
 /**
  * ユーザーが送ってきたテキストが、そもそも分類にかける価値がある形かを
  * 検証する。空・極端に短い・極端に長いものはGemini呼び出し自体を行わず弾く。

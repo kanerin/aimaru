@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/bug_report_screen.dart';
 import 'package:aimaru/services/bug_report_service.dart';
+import 'package:aimaru/services/storage_service.dart';
+
+// StorageServiceは本番実装がFirebaseStorage.instanceに触れるため、
+// アップロード先だけを差し替えたフェイクをサブクラスとして用意する。
+class _FakeStorageService extends StorageService {
+  final Future<String> Function(String reportId, File file) uploadBugReportImageImpl;
+  _FakeStorageService(this.uploadBugReportImageImpl);
+
+  @override
+  Future<String> uploadBugReportImage(String reportId, File file) =>
+      uploadBugReportImageImpl(reportId, file);
+}
 
 void main() {
   // myReportsStreamOverrideを渡さないと、BugReportServiceがwatchMyReports()経由で
@@ -15,11 +28,15 @@ void main() {
   Widget wrap(
     BugReportService service, {
     Stream<List<BugReportRecord>>? myReportsStreamOverride,
+    StorageService? storageService,
+    List<File>? initialImages,
   }) =>
       MaterialApp(
         home: BugReportScreen(
           serviceOverride: service,
+          storageServiceOverride: storageService,
           myReportsStreamOverride: myReportsStreamOverride ?? Stream.value(const []),
+          initialImagesForTest: initialImages,
         ),
       );
 
@@ -174,5 +191,98 @@ void main() {
     expect(find.textContaining('読み込みに失敗'), findsOneWidget);
 
     await controller.close();
+  });
+
+  group('画像添付', () {
+    testWidgets('画像を選んでいない状態では追加ボタンが1つ表示される', (tester) async {
+      await tester.pumpWidget(wrap(dummyService()));
+
+      expect(find.byIcon(Icons.add_photo_alternate_outlined), findsOneWidget);
+    });
+
+    testWidgets('上限（5件）まで選んでいると追加ボタンが消える', (tester) async {
+      final images = List.generate(5, (i) => File('fake/$i.jpg'));
+      await tester.pumpWidget(wrap(dummyService(), initialImages: images));
+
+      expect(find.byIcon(Icons.add_photo_alternate_outlined), findsNothing);
+    });
+
+    testWidgets('選んだ画像はサムネイルとして表示され、×で個別に取り除ける', (tester) async {
+      final images = [File('fake/a.jpg'), File('fake/b.jpg')];
+      await tester.pumpWidget(wrap(dummyService(), initialImages: images));
+
+      expect(find.byType(Image), findsNWidgets(2));
+
+      await tester.tap(find.byIcon(Icons.close).first);
+      await tester.pump();
+
+      expect(find.byType(Image), findsOneWidget);
+      // 1件取り除いたので追加ボタンが復活する
+      expect(find.byIcon(Icons.add_photo_alternate_outlined), findsOneWidget);
+    });
+
+    testWidgets('受理され画像もあれば、アップロードしてreportIdに紐付けて送信する', (tester) async {
+      Map<String, dynamic>? attachedData;
+      final uploadedReportIds = <String>[];
+      final service = BugReportService(
+        invoke: (data) async =>
+            {'accepted': true, 'classification': 'bug', 'summary': '要約', 'id': 'report-xyz'},
+        invokeAttachImages: (data) async {
+          attachedData = data;
+          return {'ok': true};
+        },
+      );
+      final storage = _FakeStorageService((reportId, file) async {
+        uploadedReportIds.add(reportId);
+        return 'https://example.com/${file.path.split('/').last}';
+      });
+      final images = [File('fake/a.jpg'), File('fake/b.jpg')];
+
+      await tester.pumpWidget(wrap(service, storageService: storage, initialImages: images));
+      await tester.enterText(find.byType(TextField), 'カレンダーが表示されないバグがあります');
+      await tester.tap(find.widgetWithText(FilledButton, '送信する'));
+      await tester.pumpAndSettle();
+
+      expect(uploadedReportIds, ['report-xyz', 'report-xyz']);
+      expect(attachedData?['reportId'], 'report-xyz');
+      expect(attachedData?['imageUrls'], ['https://example.com/a.jpg', 'https://example.com/b.jpg']);
+      expect(find.textContaining('バグ報告として受け付けました'), findsOneWidget);
+      // 送信成功後は画像もクリアされる
+      expect(find.byType(Image), findsNothing);
+    });
+
+    testWidgets('画像の添付に失敗しても、報告自体は受理されたことを案内する', (tester) async {
+      final service = BugReportService(
+        invoke: (data) async =>
+            {'accepted': true, 'classification': 'bug', 'summary': '要約', 'id': 'report-xyz'},
+        invokeAttachImages: (data) async => throw Exception('アップロード失敗'),
+      );
+      final storage = _FakeStorageService((reportId, file) async => 'https://example.com/a.jpg');
+      final images = [File('fake/a.jpg')];
+
+      await tester.pumpWidget(wrap(service, storageService: storage, initialImages: images));
+      await tester.enterText(find.byType(TextField), 'カレンダーが表示されないバグがあります');
+      await tester.tap(find.widgetWithText(FilledButton, '送信する'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('画像の添付に失敗しました'), findsOneWidget);
+    });
+
+    testWidgets('画像を選んでいなければStorageServiceに一切触れない', (tester) async {
+      final service = BugReportService(invoke: (data) async =>
+          {'accepted': true, 'classification': 'bug', 'summary': '要約', 'id': 'report-xyz'});
+      var uploadCalled = false;
+      final storage = _FakeStorageService((reportId, file) async {
+        uploadCalled = true;
+        return 'https://example.com/a.jpg';
+      });
+
+      await tester.pumpWidget(wrap(service, storageService: storage));
+      await tester.enterText(find.byType(TextField), 'カレンダーが表示されないバグがあります');
+      await tester.tap(find.widgetWithText(FilledButton, '送信する'));
+      await tester.pumpAndSettle();
+
+      expect(uploadCalled, isFalse);
+    });
   });
 }

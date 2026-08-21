@@ -477,6 +477,7 @@ class BugReportRecord {
   // statusが'rejected'のときだけ入る、大まかな見送り理由の分類。
   // 詳細な文章ではなく固定の分類（rejectCategoryLabelで日本語ラベルにする）。
   final String? rejectCategory;
+  final List<String> imageUrls;
 
   BugReportRecord({
     required this.id,
@@ -486,6 +487,7 @@ class BugReportRecord {
     required this.createdAt,
     this.prNumber,
     this.rejectCategory,
+    this.imageUrls = const [],
   });
 
   factory BugReportRecord.fromDoc(DocumentSnapshot doc) {
@@ -498,6 +500,7 @@ class BugReportRecord {
       createdAt:      (d['createdAt'] as Timestamp).toDate(),
       prNumber:       d['prNumber'] as int?,
       rejectCategory: d['rejectCategory'] as String?,
+      imageUrls:      List<String>.from(d['imageUrls'] ?? []),
     );
   }
 }

@@ -28,8 +28,10 @@ import {
 } from "./gemini_logic";
 import {
   BUG_REPORT_MONTHLY_LIMIT,
+  MAX_BUG_REPORT_IMAGES,
   buildTriageContents,
   parseTriageResponse,
+  validateImageUrls,
   validateReportText,
 } from "./bug_report_logic";
 
@@ -568,7 +570,7 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
       return { accepted: false, classification: triage.classification, summary: triage.summary };
     }
 
-    await db.collection("bugReports").add({
+    const ref = await db.collection("bugReports").add({
       rawText: text,
       summary: triage.summary,
       classification: triage.classification,
@@ -577,9 +579,55 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
       createdAt: Timestamp.now(),
     });
 
-    return { accepted: true, classification: triage.classification, summary: triage.summary };
+    return {
+      accepted: true,
+      classification: triage.classification,
+      summary: triage.summary,
+      id: ref.id,
+    };
   },
 );
+
+// ── バグ報告・機能要望に画像を添付する ──────────────────────
+// submitBugReportが受理した報告（accepted: true）に対してのみ呼ぶ。
+// bugReportsはfirestore.rulesでクライアントからの書き込みを一切拒否している
+// （Gemini判定を経ない内容が紛れ込むのを防ぐため）ため、画像の添付も
+// このAdmin SDK経由の専用関数を介す。画像自体はStorageへ直接アップロード
+// 済みで、ここではURLをbugReportsドキュメントへ書き戻すだけ。
+// storage.rulesの`bugReports/{reportId}/**`は、そのreportIdのcreatedByと
+// 一致するユーザーしかアップロードできないようFirestoreを参照して制限して
+// いるため、他人の報告IDへ画像を投げ込むこと自体がStorage側でも防がれる。
+interface AttachBugReportImagesRequest {
+  reportId?: unknown;
+  imageUrls?: unknown;
+}
+
+export const attachBugReportImages = onCall<AttachBugReportImagesRequest>(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です");
+  }
+  const uid = request.auth.uid;
+  const { reportId, imageUrls } = request.data ?? {};
+
+  if (typeof reportId !== "string" || reportId.length === 0) {
+    throw new HttpsError("invalid-argument", "リクエストの形式が不正です");
+  }
+  if (!validateImageUrls(imageUrls)) {
+    throw new HttpsError("invalid-argument", `画像は1〜${MAX_BUG_REPORT_IMAGES}件のURLで指定してください`);
+  }
+
+  const ref = db.collection("bugReports").doc(reportId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "報告が見つかりません");
+  }
+  if (snap.data()?.createdBy !== uid) {
+    throw new HttpsError("permission-denied", "この報告に画像を添付する権限がありません");
+  }
+
+  await ref.update({ imageUrls });
+  return { ok: true };
+});
 
 // ── ペアの解消: カップルの共有データをすべて削除する ──────────
 // 「ペアを解消する」は、片方の操作で相手のデータだけ残す・自分だけ抜ける、

@@ -15,10 +15,15 @@ class BugReportResult {
   final bool accepted;
   final BugReportClassification classification;
   final String summary;
+  // acceptedのときだけ入る、作成されたbugReportsドキュメントのID。
+  // 画像を添付する場合、Storageのアップロード先・attachImages()の
+  // 引数として使う。
+  final String? id;
   const BugReportResult({
     required this.accepted,
     required this.classification,
     required this.summary,
+    this.id,
   });
 }
 
@@ -39,9 +44,10 @@ const kBugReportUnknownMessage = '送信に失敗しました。もう一度お�
 const kBugReportUnavailableMessage = 'ただいま送信を受け付けられません。復旧までしばらくお待ちください';
 
 class BugReportService {
-  // 本番はFirebase Callable Functions（submitBugReport）を呼ぶ。
-  // テストからは実際のFirebase呼び出しをせずに応答を差し込めるようにしてある。
+  // 本番はFirebase Callable Functions（submitBugReport / attachBugReportImages）
+  // を呼ぶ。テストからは実際のFirebase呼び出しをせずに応答を差し込めるようにしてある。
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> data) _invoke;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic> data) _invokeAttachImages;
 
   // 自分が送った報告一覧（watchMyReports）用。引数なしで生成すると本番の
   // Firebaseを使う（既存の呼び出しはそのまま）。テストからは firestore / uid を
@@ -53,9 +59,11 @@ class BugReportService {
 
   BugReportService({
     Future<Map<String, dynamic>> Function(Map<String, dynamic> data)? invoke,
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> data)? invokeAttachImages,
     FirebaseFirestore? firestore,
     String? uid,
   })  : _invoke = invoke ?? _defaultInvoke,
+        _invokeAttachImages = invokeAttachImages ?? _defaultInvokeAttachImages,
         _firestoreOverride = firestore,
         _overrideUid = uid;
 
@@ -64,6 +72,12 @@ class BugReportService {
 
   static Future<Map<String, dynamic>> _defaultInvoke(Map<String, dynamic> data) async {
     final callable = FirebaseFunctions.instance.httpsCallable('submitBugReport');
+    final result = await callable.call<Map<String, dynamic>>(data);
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  static Future<Map<String, dynamic>> _defaultInvokeAttachImages(Map<String, dynamic> data) async {
+    final callable = FirebaseFunctions.instance.httpsCallable('attachBugReportImages');
     final result = await callable.call<Map<String, dynamic>>(data);
     return Map<String, dynamic>.from(result.data as Map);
   }
@@ -91,7 +105,20 @@ class BugReportService {
         accepted: data['accepted'] == true,
         classification: _parseClassification(data['classification'] as String?),
         summary: data['summary'] as String? ?? '',
+        id: data['id'] as String?,
       );
+    } catch (e) {
+      throw BugReportSubmissionException(_describeFailure(e));
+    }
+  }
+
+  // ── 受理された報告に画像を添付 ──────────────────────
+  // submit()がaccepted: trueを返した後、画像をStorageへアップロード済みの
+  // URLを渡して呼ぶ。画像アップロード自体はStorageServiceが担当し、ここは
+  // Cloud Functions（attachBugReportImages）へURLを渡すだけ。
+  Future<void> attachImages(String reportId, List<String> imageUrls) async {
+    try {
+      await _invokeAttachImages({'reportId': reportId, 'imageUrls': imageUrls});
     } catch (e) {
       throw BugReportSubmissionException(_describeFailure(e));
     }
