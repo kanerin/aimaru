@@ -34,7 +34,16 @@ class EventService {
   // 新規作成時にセットするリマインダー管理用フィールド。
   // reminded: 単発の予定用（送信後にCloud Functions側でtrueにする）
   // remindedYear: recurring（毎年繰り返し）の予定用。送信済みの年を記録する
-  static const _freshReminderFields = {'reminded': false, 'remindedYear': null};
+  // nextOccurrenceMs: 課題8フェーズ3、processRecurringEventsのクエリ絞り込みに
+  // 使うフィールド。Cloud Functions側が実際の発生日時へ書き戻すまでの間、
+  // 必ず絞り込みに引っかかるよう過去日時（epoch）を入れておく。ここを
+  // 省く（フィールド自体が無い状態にする）と、nextOccurrenceMsで絞り込む
+  // クエリに一切マッチせず、recurringな予定が永久にリマインドされなくなる。
+  static final _freshReminderFields = {
+    'reminded': false,
+    'remindedYear': null,
+    'nextOccurrenceMs': Timestamp.fromMillisecondsSinceEpoch(0),
+  };
 
   // ── 予定を追加 ────────────────────────────────────
   Future<AimaruEvent> addEvent(String coupleId, AimaruEvent event) async {
