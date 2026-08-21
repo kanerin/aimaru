@@ -83,4 +83,4 @@ jobs:
           prompt: |
             .claude/commands/fix-bug-reports.md の指示を読み、その通りに実行してください。
           display_report: true
-          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(node *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
+          claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git *),Bash(flutter *),Bash(npm *),Bash(node *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"
