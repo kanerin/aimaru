@@ -21,6 +21,15 @@ class AiChatScreen extends StatefulWidget {
     required List<Map<String, String>> history,
     required String eventsContext,
   })? analyzeImageOverride;
+  final Future<GeminiReply> Function(
+    String message,
+    List<Map<String, String>> history, {
+    required String eventsContext,
+  })? sendMessageOverride;
+  // AIへ渡す「直近の予定」の組み立ては本番のFirestore（EventService以外に
+  // GoogleCalendarCacheServiceも直接Firebaseを叩く）に依存するため、
+  // テストからはこれごと差し替えられるようにしておく。
+  final Future<String> Function()? buildEventsContextOverride;
 
   const AiChatScreen({
     super.key,
@@ -28,6 +37,8 @@ class AiChatScreen extends StatefulWidget {
     this.eventServiceOverride,
     this.pickImageOverride,
     this.analyzeImageOverride,
+    this.sendMessageOverride,
+    this.buildEventsContextOverride,
   });
 
   @override
@@ -37,7 +48,7 @@ class AiChatScreen extends StatefulWidget {
 class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver {
   late final _gemini        = GeminiService(coupleId: widget.coupleId);
   late final _eventService  = widget.eventServiceOverride ?? EventService();
-  final _gcalCacheService   = GoogleCalendarCacheService();
+  late final _gcalCacheService = GoogleCalendarCacheService();
   final _picker             = ImagePicker();
   final _controller         = TextEditingController();
   final _scrollCtrl         = ScrollController();
@@ -129,6 +140,11 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   }
 
   Future<void> _send(String text) async {
+    // 前の送信の応答待ち中に次を送れてしまうと、2つの呼び出しが独立に
+    // 完了して応答の前後関係が崩れる（先に送った方の応答が後から
+    // 届く、等）。ユーザーから見ると「何もしていないのに」応答や
+    // エラーが遅れて出てくるように見えるため、応答が返るまでは弾く。
+    if (_thinking) return;
     if (text.trim().isEmpty) return;
     _controller.clear();
 
@@ -142,7 +158,11 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       final history = _historyForRequest();
       final eventsContext = await _eventsContextWithFallback();
 
-      final reply = await _gemini.respond(text, history, eventsContext: eventsContext);
+      final reply = await (widget.sendMessageOverride?.call(
+            text, history,
+            eventsContext: eventsContext,
+          ) ??
+          _gemini.respond(text, history, eventsContext: eventsContext));
       if (!mounted) return;
 
       setState(() {
@@ -161,7 +181,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
 
   // ── 画像（他社カレンダーのスクショ、招待状など）から予定候補を抽出する ──
   Future<void> _sendImage() async {
-    if (_pickingImage) return;
+    if (_pickingImage || _thinking) return;
 
     setState(() => _pickingImage = true);
     XFile? file;
@@ -223,7 +243,8 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   // ここだけ個別にフォールバックする（例: 通信が不安定な状態から復帰した直後など）。
   Future<String> _eventsContextWithFallback() async {
     try {
-      return await _buildEventsContext().timeout(const Duration(seconds: 6));
+      final builder = widget.buildEventsContextOverride ?? _buildEventsContext;
+      return await builder().timeout(const Duration(seconds: 6));
     } catch (_) {
       return 'なし';
     }
@@ -435,7 +456,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
                 Tooltip(
                   message: '画像から予定を読み取る',
                   child: GestureDetector(
-                    onTap: _pickingImage ? null : _sendImage,
+                    onTap: (_pickingImage || _thinking) ? null : _sendImage,
                     child: Container(
                       width: 40, height: 40,
                       margin: const EdgeInsets.only(right: 8),
@@ -464,12 +485,12 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
                       hintText: '予定を追加、プランを相談...',
                       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
-                    onSubmitted: _send,
+                    onSubmitted: _thinking ? null : _send,
                   ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () => _send(_controller.text),
+                  onTap: _thinking ? null : () => _send(_controller.text),
                   child: Container(
                     width: 40, height: 40,
                     decoration: BoxDecoration(
