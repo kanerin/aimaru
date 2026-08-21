@@ -74,6 +74,27 @@ describe("buildTriageContents", () => {
     assert.ok(dataStart >= 0);
     assert.ok(maliciousIndex > dataStart);
   });
+
+  it("「バグ」という単語ではなく実際の挙動で判定するよう明示する", () => {
+    const contents = buildTriageContents("テスト入力");
+    const text = (contents[0].parts[0] as { text: string }).text;
+    assert.ok(text.includes("文中に「バグ」「不具合」という単語が含まれているかどうかで判定しないこと"));
+    // 実際に誤判定が発生した具体例を明示していることを確認する
+    assert.ok(text.includes("やりたいことリストがカレンダー登録されたか一覧画面からわからないバグがある"));
+  });
+
+  it("既存機能の削除・無効化を求める要望はinvalidにするよう明示する", () => {
+    const contents = buildTriageContents("テスト入力");
+    const text = (contents[0].parts[0] as { text: string }).text;
+    assert.ok(text.includes("既存機能を削除・無効化・非表示にすることを求める要望は"));
+    assert.ok(text.includes("ペア解消の機能がいらない"));
+  });
+
+  it("判断に迷う場合はinvalid側に倒すよう明示する", () => {
+    const contents = buildTriageContents("テスト入力");
+    const text = (contents[0].parts[0] as { text: string }).text;
+    assert.ok(text.includes("判断に迷う場合はinvalid側に倒してください"));
+  });
 });
 
 describe("parseTriageResponse", () => {

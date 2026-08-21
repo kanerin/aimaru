@@ -406,6 +406,31 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   テスト専用の注入ポイントを追加し、「画像が選択済み」の状態から送信フローを検証できる
   ようにした（既存の`serviceOverride`等と同じ設計方針）。
 
+2026-08-21、`fix-bug-reports.yml`のGemini分類・処理方針を見直した。「Googleカレンダーの
+終日予定が9:00表示になる」報告を3回連続で`already_done`と誤って却下していた根本原因
+（既存機能の話に引っ張られた誤判定）や、「バグ」という単語を含むだけで機能不足の指摘まで
+`bug`に分類されてしまう問題、既存機能の削除を求める要望が普通に`feature_request`として
+受理されてしまう問題を受けて、次の対応をした:
+- `buildTriageContents`（Gemini分類プロンプト）に、単語ではなく実際の挙動で判定する
+  よう明示し、誤判定した実例（「やりたいことリストがカレンダー登録されたか一覧画面から
+  わからないバグがある」→本来はfeature_request）を具体的に埋め込んだ。既存機能の削除・
+  無効化を求める要望（「ペア解消の機能がいらない」等）はinvalidにするよう明示した。
+  判断に迷う場合はinvalid側に倒すよう指示した。
+- **`fix-bug-reports.yml`が自動実装するのは`classification: "bug"`の報告だけ**に絞った。
+  機能追加は「あったほうがよいかもしれない」という製品判断そのものであり、バグ修正
+  （既存の意図通りに戻すだけ）と違って無人・無レビューでdevelopへ入れるべきではない
+  という判断。`route-feature-requests-to-issues.mjs`（Claude Codeを介さない決定的な
+  スクリプト）が、ワークフローの中でClaude Codeの実行より前に機能要望をGitHub Issueへ
+  起票し、`rejected`（`out_of_scope`）にする。人間がそのIssueへ`@claude`でメンションして
+  初めて`claude-mention.yml`が実装する。`list-pending-bug-reports.mjs`に
+  `--classification=bug|feature_request`の絞り込みを追加し、`.claude/commands/
+  fix-bug-reports.md`は必ず`--classification=bug`を付けて呼ぶよう更新した。
+- cronの頻度を1日2回から5時間おき（`0 */5 * * *`）へ変更した。
+- 上記の変更前に受理されていた既存の報告のうち、実態に合わないものを手動で是正した:
+  「やりたいことリストが...わからないバグがある」（`bug`→`feature_request`へ再分類し、
+  Issue #69を起票）、「ペア解消機能の削除」「AIによる内容チェック機能の削除」（いずれも
+  既存機能を残す方針のため`rejected`・`other`で却下、Issueは起票しない）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
@@ -447,18 +472,27 @@ notion-audit / notion-implement / market-brief / pr-review）を廃止し、GitH
 「実装してPRを作りCI成功のみを条件にauto-mergeする」方式へ変わり（2026-08-14）、
 その後既存課題の消化に絞った `reduce-debt.yml` を朝枠として追加し、2026-08-20には
 アプリ内バグ報告・機能要望フォームから届く内容を処理する `fix-bug-reports.yml`
-（1日2回）を新設した（下記の一覧は現状に更新済み）。`test-report.yml` / `backmerge.yml` /
+を新設した（下記の一覧は現状に更新済み）。`test-report.yml` / `backmerge.yml` /
 `claude-mention.yml` は引き続き、月間コストを抑えるため「何か対応が要る時」だけ
 Claudeを呼ぶ設計のまま（テストが全部greenの週やコンフリクトが無いリリースでは、
 Claude起動コストは実質ゼロ）。
 
+2026-08-21、`fix-bug-reports.yml`の役割を「バグ修正のみ」に絞った。無人・無レビューで
+developへ入れてよいのはバグ修正（既存の意図通りに戻すだけ）に限り、機能追加は
+「あったほうがよいかもしれない」という製品判断そのものであるため、人間の承認を
+必須にした。`classification: feature_request`の報告は、Claude Codeの判断を介さない
+決定的なスクリプト（`functions/scripts/route-feature-requests-to-issues.mjs`）が
+GitHub Issueへ起票してrejected（out_of_scope）にする。人間がそのIssueへ`@claude`で
+メンションして初めて`claude-mention.yml`が実装する。cronの頻度も1日2回から
+5時間おきへ変更した。
+
 ```
 reduce-debt.yml       1日1回cron（朝）   docs/open-issues.mdのP0/P1のうちコード変更だけで完結するものを1つ実装 → develop へPR → CI成功でauto-merge
 propose-feature.yml   1日1回cron（夜）   市場動向調査 → 改善を1つ実装 → develop へPR → CI成功でauto-merge
-fix-bug-reports.yml   1日2回cron         Firestoreのbug報告ストックから未着手の1件を実装 → develop へPR → CI成功でauto-merge
+fix-bug-reports.yml   5時間おきcron      Firestoreのbug報告ストックから未着手のバグ報告1件を実装 → develop へPR → CI成功でauto-merge（機能要望はIssue化のみ、人間承認制）
 test-report.yml       週2-3回cron        テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
 backmerge.yml          release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
-claude-mention.yml     @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼
+claude-mention.yml     @claudeメンション（書き込み権限者限定） → 良い提案Issueを人間が選んで実装依頼（fix-bug-reports.ymlが起票した機能要望Issueもここに含まれる）
 ```
 
 詳細は`CLAUDE.md`の「自動化の構成」、各ワークフローファイル、`.claude/commands/`を参照。
