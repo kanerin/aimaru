@@ -16,11 +16,20 @@
 // 報告は永久に誰にも拾われなくなるため、放置されたロックは期限切れとして
 // 再度対象に含め、次の実行が改めて着手できるようにする。
 //
-// 使い方: node scripts/list-pending-bug-reports.mjs
+// --classification=bug | feature_request を渡すと、その分類だけに絞り込む。
+// fix-bug-reports.ymlはバグ修正のみを自動実装するため、Claude Codeが呼ぶときは
+// 必ず --classification=bug を渡す（feature_requestは別の決定的なスクリプト
+// route-feature-requests-to-issues.mjsがClaudeを介さずに処理する）。
+//
+// 使い方: node scripts/list-pending-bug-reports.mjs [--classification=bug|feature_request]
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1時間
+
+const classificationArg = process.argv
+  .find((arg) => arg.startsWith("--classification="))
+  ?.split("=")[1];
 
 initializeApp();
 const db = getFirestore();
@@ -49,6 +58,7 @@ const reports = [...pendingSnap.docs, ...staleInProgressDocs]
       createdAt: data.createdAt?.toDate?.().toISOString() ?? null,
     };
   })
+  .filter((r) => classificationArg == null || r.classification === classificationArg)
   .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
 
 process.stdout.write(JSON.stringify(reports, null, 2));

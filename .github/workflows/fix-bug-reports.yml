@@ -1,11 +1,19 @@
-name: Fix reported bugs & feature requests (2x/day)
+name: Fix reported bugs (every 5h)
 
 # アプリ内の「バグ報告・機能要望」フォーム（設定画面）から届き、
 # submitBugReport（Cloud Functions）がGeminiで判定してFirestoreの
-# bugReportsコレクションへストックした内容を1件読み、実装して
-# developへPRを作成してauto-mergeする。
+# bugReportsコレクションへストックした内容のうち、**バグ報告のみ**を
+# 1件読み、実装してdevelopへPRを作成してauto-mergeする。
 # developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
 # CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
+#
+# 2026-08-21、機能要望（classification: feature_request）は対象から外した。
+# 機能追加は「あったほうがよいかもしれない」という製品判断そのものであり、
+# バグ修正（既存の意図通りに戻すだけ）と違って無人・無レビューで
+# developへ入れるべきではない。route-feature-requests-to-issues.mjs
+# （決定的なスクリプト、LLMの判断を介さない）が機能要望をGitHub Issueへ
+# 起票してrejected（out_of_scope）にし、人間がそのIssueへ@claudeで
+# メンションして初めて実装される（claude-mention.yml が対応する）。
 #
 # 人間レビューを介さない自動実装のため、安全装置はCIに加えて次の2つ:
 # - bugReportsコレクション自体はクライアントから読み書きできない
@@ -16,8 +24,7 @@ name: Fix reported bugs & feature requests (2x/day)
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # 毎日 03:00 UTC = 12:00 JST
-    - cron: '0 15 * * *' # 毎日 15:00 UTC = 24:00 JST
+    - cron: '0 */5 * * *' # 5時間おき（UTC 0,5,10,15,20時 = JST 9,14,19,24,5時）
   workflow_dispatch: {}
 
 # workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
@@ -74,6 +81,17 @@ jobs:
         run: |
           git config user.name "aimaru-bot"
           git config user.email "actions@users.noreply.github.com"
+
+      # 機能要望はClaude Codeを介さず、ここで決定的に（LLMの判断無しで）
+      # GitHub Issueへ振り分ける。Claude Codeの実行より前に行うことで、
+      # list-pending-bug-reports.mjs --classification=bug がその後の
+      # ステップで参照するpending一覧には最初から機能要望が含まれない。
+      - name: Route feature requests to GitHub Issues (deterministic, no LLM judgment)
+        working-directory: functions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: node scripts/route-feature-requests-to-issues.mjs
 
       - uses: anthropics/claude-code-action@v1
         env:
