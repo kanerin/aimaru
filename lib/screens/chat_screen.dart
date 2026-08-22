@@ -11,6 +11,7 @@ import '../services/storage_service.dart';
 import '../services/couple_service.dart';
 import '../services/image_save_service.dart';
 import '../utils/app_theme.dart';
+import '../utils/chat_date_divider.dart';
 import 'image_detail_screen.dart';
 
 // ── カップル間の通常チャット（AIチャットとは別）───────
@@ -172,7 +173,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _scrollCtrl,
                     padding: const EdgeInsets.all(16),
                     itemCount: messages.length,
-                    itemBuilder: (ctx, i) => _buildBubble(messages[i]),
+                    itemBuilder: (ctx, i) {
+                      final message = messages[i];
+                      final showDivider = shouldShowDateDivider(
+                        i == 0 ? null : messages[i - 1].timestamp,
+                        message.timestamp,
+                      );
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (showDivider) _buildDateDivider(message.timestamp),
+                          _buildBubble(message),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -219,6 +233,28 @@ class _ChatScreenState extends State<ChatScreen> {
             ]),
           ),
         ],
+      ),
+    );
+  }
+
+  // 日付を跨いだところに出すセンターラインの区切り（#68）。
+  // LINEなどのトーク画面と同じく、その日最初のメッセージの上に表示する。
+  Widget _buildDateDivider(DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.navySurface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            DateFormat('M月d日（E）', 'ja').format(date),
+            style: const TextStyle(
+              fontSize: 11.5, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     );
   }

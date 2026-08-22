@@ -154,6 +154,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final byDate = <DateTime, List<_GcalEntry>>{};
       map.forEach((uid, events) {
         for (final e in events) {
+          // 自分以外がprivate指定したGoogle予定はパートナーに見せない
+          // （AimaruEventのprivate予定と同じ扱い。Google側にはこの概念が
+          // 無いため、GoogleCalendarCacheService側でvisibilityを付与している）。
+          if (uid != _selfUid && e.visibility == EventVisibility.private) continue;
           // 開始日にしかキーを置かないと、日をまたぐ予定（旅行など）が
           // 初日にしか出ずドットも初日にしか付かない。終日予定のendは
           // 翌日を指す排他的な値なので、gcalLastDayで最終日へ直してから展開する。
@@ -716,9 +720,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('📅 ${e.event.title}', style: const TextStyle(
-                                    fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
-                                  )),
+                                  Row(children: [
+                                    if (e.event.visibility == EventVisibility.private) ...[
+                                      const Icon(Icons.lock_outline, size: 12, color: AppColors.textMuted),
+                                      const SizedBox(width: 3),
+                                    ],
+                                    Flexible(
+                                      child: Text('📅 ${e.event.title}', style: const TextStyle(
+                                        fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
+                                      )),
+                                    ),
+                                  ]),
                                   const SizedBox(height: 3),
                                   Text(
                                     e.event.allDay

@@ -392,6 +392,53 @@ describe("googleCalendarCache — 書き込みは自分の分だけ", () => {
   });
 });
 
+describe("googleEventVisibility — 自分の指定は自分しか読み書きできない", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+  });
+
+  it("自分の指定は書ける・読める", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_A}`).set({
+        privateEventIds: ["gcal-1"],
+      }),
+    );
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_A}`).get());
+  });
+
+  it("パートナーの指定は読めない（googleCalendarCacheと違いメンバーでも不可）", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_B}`)
+        .set({ privateEventIds: ["gcal-1"] });
+    });
+
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_B}`).get());
+  });
+
+  it("パートナーの指定を書き換えられない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_B}`)
+        .set({ privateEventIds: [] });
+    });
+
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_B}`).set({
+        privateEventIds: ["改ざん"],
+      }),
+    );
+  });
+
+  it("メンバー以外は書けない", async () => {
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/googleEventVisibility/${USER_C}`).set({
+        privateEventIds: [],
+      }),
+    );
+  });
+});
+
 describe("couples — ペアの作成と参加", () => {
   it("自分を含まないペアは作れない", async () => {
     await assertFails(

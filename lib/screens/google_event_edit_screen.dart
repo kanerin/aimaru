@@ -32,6 +32,10 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
       : widget.event.end;
   late DateTime _end = _initialEnd;
   late bool _allDay = widget.event.allDay;
+  // widget.eventはgoogleCalendarCacheから読んだ直近の同期結果なので、
+  // 自分が最後に指定したvisibilityが既に乗っている
+  // （GoogleCalendarCacheService.pushMyEventsが同期のたびに付与する）。
+  late EventVisibility _visibility = widget.event.visibility;
   bool _saving   = false;
   bool _deleting = false;
 
@@ -84,6 +88,15 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
       }
       return;
     }
+
+    // Googleカレンダー自体にはvisibilityの概念が無いので、AIMARU側の
+    // 台帳（googleEventVisibility）へ別途保存する。_resyncCacheが
+    // Google側から予定を取り直したときに、この値をキャッシュへ上書きする。
+    await _cacheService.setEventPrivate(
+      widget.coupleId,
+      widget.event.id,
+      _visibility == EventVisibility.private,
+    );
 
     await _resyncCache(_start);
 
@@ -191,6 +204,27 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
             onAllDayChanged: (v) => setState(() => _allDay = v),
           ),
           const SizedBox(height: 20),
+
+          // AIMARUで作った予定と同じ「自分だけに表示」の切り替え。Google
+          // カレンダー自体にはこの概念が無いため、AIMARU側だけで管理する
+          // （googleEventVisibility、Google側のイベントデータは変更しない）。
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                child: Text('自分だけに表示（相手には見えません）',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+              ),
+              Switch(
+                value: _visibility == EventVisibility.private,
+                onChanged: (v) => setState(
+                  () => _visibility = v ? EventVisibility.private : EventVisibility.shared,
+                ),
+                activeThumbColor: appAccent(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
 
           // 場所・メモはGoogleカレンダー側にも同じ概念（location / description）が
           // あるので、このアプリで作った予定と同じように編集できるようにする。

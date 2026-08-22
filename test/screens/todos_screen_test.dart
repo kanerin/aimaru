@@ -95,6 +95,45 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('登録済み(addedToCalendar)のTODOは「登録済み」バッジが出て再タップしても遷移しない', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    final observer = _RecordingNavigatorObserver();
+    await tester.pumpWidget(wrap(controller.stream, observer: observer));
+
+    controller.add([
+      TodoItem(
+        id: 't1',
+        coupleId: 'couple-1',
+        text: '水族館',
+        createdBy: 'u1',
+        createdAt: DateTime(2026, 1, 1),
+        addedToCalendar: true,
+      ),
+    ]);
+    await tester.pump();
+
+    expect(find.text('登録済み'), findsOneWidget);
+
+    // 重複した予定が増えるのを防ぐため、登録済みのものを再タップしても
+    // カレンダー登録画面へは遷移しない。
+    await tester.tap(find.text('水族館'));
+    expect(observer.pushedCount, 0);
+
+    await controller.close();
+  });
+
+  testWidgets('未登録のTODOには「登録済み」バッジが出ない', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    expect(find.text('登録済み'), findsNothing);
+
+    await controller.close();
+  });
+
   testWidgets('削除ボタンを押すとTodoServiceのdeleteTodoが呼ばれる', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = TodoService(firestore: db, uid: 'u1');

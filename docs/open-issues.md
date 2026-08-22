@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-21 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-22 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -13,8 +13,8 @@
 | Cloud Functions（判定ロジック） | `cd functions && npm test` | **87件すべて通過**（ローカルで確認、CIでも要確認） |
 | Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **41件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
-| セキュリティルール | `cd rules_test && npm test` | **58件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
-| Flutter 単体・ウィジェット | `flutter test` | **335件すべて通過**（ローカルで確認、CIでも要確認） |
+| セキュリティルール | `cd rules_test && npm test` | **85件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
+| Flutter 単体・ウィジェット | `flutter test` | **379件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -30,9 +30,11 @@ test/utils/japan_holidays_test.dart              13   祝日計算
 test/utils/recurring_events_test.dart            12   毎年繰り返しの展開
 test/services/google_calendar_service_test.dart   8   Googleとの日時変換
 test/models/aimaru_event_test.dart                7   モデルの変換
-test/services/todo_service_test.dart              5   共有TODOのCRUD・並び順
+test/services/todo_service_test.dart              7   共有TODOのCRUD・並び順・カレンダー登録済みマーク
 test/services/theme_controller_test.dart          4   テーマ
-test/screens/todos_screen_test.dart               6   やりたいことリストのロード・エラー・表示状態・カレンダー登録への遷移・削除・完了切替
+test/screens/todos_screen_test.dart               8   やりたいことリストのロード・エラー・表示状態・カレンダー登録への遷移・削除・完了切替・登録済みバッジ
+test/utils/chat_date_divider_test.dart            5   トーク画面の日付区切り線を出すかどうかの判定
+test/services/google_calendar_cache_service_test.dart 6 Google予定のprivate指定とキャッシュへの反映
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
 test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
 test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
@@ -53,7 +55,7 @@ functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レー�
 functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
 test/services/bug_report_service_test.dart       15   バグ報告送信サービス（入力検証・応答解釈・エラー分類・自分の報告一覧watchMyReports）
 test/screens/bug_report_screen_test.dart         10   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示・送った報告一覧の表示/エラー）
-rules_test/firestore.test.js                     58   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消含む）
+rules_test/firestore.test.js                     79   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消・googleEventVisibility自分のみ読み書き含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -435,6 +437,33 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   「やりたいことリストが...わからないバグがある」（`bug`→`feature_request`へ再分類し、
   Issue #69を起票）、「ペア解消機能の削除」「AIによる内容チェック機能の削除」（いずれも
   既存機能を残す方針のため`rejected`・`other`で却下、Issueは起票しない）。
+
+2026-08-22、`route-feature-requests-to-issues.mjs`が起票した機能要望Issue5件
+（#68・#69・#71・#72・#73）をユーザーの指示で対話的に実装した（本来は各Issueへ
+`@claude`メンションして`claude-mention.yml`に個別対応させる想定だが、今回は
+まとめて着手）。実質3件の作業に整理できた（#69と#72、#71と#73はそれぞれ
+同一要望の重複だった）:
+- **トーク画面の日付区切り線**（#68）: `lib/utils/chat_date_divider.dart`に
+  `shouldShowDateDivider`を切り出し、日付が変わったメッセージの直前だけに
+  センターラインの区切りを出す。
+- **やりたいことリスト→カレンダー変換後も一覧に残す**（#69・#72）:
+  以前はカレンダー登録と同時にTODO自体を削除していたため、一覧から突然
+  消えて「登録されたか分からない」という報告だった。`TodoItem.addedToCalendar`
+  を追加し、削除ではなくマークして一覧に残し「登録済み」バッジを表示する
+  （再タップでの重複登録も防ぐ）。
+- **Googleカレンダー予定にも「自分だけに表示」を追加**（#71・#73）:
+  AIMARU作成の予定にはprivate/shared設定があるのに、Google由来の予定には
+  無かった（Googleカレンダー自体にこの概念が無いため）。新設の
+  `couples/{coupleId}/googleEventVisibility/{uid}`（自分だけ読み書き可、
+  `googleCalendarCache`と違いメンバーでも他人の分は読めない）へ
+  private指定したGoogle予定のIDを保存し、`GoogleCalendarCacheService.
+  pushMyEvents`が同期のたびにその指定を`GCalEventSummary.visibility`へ
+  焼き直す（Google側のfetchEventsは毎回取り直しでこの概念を持たないため）。
+  パートナーの端末では`visibility == private`のGoogle予定をカレンダー画面の
+  描画時点で除外する（Firestoreルールでの絞り込みではなくクライアント側の
+  除外である点はAIMARU予定のprivateと異なる。Googleカレンダーキャッシュの
+  設計上、パートナーは同じFirestoreドキュメントを丸ごと読める権限を元々
+  持っているため、この機能は「アプリのUI上は見せない」という粒度に留まる）。
 
 ### P2 — 余力があれば
 

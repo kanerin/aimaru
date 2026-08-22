@@ -55,7 +55,9 @@ class _TodosScreenState extends State<TodosScreen> {
   }
 
   // タイトルをタップしたときに、そのままカレンダーの新規予定として登録できる
-  // ようにする。保存されたら元のTODOはやることが終わったとみなして消す。
+  // ようにする。以前は登録と同時にこのTODO自体を削除していたが、一覧から
+  // 突然消えて「登録されたのかわからない」という報告（#69・#72）があった
+  // ため、削除せずaddedToCalendarを立てて一覧に残す（_buildTileでバッジ表示）。
   Future<void> _addToCalendar(TodoItem todo) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -66,7 +68,7 @@ class _TodosScreenState extends State<TodosScreen> {
       ),
     );
     if (saved == true) {
-      await _delete(todo);
+      await _todoService.markAddedToCalendar(todo);
     }
   }
 
@@ -183,19 +185,43 @@ class _TodosScreenState extends State<TodosScreen> {
                   activeColor: appAccent(context),
                 ),
                 // タイトルをタップするとカレンダー登録に遷移する
-                // （チェックボックス・削除ボタンとタップ領域を分ける）
+                // （チェックボックス・削除ボタンとタップ領域を分ける）。
+                // 登録済みのものを再タップすると重複した予定が増えてしまう
+                // ため、登録済みならタップを無効にしてバッジ表示だけにする。
                 Expanded(
                   child: InkWell(
-                    onTap: () => _addToCalendar(todo),
+                    onTap: todo.addedToCalendar ? null : () => _addToCalendar(todo),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      child: Text(
-                        todo.text,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
-                          decoration: todo.done ? TextDecoration.lineThrough : null,
-                        ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              todo.text,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: todo.done ? AppColors.textMuted : AppColors.textPrimary,
+                                decoration: todo.done ? TextDecoration.lineThrough : null,
+                              ),
+                            ),
+                          ),
+                          if (todo.addedToCalendar) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: appAccent(context).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                Icon(Icons.event_available, size: 11, color: appAccent(context)),
+                                const SizedBox(width: 3),
+                                Text('登録済み',
+                                    style: TextStyle(fontSize: 10.5, color: appAccent(context))),
+                              ]),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
