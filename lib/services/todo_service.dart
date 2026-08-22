@@ -36,6 +36,18 @@ class TodoService {
     await _todosRef(todo.coupleId).doc(todo.id).update({'done': done});
   }
 
+  // ── 「興味あり」の切り替え ────────────────────────
+  // 既に自分のuidが入っていれば外し、入っていなければ足す
+  // （トグル）。誰の案にも双方が反応できるよう、作成者本人かどうかの
+  // 制限はかけない。
+  Future<void> toggleLike(TodoItem todo, String uid) async {
+    await _todosRef(todo.coupleId).doc(todo.id).update({
+      'likedBy': todo.likedBy.contains(uid)
+          ? FieldValue.arrayRemove([uid])
+          : FieldValue.arrayUnion([uid]),
+    });
+  }
+
   // ── カレンダーへ登録済みとしてマーク ─────────────────
   // 以前はカレンダー登録と同時に削除していたが、一覧から消えて
   // 「登録されたのかわからない」という報告（#69・#72）があったため、

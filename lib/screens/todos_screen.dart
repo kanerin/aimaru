@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/todo_service.dart';
@@ -14,11 +15,14 @@ class TodosScreen extends StatefulWidget {
   final Stream<List<TodoItem>>? todosStreamOverride;
   // テストからfake_cloud_firestore等を差し込むための注入ポイント。
   final TodoService? todoServiceOverride;
+  // テストからFirebase Authに触れずに「自分」を差し込むための注入ポイント。
+  final String? currentUidOverride;
   const TodosScreen({
     super.key,
     required this.coupleId,
     this.todosStreamOverride,
     this.todoServiceOverride,
+    this.currentUidOverride,
   });
 
   @override
@@ -36,6 +40,8 @@ class _TodosScreenState extends State<TodosScreen> {
 
   late final Stream<List<TodoItem>> _todosStream =
       widget.todosStreamOverride ?? _todoService.watchTodos(widget.coupleId);
+
+  String get _uid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
 
   @override
   void dispose() {
@@ -146,6 +152,30 @@ class _TodosScreenState extends State<TodosScreen> {
     );
   }
 
+  // 「興味あり」ボタン。相手が持ち寄った案のうちどれに乗り気かを
+  // 一目で伝えられるようにする（Pairyの移行先候補として比較される
+  // Pairtoの「やりたいことリスト」いいね機能に近い差別化要素）。
+  Widget _buildLikeButton(TodoItem todo) {
+    final liked = todo.likedBy.contains(_uid);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (todo.likedBy.isNotEmpty)
+          Text('${todo.likedBy.length}',
+              style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+        IconButton(
+          icon: Icon(
+            liked ? Icons.favorite : Icons.favorite_border,
+            size: 20,
+            color: liked ? Colors.redAccent : AppColors.textMuted,
+          ),
+          tooltip: '興味あり',
+          onPressed: () => _todoService.toggleLike(todo, _uid),
+        ),
+      ],
+    );
+  }
+
   Widget _buildTile(TodoItem todo) {
     return Dismissible(
       key: ValueKey(todo.id),
@@ -226,6 +256,7 @@ class _TodosScreenState extends State<TodosScreen> {
                     ),
                   ),
                 ),
+                _buildLikeButton(todo),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
                   tooltip: '削除',
