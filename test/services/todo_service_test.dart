@@ -56,6 +56,26 @@ void main() {
     });
   });
 
+  group('カレンダー登録済みのマーク', () {
+    test('markAddedToCalendarで立てるとaddedToCalendarがtrueになる', () async {
+      final created = await service.addTodo(coupleId, '花見');
+      expect(created.addedToCalendar, isFalse);
+
+      await service.markAddedToCalendar(created);
+
+      final data = (await todosRef().doc(created.id).get()).data()!;
+      expect(data['addedToCalendar'], true);
+    });
+
+    test('マークしても削除はされない（以前は削除していた）', () async {
+      final created = await service.addTodo(coupleId, '紅葉狩り');
+
+      await service.markAddedToCalendar(created);
+
+      expect((await todosRef().doc(created.id).get()).exists, isTrue);
+    });
+  });
+
   group('削除', () {
     test('削除するとドキュメントが消える', () async {
       final created = await service.addTodo(coupleId, 'キャンプ');

@@ -36,6 +36,14 @@ class TodoService {
     await _todosRef(todo.coupleId).doc(todo.id).update({'done': done});
   }
 
+  // ── カレンダーへ登録済みとしてマーク ─────────────────
+  // 以前はカレンダー登録と同時に削除していたが、一覧から消えて
+  // 「登録されたのかわからない」という報告（#69・#72）があったため、
+  // 削除せず残して一覧側でバッジ表示できるようにする。
+  Future<void> markAddedToCalendar(TodoItem todo) async {
+    await _todosRef(todo.coupleId).doc(todo.id).update({'addedToCalendar': true});
+  }
+
   // ── TODOを削除 ────────────────────────────────────
   Future<void> deleteTodo(TodoItem todo) async {
     await _todosRef(todo.coupleId).doc(todo.id).delete();

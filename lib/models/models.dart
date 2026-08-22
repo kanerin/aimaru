@@ -295,6 +295,11 @@ class TodoItem {
   final bool done;
   final String createdBy;
   final DateTime createdAt;
+  // カレンダーの予定として登録済みかどうか。以前はカレンダー登録と同時に
+  // このTODO自体を削除していたが、一覧から突然消えて「登録されたのか
+  // わからない」という報告（#69・#72）を受け、削除せずここに残して
+  // 一覧側で判別できるようにした。
+  final bool addedToCalendar;
 
   TodoItem({
     required this.id,
@@ -303,6 +308,7 @@ class TodoItem {
     this.done = false,
     required this.createdBy,
     required this.createdAt,
+    this.addedToCalendar = false,
   });
 
   factory TodoItem.fromDoc(DocumentSnapshot doc) {
@@ -314,6 +320,8 @@ class TodoItem {
       done:      d['done'] ?? false,
       createdBy: d['createdBy'] ?? '',
       createdAt: (d['createdAt'] as Timestamp).toDate(),
+      // 既存のTODOにはこのフィールドが無いのでfalseへフォールバックする
+      addedToCalendar: d['addedToCalendar'] ?? false,
     );
   }
 
@@ -323,6 +331,7 @@ class TodoItem {
     'done':      done,
     'createdBy': createdBy,
     'createdAt': Timestamp.fromDate(createdAt),
+    'addedToCalendar': addedToCalendar,
   };
 }
 
@@ -385,6 +394,12 @@ class GCalEventSummary {
   // （AimaruEvent.location / memo に対応する）。
   final String? location;
   final String? memo;
+  // Googleカレンダー自体にはこの概念が無い（AIMARU独自の付加情報）。
+  // GoogleCalendarCacheService.pushMyEventsが、Firestoreの
+  // googleEventVisibility/{uid}に保存された自分の指定をここへ都度
+  // 上書きしてから書き込む（Google側から毎回取り直す値なので、
+  // ここに書いても次回のfetchEventsでは引き継がれないため）。
+  final EventVisibility visibility;
 
   GCalEventSummary({
     required this.id,
@@ -394,6 +409,7 @@ class GCalEventSummary {
     required this.allDay,
     this.location,
     this.memo,
+    this.visibility = EventVisibility.shared,
   });
 
   Map<String, dynamic> toMap() => {
@@ -404,6 +420,7 @@ class GCalEventSummary {
     'allDay':   allDay,
     'location': location,
     'memo':     memo,
+    'visibility': visibility.name,
   };
 
   factory GCalEventSummary.fromMap(Map<String, dynamic> map) => GCalEventSummary(
@@ -415,6 +432,9 @@ class GCalEventSummary {
     // 以前のキャッシュにはこのフィールドが無いのでnull許容で読む
     location: map['location'] as String?,
     memo:     map['memo'] as String?,
+    // 以前のキャッシュにはこのフィールドが無いのでsharedへフォールバックする
+    visibility: EventVisibility.values.firstWhere(
+        (v) => v.name == map['visibility'], orElse: () => EventVisibility.shared),
   );
 }
 

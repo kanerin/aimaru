@@ -74,6 +74,17 @@ service cloud.firestore {
         allow write: if request.auth.uid == uid && request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
+
+      // Googleカレンダーの予定のうち、パートナーには見せたくないもののIDを
+      // 自分の分だけ持つ（ドキュメントID = uid）。googleCalendarCacheと違い
+      // 自分しか読み書きできない。ここに載っているIDのGoogle予定は、
+      // GoogleCalendarCacheService.pushMyEventsがgoogleCalendarCache側の
+      // visibilityフィールドをprivateにしてから書き込み、カレンダー画面は
+      // 自分以外の相手のprivateな予定を一覧に出さない。
+      match /googleEventVisibility/{uid} {
+        allow read, write: if request.auth.uid == uid && request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
     }
 
     // 招待コード参加フローの事前確認専用。coupleIdと参加者のuidだけを
