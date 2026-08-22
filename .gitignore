@@ -50,7 +50,6 @@ app.*.map.json
 
 # ローカルの秘密情報（APIキー・署名鍵・サービスアカウント鍵など）。
 # 絶対にコミットしない。CIではGitHub Secretsを使う。
-.env.local
 *.keystore
 *.jks
 key.properties

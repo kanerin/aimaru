@@ -53,7 +53,7 @@ firebase functions:secrets:set GEMINI_API_KEY --project aimaru-7eb2e
 ```
 
 5. **ローカルでのCloud Functionsエミュレータ実行**: `functions/.secret.local`（`.gitignore`済み）に `GEMINI_API_KEY=発行したキー` を1行書いておくと、`firebase emulators:start` / `npm run serve` がそれを読む。無くてもエミュレータは起動するが、`askGemini`呼び出しは`failed-precondition`（`AIのAPIキーが設定されていないため利用できません。`）を返す
-6. **Flutter側のローカル開発**: `--dart-define=GEMINI_API_KEY=...` はもう不要。`./scripts/run_dev.sh` / `./scripts/build_release_apk.sh` は当面そのまま残しているが、渡された値をDart側は読まないため実質無害。AIチャットを試すには、実機/エミュレータから届く先が「本番のCloud Functions」か「ローカルのFunctionsエミュレータ（`FirebaseFunctions.instance.useFunctionsEmulator(...)`を呼ぶよう一時的にコードを変更）」かのどちらかになる
+6. **Flutter側のローカル開発**: `--dart-define=GEMINI_API_KEY=...` は不要（Dart側は読まないため、`./scripts/run_dev.sh` / `./scripts/build_release_apk.sh` はキーを渡さない）。AIチャットを試すには、実機/エミュレータから届く先が「本番のCloud Functions」か「ローカルのFunctionsエミュレータ（`FirebaseFunctions.instance.useFunctionsEmulator(...)`を呼ぶよう一時的にコードを変更）」かのどちらかになる
 
 ## 4. Google Calendar API（カレンダー同期）
 
@@ -313,7 +313,6 @@ commit ab34b59
 |---|---|---|
 | `FIREBASE_OPTIONS_DART_BASE64` | `lib/firebase_options.dart` をbase64化したもの（CIで復元） | 設定済み |
 | `GOOGLE_SERVICES_JSON_BASE64` | `android/app/google-services.json` をbase64化したもの（CIで復元） | 設定済み |
-| `GEMINI_API_KEY` | ビルドの`--dart-define`に渡すレガシー用途（Dart側はもう読まない。実体はCloud FunctionsのSecret Manager、`firebase functions:secrets:set`で別途登録） | 設定済み |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | App Distributionへのアップロード認証（サービスアカウントJSON） | 設定済み |
 | `FIREBASE_ANDROID_APP_ID` | 対象のFirebase Androidアプリ | 設定済み |
 | `FIREBASE_PROJECT_ID` | Firebaseプロジェクト | 設定済み |

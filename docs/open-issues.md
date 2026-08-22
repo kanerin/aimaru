@@ -110,9 +110,14 @@ Manager（`firebase functions:secrets:set GEMINI_API_KEY`）に置くように�
 呼び出しを拒否）、1日あたりの呼び出し回数を`users/{uid}`の`aiCallDate`/`aiCallCount`で制限する
 （`AI_DAILY_CALL_LIMIT`、`functions/src/gemini_logic.ts`に定数化、既定50回/日）。このカウント
 フィールドは`firestore.rules`でクライアントからの直接書き換えを禁止した（許してしまうと自分で
-0にリセットしてレート制限を無効化できてしまうため）。ビルドの`--dart-define=GEMINI_API_KEY`は
-Dart側がもう読まないため実質無害だが、`release-stg.yml`/`release.yml`/`scripts/*.sh`からの削除
-（元のフェーズ4）はまだ行っていない。`parseGeminiReply`・応答スキーマ・`describeGeminiFailure`は
+0にリセットしてレート制限を無効化できてしまうため）。`release-stg.yml`・`release.yml`は元々
+`--dart-define=GEMINI_API_KEY`を渡していなかったが、`scripts/run_dev.sh`・
+`scripts/build_release_apk.sh`（ローカル開発用）には渡す名残りのコードが残っていた。
+2026-08-22にこの2ファイルから削除し（元のフェーズ4）、対応する`.env.local.example`・
+`.gitignore`の`.env.local`エントリ、READMEの説明・GitHub Secrets一覧の該当行も合わせて
+削除した（`GEMINI_API_KEY`はGitHub Actionsのシークレットとしては元々どのworkflowからも
+参照されておらず、実体はCloud FunctionsのSecret Manager側にのみ存在する）。
+`parseGeminiReply`・応答スキーマ・`describeGeminiFailure`は
 一切変更していない（`test/services/gemini_reply_parser_test.dart`の17件は無改変のまま通過）。
 
 課題4（ペア解消・退会・データエクスポートの導線が無い）は実装した（本PR）。
