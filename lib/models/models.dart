@@ -300,6 +300,11 @@ class TodoItem {
   // わからない」という報告（#69・#72）を受け、削除せずここに残して
   // 一覧側で判別できるようにした。
   final bool addedToCalendar;
+  // 「興味あり」を表明したuidの一覧。パートナーが持ち寄った案のうち
+  // どれに乗り気かを一目で伝えられるようにする（Pairyの移行先候補として
+  // 比較されるPairtoの「やりたいことリスト」いいね機能に近い差別化要素、
+  // 2026年8月時点の競合調査）。
+  final List<String> likedBy;
 
   TodoItem({
     required this.id,
@@ -309,6 +314,7 @@ class TodoItem {
     required this.createdBy,
     required this.createdAt,
     this.addedToCalendar = false,
+    this.likedBy = const [],
   });
 
   factory TodoItem.fromDoc(DocumentSnapshot doc) {
@@ -322,6 +328,7 @@ class TodoItem {
       createdAt: (d['createdAt'] as Timestamp).toDate(),
       // 既存のTODOにはこのフィールドが無いのでfalseへフォールバックする
       addedToCalendar: d['addedToCalendar'] ?? false,
+      likedBy: List<String>.from(d['likedBy'] ?? const []),
     );
   }
 
@@ -332,6 +339,7 @@ class TodoItem {
     'createdBy': createdBy,
     'createdAt': Timestamp.fromDate(createdAt),
     'addedToCalendar': addedToCalendar,
+    'likedBy': likedBy,
   };
 }
 

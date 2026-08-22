@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:aimaru/models/models.dart';
 import 'package:aimaru/services/todo_service.dart';
 
 // 共有TODOのCRUDと並び順を、Firebaseに接続せず検証する。
@@ -73,6 +74,54 @@ void main() {
       await service.markAddedToCalendar(created);
 
       expect((await todosRef().doc(created.id).get()).exists, isTrue);
+    });
+  });
+
+  group('興味ありの切り替え', () {
+    test('未反応から押すとlikedByに自分のuidが入る', () async {
+      final created = await service.addTodo(coupleId, '花火大会');
+      expect(created.likedBy, isEmpty);
+
+      await service.toggleLike(created, meUid);
+
+      final data = (await todosRef().doc(created.id).get()).data()!;
+      expect(data['likedBy'], [meUid]);
+    });
+
+    test('既に反応済みなら押すと外れる', () async {
+      final created = await service.addTodo(coupleId, '紅葉狩り');
+      final liked = TodoItem(
+        id: created.id,
+        coupleId: created.coupleId,
+        text: created.text,
+        createdBy: created.createdBy,
+        createdAt: created.createdAt,
+        likedBy: [meUid],
+      );
+
+      await service.toggleLike(liked, meUid);
+
+      final data = (await todosRef().doc(created.id).get()).data()!;
+      expect(data['likedBy'], isEmpty);
+    });
+
+    test('2人分の反応が独立して積み上がる', () async {
+      const partnerUid = 'user-partner';
+      final created = await service.addTodo(coupleId, 'キャンプ');
+
+      await service.toggleLike(created, meUid);
+      final likedByMe = TodoItem(
+        id: created.id,
+        coupleId: created.coupleId,
+        text: created.text,
+        createdBy: created.createdBy,
+        createdAt: created.createdAt,
+        likedBy: [meUid],
+      );
+      await service.toggleLike(likedByMe, partnerUid);
+
+      final data = (await todosRef().doc(created.id).get()).data()!;
+      expect(Set<String>.from(data['likedBy']), {meUid, partnerUid});
     });
   });
 

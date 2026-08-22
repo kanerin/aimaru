@@ -18,6 +18,7 @@ void main() {
     Stream<List<TodoItem>> stream, {
     TodoService? todoService,
     NavigatorObserver? observer,
+    String currentUid = 'u1',
   }) =>
       MaterialApp(
         navigatorObservers: observer != null ? [observer] : [],
@@ -25,6 +26,7 @@ void main() {
           coupleId: 'couple-1',
           todosStreamOverride: stream,
           todoServiceOverride: todoService,
+          currentUidOverride: currentUid,
         ),
       );
 
@@ -190,6 +192,62 @@ void main() {
         .doc('t1')
         .get();
     expect(doc.data()!['done'], isTrue);
+
+    await controller.close();
+  });
+
+  testWidgets('興味ありボタンを押すと自分のuidがlikedByに入る（TodoServiceのtoggleLikeが呼ばれる）', (tester) async {
+    final db = FakeFirebaseFirestore();
+    final service = TodoService(firestore: db, uid: 'u1');
+    await db
+        .collection('couples')
+        .doc('couple-1')
+        .collection('todos')
+        .doc('t1')
+        .set(sampleTodo.toMap());
+
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, todoService: service, currentUid: 'u1'));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+    expect(find.byIcon(Icons.favorite), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.favorite_border));
+    await tester.pump();
+
+    final doc = await db
+        .collection('couples')
+        .doc('couple-1')
+        .collection('todos')
+        .doc('t1')
+        .get();
+    expect(doc.data()!['likedBy'], ['u1']);
+
+    await controller.close();
+  });
+
+  testWidgets('自分が既に興味ありを付けているTodoは塗りつぶしハートで表示される', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, currentUid: 'u1'));
+
+    controller.add([
+      TodoItem(
+        id: 't1',
+        coupleId: 'couple-1',
+        text: '水族館',
+        createdBy: 'u1',
+        createdAt: DateTime(2026, 1, 1),
+        likedBy: const ['u1', 'u2'],
+      ),
+    ]);
+    await tester.pump();
+
+    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border), findsNothing);
+    expect(find.text('2'), findsOneWidget);
 
     await controller.close();
   });
