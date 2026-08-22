@@ -1,4 +1,4 @@
-name: Fix reported bugs (every 5h)
+name: Fix reported bugs (every 2 days)
 
 # アプリ内の「バグ報告・機能要望」フォーム（設定画面）から届き、
 # submitBugReport（Cloud Functions）がGeminiで判定してFirestoreの
@@ -24,7 +24,7 @@ name: Fix reported bugs (every 5h)
 
 on:
   schedule:
-    - cron: '0 */5 * * *' # 5時間おき（UTC 0,5,10,15,20時 = JST 9,14,19,24,5時）
+    - cron: '0 0 */2 * *' # 2日に1回、UTC 0時（JST 9時）
   workflow_dispatch: {}
 
 # workflow_dispatchでの手動実行とcronが重なった場合に多重起動しないようにする
