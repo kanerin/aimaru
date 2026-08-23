@@ -38,6 +38,27 @@ service cloud.firestore {
           && request.resource.data.createdBy == resource.data.createdBy;
         allow create: if isMember()
           && request.resource.data.createdBy == request.auth.uid;
+
+        // 予定ごとのコメント（TimeTreeの「予定にチャットできる」に近い差別化要素、
+        // 2026年8月時点の競合調査。カップル全体のChatMessageとは別の仕組み）。
+        // privateな予定へのコメントは、予定自体が見えない相手には見せない
+        // （ここでの resource はコメント自身のドキュメントを指すため、
+        // 親の events/{eventId} 側の canSeeExisting() はそのまま流用できず、
+        // 親の予定ドキュメントを get() し直して同じ判定を行う）。
+        match /comments/{commentId} {
+          function parentEvent() {
+            return get(/databases/$(database)/documents/couples/$(coupleId)/events/$(eventId)).data;
+          }
+          function canSeeParentEvent() {
+            return parentEvent().get('visibility', 'shared') != 'private'
+              || parentEvent().createdBy == request.auth.uid;
+          }
+          allow read: if isMember() && canSeeParentEvent();
+          allow create: if isMember() && canSeeParentEvent()
+            && request.resource.data.senderId == request.auth.uid;
+          // 編集・削除は想定していない（言った/言わないのやり取りの記録として残す）。
+          allow update, delete: if false;
+        }
       }
 
       match /chats/{msgId} {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/event_service.dart';
+import '../services/event_comment_service.dart';
 import '../services/google_calendar_service.dart';
 import '../utils/app_theme.dart';
 import 'event_form_screen.dart';
@@ -10,23 +12,66 @@ import 'event_form_screen.dart';
 class EventDetailScreen extends StatefulWidget {
   final AimaruEvent event;
   final String coupleId;
-  const EventDetailScreen({super.key, required this.event, required this.coupleId});
+  // テストからエラー/データを直接流し込むための注入ポイント。
+  // 未指定時は本番のFirestoreストリームを使う。
+  final Stream<List<EventComment>>? commentsStreamOverride;
+  // テストからfake_cloud_firestore等を差し込むための注入ポイント。
+  final EventCommentService? commentServiceOverride;
+  // テストからFirebase Authに触れずに「自分」を差し込むための注入ポイント。
+  final String? currentUidOverride;
+  const EventDetailScreen({
+    super.key,
+    required this.event,
+    required this.coupleId,
+    this.commentsStreamOverride,
+    this.commentServiceOverride,
+    this.currentUidOverride,
+  });
 
   @override
   State<EventDetailScreen> createState() => _EventDetailScreenState();
 }
 
 class _EventDetailScreenState extends State<EventDetailScreen> {
-  final _eventService    = EventService();
+  // EventService() は生成時にFirebaseFirestore.instanceへ即座に触れるため、
+  // コメント機能のテスト（commentsStreamOverrideのみ差し込む）ではFirebase
+  // 初期化なしに動けるよう、実際に使うときまで生成を遅らせる。
+  EventService? _eventServiceInstance;
+  EventService get _eventService => _eventServiceInstance ??= EventService();
   final _calendarService = GoogleCalendarService();
+
+  EventCommentService? _commentServiceInstance;
+  EventCommentService get _commentService =>
+      _commentServiceInstance ??= widget.commentServiceOverride ?? EventCommentService();
+
+  late final Stream<List<EventComment>> _commentsStream = widget.commentsStreamOverride ??
+      _commentService.watchComments(widget.coupleId, widget.event.id);
+
+  String get _uid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
+
   final _pageCtrl        = PageController();
+  final _commentCtrl     = TextEditingController();
   int _page = 0;
   bool _deleting = false;
+  bool _sendingComment = false;
 
   @override
   void dispose() {
     _pageCtrl.dispose();
+    _commentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendComment() async {
+    final text = _commentCtrl.text.trim();
+    if (text.isEmpty) return;
+    _commentCtrl.clear();
+    setState(() => _sendingComment = true);
+    try {
+      await _commentService.addComment(widget.coupleId, widget.event.id, text);
+    } finally {
+      if (mounted) setState(() => _sendingComment = false);
+    }
   }
 
   Future<void> _edit() async {
@@ -87,7 +132,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ],
       ),
-      body: ListView(
+      body: Column(
+        children: [
+          Expanded(child: _buildContent(e, dateStr)),
+          _buildCommentInput(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(AimaruEvent e, String dateStr) {
+    return ListView(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
         children: [
           if (e.imageUrls.isNotEmpty) ...[
@@ -186,6 +241,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ]),
           ),
 
+          const SizedBox(height: 24),
+          _buildCommentsSection(),
+
           const SizedBox(height: 28),
           Center(
             child: TextButton(
@@ -197,7 +255,118 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
             ),
           ),
         ],
+    );
+  }
+
+  // 予定ごとのコメント一覧。予定の詳細画面はカレンダーから何度も開き直される
+  // ため、ここも1本のストリームを作って使い回す（build()内で作ると開くたびに
+  // 購読し直してしまう）。
+  Widget _buildCommentsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('コメント', style: TextStyle(
+          fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecond,
+        )),
+        const SizedBox(height: 10),
+        StreamBuilder<List<EventComment>>(
+          stream: _commentsStream,
+          builder: (context, snap) {
+            // hasDataだけを見ていると、権限エラー等でストリームがエラーに
+            // 落ちたときに無限ローディングのまま固まる
+            // （test/screens/todos_screen_test.dartと同じ理由）。
+            if (snap.hasError) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('コメントの読み込みに失敗しました',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+              );
+            }
+            if (!snap.hasData) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: appAccent(context)))),
+              );
+            }
+            final comments = snap.data!;
+            if (comments.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('まだコメントはありません',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
+              );
+            }
+            return Column(children: comments.map(_buildCommentTile).toList());
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommentTile(EventComment c) {
+    final isMe = c.senderId == _uid;
+    final timeStr = DateFormat('M/d HH:mm').format(c.createdAt);
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8, left: isMe ? 40 : 0, right: isMe ? 0 : 40),
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isMe ? appAccent(context) : AppColors.navySurface,
+              borderRadius: BorderRadius.circular(16).copyWith(
+                bottomLeft: isMe ? null : const Radius.circular(4),
+                bottomRight: isMe ? const Radius.circular(4) : null,
+              ),
+              border: isMe ? null : Border.all(color: AppColors.hairline),
+            ),
+            child: Text(c.text, style: TextStyle(
+              fontSize: 13, color: isMe ? Colors.white : AppColors.textPrimary, height: 1.5,
+            )),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
+            child: Text(timeStr, style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted)),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildCommentInput() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      decoration: const BoxDecoration(
+        color: AppColors.navyCard,
+        border: Border(top: BorderSide(color: AppColors.hairline)),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _commentCtrl,
+            style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'コメントを入力...',
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            onSubmitted: (_) => _sendComment(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: _sendingComment ? null : _sendComment,
+          child: Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
+            child: _sendingComment
+                ? const Padding(padding: EdgeInsets.all(10),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
+          ),
+        ),
+      ]),
     );
   }
 }

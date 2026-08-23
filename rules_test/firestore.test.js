@@ -189,6 +189,117 @@ describe("events — visibility（private/shared）", () => {
   });
 });
 
+describe("events/comments — メンバー境界・予定の公開範囲を継承", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+  });
+
+  it("sharedな予定へのコメントはメンバー全員が読める", async () => {
+    await seedEvent(testEnv, "shared-1", { createdBy: USER_A, visibility: "shared" });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/events/shared-1/comments/c1`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-1",
+        text: "楽しみ",
+        senderId: USER_A,
+        createdAt: new Date(),
+      });
+    });
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/shared-1/comments/c1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/events/shared-1/comments/c1`).get());
+  });
+
+  it("メンバー以外はコメントを読めない・書けない", async () => {
+    await seedEvent(testEnv, "shared-2", { createdBy: USER_A, visibility: "shared" });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/events/shared-2/comments/c2`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-2",
+        text: "見える？",
+        senderId: USER_A,
+        createdAt: new Date(),
+      });
+    });
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/events/shared-2/comments/c2`).get());
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/events/shared-2/comments/c3`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-2",
+        text: "横入り",
+        senderId: USER_C,
+        createdAt: new Date(),
+      }),
+    );
+  });
+
+  it("メンバーは自分をsenderIdにしてコメントを作成できる", async () => {
+    await seedEvent(testEnv, "shared-3", { createdBy: USER_A, visibility: "shared" });
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/events/shared-3/comments/c4`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-3",
+        text: "いいね",
+        senderId: USER_B,
+        createdAt: new Date(),
+      }),
+    );
+  });
+
+  it("他人になりすましたsenderIdではコメントを作成できない", async () => {
+    await seedEvent(testEnv, "shared-4", { createdBy: USER_A, visibility: "shared" });
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/events/shared-4/comments/c5`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-4",
+        text: "なりすまし",
+        senderId: USER_A,
+        createdAt: new Date(),
+      }),
+    );
+  });
+
+  it("privateな予定へのコメントは作成者本人以外読めない・書けない", async () => {
+    await seedEvent(testEnv, "private-1", { createdBy: USER_A, visibility: "private" });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/events/private-1/comments/c6`).set({
+        coupleId: COUPLE_ID,
+        eventId: "private-1",
+        text: "ひとりごと",
+        senderId: USER_A,
+        createdAt: new Date(),
+      });
+    });
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/events/private-1/comments/c6`).get());
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/events/private-1/comments/c6`).get());
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/events/private-1/comments/c7`).set({
+        coupleId: COUPLE_ID,
+        eventId: "private-1",
+        text: "覗き見",
+        senderId: USER_B,
+        createdAt: new Date(),
+      }),
+    );
+  });
+
+  it("コメントは更新・削除できない（言った/言わないの記録として残す）", async () => {
+    await seedEvent(testEnv, "shared-5", { createdBy: USER_A, visibility: "shared" });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/events/shared-5/comments/c8`).set({
+        coupleId: COUPLE_ID,
+        eventId: "shared-5",
+        text: "元の文",
+        senderId: USER_A,
+        createdAt: new Date(),
+      });
+    });
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/events/shared-5/comments/c8`).update({ text: "改ざん" }),
+    );
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/events/shared-5/comments/c8`).delete());
+  });
+});
+
 describe("chats — メンバー境界", () => {
   beforeEach(async () => {
     await seedCouple(testEnv);

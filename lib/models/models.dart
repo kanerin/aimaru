@@ -254,6 +254,53 @@ class ChatMessage {
   };
 }
 
+// ── EventComment（予定ごとのコメント）───────────────────
+// TimeTreeは予定の詳細画面から直接その予定についてコメントし合える
+// （「予定に対して直接チャットができる」）が、AIMARUのChatMessageは
+// カップル全体の1本のトークにしか紐づかず、どの予定の話か後から
+// 追いにくかった（2026年8月時点の競合調査）。予定の詳細画面
+// （event_detail_screen.dart）に予定専用のコメント欄を持たせることで、
+// 「この日どこ行く？」のようなその場のやり取りを予定に残せるようにする。
+// 既存のカップル全体チャット（ChatMessage/chat_service.dart）とは独立した
+// 別コレクションで、削除・編集は行わない前提（更新・削除はルールで拒否）。
+class EventComment {
+  final String id;
+  final String coupleId;
+  final String eventId;
+  final String text;
+  final String senderId;
+  final DateTime createdAt;
+
+  EventComment({
+    required this.id,
+    required this.coupleId,
+    required this.eventId,
+    required this.text,
+    required this.senderId,
+    required this.createdAt,
+  });
+
+  factory EventComment.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return EventComment(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      eventId:   d['eventId'] ?? '',
+      text:      d['text'] ?? '',
+      senderId:  d['senderId'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'eventId':   eventId,
+    'text':      text,
+    'senderId':  senderId,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── GeminiParsedEvent（AI解析結果）────────────────────
 class GeminiParsedEvent {
   final String title;
