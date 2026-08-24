@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import '../services/couple_service.dart';
 import '../services/image_save_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/chat_date_divider.dart';
+import '../utils/chat_read_status.dart';
 import 'image_detail_screen.dart';
 
 // ── カップル間の通常チャット（AIチャットとは別）───────
@@ -39,16 +41,26 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _myUid => FirebaseAuth.instance.currentUser!.uid;
   String? _partnerName;
+  // パートナーのuidが分かるまでは既読ストリームを作れないためnullable。
+  Stream<DateTime?>? _partnerReadStream;
   bool _sendingImage = false;
+
+  // メッセージ一覧を購読し、初回・新着のたびに自分の既読時刻を更新する
+  // （画面を開いている＝既読、が自然なチャットの既読UX）。
+  late final StreamSubscription<List<ChatMessage>> _readMarkerSub;
 
   @override
   void initState() {
     super.initState();
     _loadPartner();
+    _readMarkerSub = _messagesStream.listen((_) {
+      _chatService.markAsRead(widget.coupleId);
+    });
   }
 
   @override
   void dispose() {
+    _readMarkerSub.cancel();
     _controller.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -57,8 +69,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadPartner() async {
     final couple = await _coupleService.getMyCouple();
     if (couple == null) return;
+    final partnerId = couple.memberIds.firstWhere((id) => id != _myUid, orElse: () => '');
     final name = await _coupleService.getPartnerName(couple);
-    if (mounted) setState(() => _partnerName = name);
+    if (!mounted) return;
+    setState(() {
+      _partnerName = name;
+      if (partnerId.isNotEmpty) {
+        _partnerReadStream = _chatService.watchPartnerLastReadAt(widget.coupleId, partnerId);
+      }
+    });
   }
 
   Future<void> _send() async {
@@ -154,37 +173,46 @@ class _ChatScreenState extends State<ChatScreen> {
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () => FocusScope.of(context).unfocus(),
-              child: StreamBuilder<List<ChatMessage>>(
-                stream: _messagesStream,
-                builder: (context, snap) {
-                  final messages = snap.data ?? [];
-                  if (!snap.hasData) {
-                    return Center(child: CircularProgressIndicator(color: appAccent(context)));
-                  }
-                  if (messages.isEmpty) {
-                    return const Center(
-                      child: Text('まだメッセージがありません\n最初のひとことを送ってみましょう',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-                    );
-                  }
-                  _scrollToBottom();
-                  return ListView.builder(
-                    controller: _scrollCtrl,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: messages.length,
-                    itemBuilder: (ctx, i) {
-                      final message = messages[i];
-                      final showDivider = shouldShowDateDivider(
-                        i == 0 ? null : messages[i - 1].timestamp,
-                        message.timestamp,
-                      );
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (showDivider) _buildDateDivider(message.timestamp),
-                          _buildBubble(message),
-                        ],
+              child: StreamBuilder<DateTime?>(
+                stream: _partnerReadStream ?? const Stream<DateTime?>.empty(),
+                builder: (context, readSnap) {
+                  final partnerLastReadAt = readSnap.data;
+                  return StreamBuilder<List<ChatMessage>>(
+                    stream: _messagesStream,
+                    builder: (context, snap) {
+                      final messages = snap.data ?? [];
+                      if (!snap.hasData) {
+                        return Center(child: CircularProgressIndicator(color: appAccent(context)));
+                      }
+                      if (messages.isEmpty) {
+                        return const Center(
+                          child: Text('まだメッセージがありません\n最初のひとことを送ってみましょう',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+                        );
+                      }
+                      _scrollToBottom();
+                      final lastMyIndex = messages.lastIndexWhere((m) => m.senderId == _myUid);
+                      return ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: messages.length,
+                        itemBuilder: (ctx, i) {
+                          final message = messages[i];
+                          final showDivider = shouldShowDateDivider(
+                            i == 0 ? null : messages[i - 1].timestamp,
+                            message.timestamp,
+                          );
+                          final showRead = i == lastMyIndex &&
+                              isReadByPartner(message.timestamp, partnerLastReadAt);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (showDivider) _buildDateDivider(message.timestamp),
+                              _buildBubble(message, showRead: showRead),
+                            ],
+                          );
+                        },
                       );
                     },
                   );
@@ -259,7 +287,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildBubble(ChatMessage m) {
+  Widget _buildBubble(ChatMessage m, {bool showRead = false}) {
     final isMe = m.senderId == _myUid;
     final timeStr = DateFormat('HH:mm').format(m.timestamp);
 
@@ -326,7 +354,16 @@ class _ChatScreenState extends State<ChatScreen> {
           content,
           Padding(
             padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
-            child: Text(timeStr, style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showRead) ...[
+                  Text('既読', style: TextStyle(fontSize: 9.5, color: appAccentSoft(context))),
+                  const SizedBox(width: 4),
+                ],
+                Text(timeStr, style: const TextStyle(fontSize: 9.5, color: AppColors.textMuted)),
+              ],
+            ),
           ),
           const SizedBox(height: 6),
         ],

@@ -3,13 +3,22 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/models.dart';
 
 class ChatService {
-  final _db   = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  // 引数なしで生成すると本番のFirebaseを使う（既存の呼び出しはそのまま）。
+  // テストからは firestore / uid を差し込んでFirebaseに触れずに検証する。
+  ChatService({FirebaseFirestore? firestore, String? uid})
+      : _db = firestore ?? FirebaseFirestore.instance,
+        _overrideUid = uid;
 
-  String get _uid => _auth.currentUser!.uid;
+  final FirebaseFirestore _db;
+  final String? _overrideUid;
+
+  String get _uid => _overrideUid ?? FirebaseAuth.instance.currentUser!.uid;
 
   CollectionReference _chatsRef(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('chats');
+
+  CollectionReference _readStatusRef(String coupleId) =>
+      _db.collection('couples').doc(coupleId).collection('chatReadStatus');
 
   // ── メッセージを送信 ──────────────────────────────
   Future<void> sendMessage(String coupleId, {String? text, String? imageUrl}) async {
@@ -32,5 +41,21 @@ class ChatService {
         .limit(limit)
         .snapshots()
         .map((snap) => snap.docs.map(ChatMessage.fromDoc).toList().reversed.toList());
+  }
+
+  // ── 自分の最終既読時刻を更新 ───────────────────────
+  Future<void> markAsRead(String coupleId) async {
+    await _readStatusRef(coupleId).doc(_uid).set({
+      'lastReadAt': Timestamp.fromDate(DateTime.now()),
+    });
+  }
+
+  // ── パートナーの最終既読時刻をリアルタイム取得 ─────
+  Stream<DateTime?> watchPartnerLastReadAt(String coupleId, String partnerUid) {
+    return _readStatusRef(coupleId).doc(partnerUid).snapshots().map((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      final ts = data?['lastReadAt'] as Timestamp?;
+      return ts?.toDate();
+    });
   }
 }
