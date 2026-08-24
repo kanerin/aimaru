@@ -503,6 +503,39 @@ describe("googleCalendarCache — 書き込みは自分の分だけ", () => {
   });
 });
 
+describe("chatReadStatus — 書き込みは自分の分だけ", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+  });
+
+  it("自分の既読時刻は書ける・読める", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_A}`).set({ lastReadAt: new Date() }),
+    );
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_A}`).get());
+  });
+
+  it("パートナーの既読時刻は読めるが上書きできない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_B}`)
+        .set({ lastReadAt: new Date() });
+    });
+
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_B}`).get());
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_B}`).set({ lastReadAt: new Date() }),
+    );
+  });
+
+  it("メンバー以外は既読時刻を読めない・書けない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_A}`).get());
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/chatReadStatus/${USER_C}`).set({ lastReadAt: new Date() }),
+    );
+  });
+});
+
 describe("googleEventVisibility — 自分の指定は自分しか読み書きできない", () => {
   beforeEach(async () => {
     await seedCouple(testEnv);

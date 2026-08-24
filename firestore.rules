@@ -66,6 +66,18 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
+      // トークの既読状態（ドキュメントID = uid）。TimeTreeには無い
+      // LINE的な「既読」表示のための最終既読時刻。googleCalendarCacheと
+      // 同じ形（メンバーなら誰でも読めるが、書き込みは自分の分のみ）。
+      // パートナーが自分の既読時刻を読めないと「既読」を表示できないため、
+      // googleEventVisibilityではなくgoogleCalendarCache側の設計に合わせる。
+      match /chatReadStatus/{uid} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow write: if request.auth.uid == uid && request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
+
       match /todos/{todoId} {
         allow read, write: if request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
