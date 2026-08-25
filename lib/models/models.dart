@@ -580,6 +580,46 @@ class BugReportRecord {
   }
 }
 
+// ── AlbumPhoto（共有アルバム）───────────────────────────
+// 予定に添付する写真（AimaruEvent.imageUrls）とは別に、日付や予定に
+// 紐づかない写真だけを気軽に置ける場所。COUPPLY・Betweenなど主要な
+// カップルアプリはいずれも専用の共有アルバムを持つが、AIMARUには
+// これまで予定へ添付する形でしか写真を残せなかった（2026年8月時点の
+// 競合調査）。
+class AlbumPhoto {
+  final String id;
+  final String coupleId;
+  final String imageUrl;
+  final String uploadedBy;
+  final DateTime createdAt;
+
+  AlbumPhoto({
+    required this.id,
+    required this.coupleId,
+    required this.imageUrl,
+    required this.uploadedBy,
+    required this.createdAt,
+  });
+
+  factory AlbumPhoto.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return AlbumPhoto(
+      id:         doc.id,
+      coupleId:   d['coupleId'] ?? '',
+      imageUrl:   d['imageUrl'] ?? '',
+      uploadedBy: d['uploadedBy'] ?? '',
+      createdAt:  (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':   coupleId,
+    'imageUrl':   imageUrl,
+    'uploadedBy': uploadedBy,
+    'createdAt':  Timestamp.fromDate(createdAt),
+  };
+}
+
 // rejectCategoryの固定値と日本語ラベルの対応。
 // functions/scripts/mark-bug-report-status.mjs / .claude/commands/fix-bug-reports.md
 // と一致させること。

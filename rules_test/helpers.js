@@ -137,6 +137,17 @@ export async function seedAnniversary(testEnv, anniversaryId = "anniversary-1") 
   });
 }
 
+export async function seedAlbumPhoto(testEnv, photoId = "photo-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/albumPhotos/${photoId}`).set({
+      coupleId: COUPLE_ID,
+      imageUrl: "https://example.com/a.jpg",
+      uploadedBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}
+
 export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/questionAnswers/${dateKey}_${uid}`).set({

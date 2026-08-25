@@ -16,6 +16,7 @@ import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
 import '../widgets/days_off_card.dart';
+import 'album_screen.dart';
 import 'bug_report_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
@@ -492,6 +493,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 memberIds: _couple?.memberIds ?? const [],
                 partnerName: _partnerName ?? 'パートナー',
               )),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _NavigationRow(
+            title: '共有アルバム',
+            subtitle: '予定に紐づかない写真を2人で気軽に置いておけます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => AlbumScreen(coupleId: widget.coupleId)),
             ),
           ),
 
