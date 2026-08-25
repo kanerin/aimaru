@@ -297,7 +297,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                   style: TextStyle(color: AppColors.textMuted, fontSize: 12.5)),
               );
             }
-            return Column(children: comments.map(_buildCommentTile).toList());
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: comments.map(_buildCommentTile).toList(),
+            );
           },
         ),
       ],

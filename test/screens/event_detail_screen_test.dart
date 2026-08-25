@@ -96,6 +96,40 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('自分のコメントは右寄り、相手のコメントは左寄りに表示する', (tester) async {
+    final controller = StreamController<List<EventComment>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([
+      EventComment(
+        id: 'c1',
+        coupleId: 'couple-1',
+        eventId: 'event-1',
+        text: '自分のコメント',
+        senderId: 'user-me',
+        createdAt: DateTime(2026, 8, 20, 10, 0),
+      ),
+      EventComment(
+        id: 'c2',
+        coupleId: 'couple-1',
+        eventId: 'event-1',
+        text: '相手のコメント',
+        senderId: 'user-partner',
+        createdAt: DateTime(2026, 8, 20, 10, 1),
+      ),
+    ]);
+    await tester.pump();
+
+    final screenWidth = tester.getSize(find.byType(MaterialApp)).width;
+    final meCenter = tester.getCenter(find.text('自分のコメント'));
+    final partnerCenter = tester.getCenter(find.text('相手のコメント'));
+
+    expect(meCenter.dx, greaterThan(screenWidth / 2));
+    expect(partnerCenter.dx, lessThan(screenWidth / 2));
+
+    await controller.close();
+  });
+
   testWidgets('送信ボタンを押すとEventCommentServiceのaddCommentが呼ばれる', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = EventCommentService(firestore: db, uid: 'user-me');
