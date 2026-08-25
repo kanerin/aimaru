@@ -26,6 +26,15 @@ class StorageService {
     return task.ref.getDownloadURL();
   }
 
+  // ── 共有アルバムに追加する画像をアップロード ──────────
+  Future<String> uploadAlbumImage(String coupleId, File file) async {
+    final ext = file.path.split('.').last;
+    final ref = _storage
+        .ref('couples/$coupleId/albums/${const Uuid().v4()}.$ext');
+    final task = await ref.putFile(file);
+    return task.ref.getDownloadURL();
+  }
+
   // ── バグ報告・機能要望に添付する画像をアップロード ──────
   // reportIdはsubmitBugReportが受理した報告のFirestoreドキュメントID。
   // storage.rulesがそのドキュメントのcreatedByと一致する本人だけに

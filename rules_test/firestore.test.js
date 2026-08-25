@@ -14,6 +14,7 @@ import {
   USER_C,
   createTestEnv,
   warmUpRulesEngine,
+  seedAlbumPhoto,
   seedAnniversary,
   seedChat,
   seedCouple,
@@ -366,6 +367,48 @@ describe("todos — メンバー境界", () => {
   it("未認証はTODOに一切アクセスできない", async () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-4`).set({ text: "x" }));
+  });
+});
+
+describe("albumPhotos — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedAlbumPhoto(testEnv);
+  });
+
+  it("メンバーは写真のメタデータを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).get());
+  });
+
+  it("メンバー以外は読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).get());
+  });
+
+  it("メンバーはどちらでも追加・削除できる（片方が置いた写真も相手が消せる）", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/albumPhotos/photo-2`).set({
+        coupleId: COUPLE_ID,
+        imageUrl: "https://example.com/b.jpg",
+        uploadedBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).delete());
+  });
+
+  it("メンバー以外は追加・削除できない", async () => {
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/albumPhotos/photo-3`).set({ imageUrl: "https://example.com/c.jpg" }),
+    );
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).delete());
+  });
+
+  it("未認証は写真のメタデータに一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/albumPhotos/photo-1`).get());
+    await assertFails(
+      asAnon().doc(`couples/${COUPLE_ID}/albumPhotos/photo-4`).set({ imageUrl: "https://example.com/d.jpg" }),
+    );
   });
 });
 
