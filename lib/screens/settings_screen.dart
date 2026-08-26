@@ -15,6 +15,7 @@ import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
+import '../widgets/app_lock_settings_card.dart';
 import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
 import 'bug_report_screen.dart';
@@ -481,6 +482,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ],
+
+          const SizedBox(height: 28),
+          const _SectionLabel('セキュリティ'),
+          const AppLockSettingsCard(),
 
           const SizedBox(height: 28),
           const _SectionLabel('お互いを知る'),

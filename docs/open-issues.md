@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-22 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-26 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -464,6 +464,20 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
   除外である点はAIMARU予定のprivateと異なる。Googleカレンダーキャッシュの
   設計上、パートナーは同じFirestoreドキュメントを丸ごと読める権限を元々
   持っているため、この機能は「アプリのUI上は見せない」という粒度に留まる）。
+
+2026-08-26、市場動向調査（propose-feature）で設定画面に「アプリロック」（4桁PIN）を
+追加した。カップルアプリのレビュー記事では「スマホを渡すときに覗かれない」ロック機能が
+選定基準の一つとして挙げられており、TimeTreeにはこの概念自体が無い差別化要素。
+`lib/services/app_lock_service.dart`（SharedPreferencesへPINと有効フラグを保存する
+端末ローカルの永続化層）・`lib/services/app_lock_controller.dart`（`ThemeController`と
+同じ「シングルトン + ChangeNotifier」で`enabled`/`locked`を保持するランタイム層）・
+`lib/screens/app_lock_screen.dart`（PIN入力画面）・`lib/widgets/app_lock_settings_card.dart`
+（設定画面のトグル・PIN設定/変更ダイアログ）を追加した。`lib/main.dart`の
+`MaterialApp.router`の`builder`をルーティングより外側の`_AppLockGate`で包み、
+`WidgetsBindingObserver`で`AppLifecycleState.paused`（バックグラウンドへ回った）を
+検知するたびロックする。ログイン画面を含めどの画面にいてもロック対象になる。
+Firestoreには一切保存しない端末ローカルの機能のため、`firestore.rules`・
+Cloud Functionsの変更は無い。
 
 ### P2 — 余力があれば
 

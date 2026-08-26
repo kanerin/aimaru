@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'utils/app_theme.dart';
+import 'screens/app_lock_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/pairing_screen.dart';
 import 'screens/ai_chat_screen.dart';
@@ -17,6 +18,7 @@ import 'screens/anniversary_hub_screen.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/todos_screen.dart';
+import 'services/app_lock_controller.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/firebase_bootstrap.dart';
@@ -37,6 +39,7 @@ void main() async {
 
   await initializeDateFormatting('ja');
   await ThemeController.instance.load();
+  await AppLockController.instance.load();
 
   // ── 起動をブロックしない初期化 ────────────────────────────
   // FCMの初期化はrequestPermissionでOSの通知許可ダイアログを出し、利用者が
@@ -122,7 +125,52 @@ class AimaruApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         routerConfig: _router,
+        builder: (context, child) => _AppLockGate(child: child ?? const SizedBox.shrink()),
       ),
+    );
+  }
+}
+
+// ── アプリロックのゲート ──────────────────────────
+// バックグラウンドへ回るたびAppLockController.lock()でロックし、有効化されて
+// いれば次に前面に戻ったときAppLockScreenでパスコードを要求する。ルーティング
+// より外側（MaterialApp.routerのbuilder）で画面全体を差し替えるため、
+// ログイン画面・カレンダーなどどの画面にいてもロック対象になる。
+class _AppLockGate extends StatefulWidget {
+  final Widget child;
+  const _AppLockGate({required this.child});
+
+  @override
+  State<_AppLockGate> createState() => _AppLockGateState();
+}
+
+class _AppLockGateState extends State<_AppLockGate> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      AppLockController.instance.lock();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppLockController.instance,
+      builder: (context, _) {
+        return AppLockController.instance.locked ? const AppLockScreen() : widget.child;
+      },
     );
   }
 }
