@@ -4,7 +4,7 @@ import '../models/models.dart';
 
 // ── データエクスポート ────────────────────────────────
 // カップルで共有しているデータ（予定・思い出＝写真付きの予定・チャット・
-// やりたいことリスト・ふたりの質問への回答）をJSONとして書き出す。
+// やりたいことリスト・ふたりの質問への回答・ふたりの日記）をJSONとして書き出す。
 // AIMARUはカップル2人で作るデータなので、片方の視点だけを切り出すのではなく、
 // カップル全体の共有データをそのまま対象にする。
 //
@@ -29,6 +29,7 @@ class DataExportService {
       coupleRef.collection('chats').orderBy('timestamp').get(),
       coupleRef.collection('todos').get(),
       coupleRef.collection('questionAnswers').get(),
+      coupleRef.collection('diaryEntries').get(),
     ]);
 
     final events = results[0].docs
@@ -40,6 +41,8 @@ class DataExportService {
     final todos = results[2].docs.map(TodoItem.fromDoc).map(_todoToJson).toList();
     final questionAnswers =
         results[3].docs.map(QuestionAnswer.fromDoc).map(_answerToJson).toList();
+    final diaryEntries =
+        results[4].docs.map(DiaryEntry.fromDoc).map(_diaryEntryToJson).toList();
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -48,6 +51,7 @@ class DataExportService {
       'chats': chats,
       'todos': todos,
       'questionAnswers': questionAnswers,
+      'diaryEntries': diaryEntries,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -90,5 +94,14 @@ class DataExportService {
     'uid': a.uid,
     'text': a.text,
     'createdAt': a.createdAt.toIso8601String(),
+  };
+
+  Map<String, dynamic> _diaryEntryToJson(DiaryEntry d) => {
+    'id': d.id,
+    'dateKey': d.dateKey,
+    'uid': d.uid,
+    'text': d.text,
+    'createdAt': d.createdAt.toIso8601String(),
+    'updatedAt': d.updatedAt.toIso8601String(),
   };
 }
