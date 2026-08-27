@@ -19,6 +19,7 @@ import '../widgets/app_lock_settings_card.dart';
 import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
 import 'bug_report_screen.dart';
+import 'diary_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
 import 'trash_screen.dart';
@@ -506,6 +507,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: '予定に紐づかない写真を2人で気軽に置いておけます',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => AlbumScreen(coupleId: widget.coupleId)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _NavigationRow(
+            title: 'ふたりの日記',
+            subtitle: 'その日あったことを自由に書き残せます。相手の分もいつでも読めます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DiaryScreen(
+                coupleId: widget.coupleId,
+                memberIds: _couple?.memberIds ?? const [],
+                partnerName: _partnerName ?? 'パートナー',
+              )),
             ),
           ),
 

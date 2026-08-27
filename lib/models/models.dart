@@ -537,6 +537,52 @@ class QuestionAnswer {
   };
 }
 
+// ── DiaryEntry（ふたりの日記）───────────────────────────
+// 「共有日記」は競合（Between Us等）が持つ差別化要素。ふたりの質問と違い
+// 相手の回答を伏せる仕組みは無く、自分の分はいつでも書き直せる
+// （idは'${dateKey}_$uid'で1人1日1件、setで上書き・updatedAtで最終保存日時を追う）。
+class DiaryEntry {
+  final String id;
+  final String coupleId;
+  final String dateKey; // 'yyyy-MM-dd'
+  final String uid;
+  final String text;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  DiaryEntry({
+    required this.id,
+    required this.coupleId,
+    required this.dateKey,
+    required this.uid,
+    required this.text,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory DiaryEntry.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return DiaryEntry(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      dateKey:   d['dateKey'] ?? '',
+      uid:       d['uid'] ?? '',
+      text:      d['text'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+      updatedAt: (d['updatedAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'dateKey':   dateKey,
+    'uid':       uid,
+    'text':      text,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'updatedAt': Timestamp.fromDate(updatedAt),
+  };
+}
+
 // ── BugReportRecord（自分が送ったバグ報告・機能要望の状況）────────
 // submitBugReport（Cloud Functions）が書き込んだドキュメントを、
 // 送信者本人だけがfirestore.rulesで読める（他人の報告は見えない）。

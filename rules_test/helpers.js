@@ -159,3 +159,16 @@ export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "202
     });
   });
 }
+
+export async function seedDiaryEntry(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/diaryEntries/${dateKey}_${uid}`).set({
+      coupleId: COUPLE_ID,
+      dateKey,
+      uid,
+      text: "公園を散歩した",
+      createdAt: new Date("2026-08-17T10:00:00"),
+      updatedAt: new Date("2026-08-17T10:00:00"),
+    });
+  });
+}

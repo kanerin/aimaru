@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-26 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-27 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -478,6 +478,16 @@ Firestore・Cloud Functionsへの新しい依存は追加していない。
 検知するたびロックする。ログイン画面を含めどの画面にいてもロック対象になる。
 Firestoreには一切保存しない端末ローカルの機能のため、`firestore.rules`・
 Cloud Functionsの変更は無い。
+
+2026-08-27、市場動向調査（propose-feature）で設定画面に「ふたりの日記」（`DiaryScreen` /
+`DiaryService`、`couples/{coupleId}/diaryEntries`）を追加した。競合調査でBetween Us等が
+2025年以降に強化してきた「共有日記」機能が差別化要素として挙がっており、既存の
+「ふたりの質問」（QuestionService）とは異なり相手の回答を伏せる仕組みを持たない、
+自由記述で書き直しもできる日記として設計した。ドキュメントIDは`questionAnswers`と同じ
+`${dateKey}_$uid`（1人1日1件）だが、`firestore.rules`では自分の分に限り`update`/`delete`
+も許可している（`uid`の書き換えだけは所有権の乗っ取りになるため引き続き禁止）。
+一覧はdateKeyの降順で直近60件（2人分で30日相当）を`orderBy`+`limit`で取得するのみで、
+複合索引は増やしていない。`DataExportService`のJSON書き出しにも`diaryEntries`を追加した。
 
 ### P2 — 余力があれば
 

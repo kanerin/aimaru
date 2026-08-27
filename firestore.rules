@@ -109,6 +109,20 @@ service cloud.firestore {
           && request.auth.uid == request.resource.data.uid;
       }
 
+      // ふたりの日記（ドキュメントID = '${dateKey}_$uid'）。questionAnswersと違い
+      // 相手の回答を伏せる仕組みが無い自由記述の日記のため、自分の分は
+      // 書き直し・削除ができる（uidの書き換えだけは所有権の乗っ取りになるため禁止）。
+      match /diaryEntries/{entryId} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && request.auth.uid == request.resource.data.uid;
+        allow update: if request.auth.uid == resource.data.uid
+          && request.resource.data.uid == resource.data.uid;
+        allow delete: if request.auth.uid == resource.data.uid;
+      }
+
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。
       // メンバーなら誰でも読めるが、書き込みは自分の分のみ。
       match /googleCalendarCache/{uid} {
