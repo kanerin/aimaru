@@ -47,6 +47,9 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- アプリロックの解除にFace IDを使うために必要（local_auth） -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>アプリロックの解除にFace IDを使用します</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

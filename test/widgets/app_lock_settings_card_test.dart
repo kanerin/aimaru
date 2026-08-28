@@ -5,11 +5,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aimaru/services/app_lock_controller.dart';
 import 'package:aimaru/widgets/app_lock_settings_card.dart';
 
+import '../helpers/fake_biometric_authenticator.dart';
+
 // AppLockControllerはThemeControllerと同じシングルトンのため、テストごとに
 // SharedPreferencesを初期化した上でloadを呼び直し、前のテストの状態を引きずらないようにする。
 void main() {
+  late FakeBiometricAuthenticator biometrics;
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    // local_authはプラットフォームチャネル越しの呼び出しで単体テストから
+    // 実行できないため、シングルトンの生体認証をフェイクに差し替える。
+    // 既定は「端末が非対応」にして、既存のPIN周りの検証に影響させない。
+    biometrics = FakeBiometricAuthenticator(available: false);
+    AppLockController.instance.biometrics = biometrics;
     await AppLockController.instance.load();
   });
 
@@ -99,5 +108,58 @@ void main() {
     await fillPinDialog(tester, '5678', '5678');
 
     expect(AppLockController.instance.enabled, isTrue);
+  });
+
+  group('生体認証のトグル', () {
+    testWidgets('端末が生体認証に非対応なら行ごと出さない', (tester) async {
+      await AppLockController.instance.setEnabled(true, pin: '1234');
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      expect(find.text('指紋・顔認証で解除'), findsNothing);
+    });
+
+    testWidgets('アプリロックが無効なうちは対応端末でもトグルを出さない', (tester) async {
+      biometrics.available = true;
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      expect(find.text('指紋・顔認証で解除'), findsNothing);
+    });
+
+    testWidgets('対応端末でアプリロック有効ならトグルが出て、ONにできる', (tester) async {
+      biometrics.available = true;
+      await AppLockController.instance.setEnabled(true, pin: '1234');
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      expect(find.text('指紋・顔認証で解除'), findsOneWidget);
+
+      // 0番目がアプリロック本体、1番目が生体認証のスイッチ
+      final biometricSwitch = find.byType(Switch).at(1);
+      expect(tester.widget<Switch>(biometricSwitch).value, isFalse);
+
+      await tester.tap(biometricSwitch);
+      await tester.pumpAndSettle();
+
+      expect(AppLockController.instance.biometricEnabled, isTrue);
+      expect(tester.widget<Switch>(find.byType(Switch).at(1)).value, isTrue);
+    });
+
+    testWidgets('アプリロックを解除すると生体認証のトグルも消える', (tester) async {
+      biometrics.available = true;
+      await AppLockController.instance.setEnabled(true, pin: '1234');
+      await AppLockController.instance.setBiometricEnabled(true);
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch).at(0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('解除する'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('指紋・顔認証で解除'), findsNothing);
+      expect(AppLockController.instance.biometricEnabled, isFalse);
+    });
   });
 }

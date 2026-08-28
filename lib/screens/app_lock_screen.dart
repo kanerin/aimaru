@@ -9,11 +9,24 @@ import '../utils/app_theme.dart';
 // AppLockController.locked が true の間、AimaruApp全体の代わりに表示される。
 // PINが一致するとunlock()がAppLockController.lockedをfalseにし、
 // 呼び出し側（_AppLockGate）がListenableBuilderで元の画面に戻す。
+//
+// 生体認証（指紋・顔）を有効にしている場合は、開いた直後に一度だけ自動で
+// 認証を求める。失敗・キャンセルしてもPIN入力欄は常に残しておく
+// （指紋が反応しない場面でアプリを開けなくなることが無いように）。
 class AppLockScreen extends StatefulWidget {
   // テスト用の注入ポイント。未指定時はAppLockController.instance.unlockを使う。
   final Future<bool> Function(String pin)? unlockOverride;
+  // テスト用の注入ポイント。未指定時はAppLockController.instance.canUseBiometricsを使う。
+  final Future<bool> Function()? canUseBiometricsOverride;
+  // テスト用の注入ポイント。未指定時はAppLockController.instance.unlockWithBiometricsを使う。
+  final Future<bool> Function()? biometricUnlockOverride;
 
-  const AppLockScreen({super.key, this.unlockOverride});
+  const AppLockScreen({
+    super.key,
+    this.unlockOverride,
+    this.canUseBiometricsOverride,
+    this.biometricUnlockOverride,
+  });
 
   @override
   State<AppLockScreen> createState() => _AppLockScreenState();
@@ -23,11 +36,45 @@ class _AppLockScreenState extends State<AppLockScreen> {
   final _pinController = TextEditingController();
   String? _error;
   bool _checking = false;
+  bool _biometricAvailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initBiometrics();
+  }
 
   @override
   void dispose() {
     _pinController.dispose();
     super.dispose();
+  }
+
+  // 生体認証が使えるなら、開いた直後に一度だけ自動で求める。
+  // 使えない設定・端末では端末への問い合わせ自体が起きない。
+  Future<void> _initBiometrics() async {
+    final canUse = widget.canUseBiometricsOverride ?? AppLockController.instance.canUseBiometrics;
+    final available = await canUse();
+    if (!mounted || !available) return;
+    setState(() => _biometricAvailable = true);
+    await _authenticateWithBiometrics();
+  }
+
+  Future<void> _authenticateWithBiometrics() async {
+    if (_checking) return;
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
+
+    final unlock = widget.biometricUnlockOverride ?? AppLockController.instance.unlockWithBiometrics;
+    await unlock();
+
+    // 成功時はlocked=falseの通知で親が画面を差し替えるため、このウィジェットは
+    // 破棄される。失敗・キャンセルはエラー扱いにしない（PINで開ける導線が
+    // 残っているのに赤字を出すと「開けない」と誤解させるだけになる）。
+    if (!mounted) return;
+    setState(() => _checking = false);
   }
 
   Future<void> _submit() async {
@@ -131,6 +178,15 @@ class _AppLockScreenState extends State<AppLockScreen> {
                       : const Text('解除'),
                 ),
               ),
+              // 自動で出した認証をキャンセルした後でも、やり直せる導線を残す。
+              if (_biometricAvailable) ...[
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _checking ? null : _authenticateWithBiometrics,
+                  icon: const Icon(Icons.fingerprint, size: 20),
+                  label: const Text('指紋・顔認証で解除'),
+                ),
+              ],
               const Spacer(flex: 3),
             ],
           ),

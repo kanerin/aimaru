@@ -492,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _SectionLabel('お互いを知る'),
           _NavigationRow(
             title: 'ふたりの質問',
-            subtitle: '毎日1つの質問に2人で回答します。2人とも答えるまで相手の回答は見えません',
+            subtitle: '毎日1つの質問に2人で回答します。2人とも答えるまで相手の回答は見えません。過去の質問と回答も振り返れます',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => QuestionsScreen(
                 coupleId: widget.coupleId,

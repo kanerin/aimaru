@@ -53,6 +53,9 @@ dependencies:
   qr_flutter: ^4.1.0
   app_links: ^6.3.2
 
+  # アプリロックの生体認証（指紋・顔）
+  local_auth: ^2.3.0
+
   # 設定の保存・画像の端末保存
   shared_preferences: ^2.3.2
   gal: ^2.3.1

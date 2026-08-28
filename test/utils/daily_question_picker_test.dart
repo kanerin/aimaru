@@ -27,4 +27,15 @@ void main() {
       expect(dailyQuestions, contains(question));
     });
   });
+
+  group('questionForDateKey', () {
+    test("'yyyy-MM-dd'のキーからその日の質問を復元できる", () {
+      expect(questionForDateKey('2026-08-17'), pickDailyQuestion(DateTime(2026, 8, 17)));
+    });
+
+    test('解釈できないキーならnullを返す', () {
+      expect(questionForDateKey('not-a-date'), isNull);
+      expect(questionForDateKey(''), isNull);
+    });
+  });
 }

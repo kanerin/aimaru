@@ -38,4 +38,16 @@ class QuestionService {
         .snapshots()
         .map((snap) => snap.docs.map(QuestionAnswer.fromDoc).toList());
   }
+
+  // ── 直近の回答を新しい日付順で取得（2人分でlimit件）────────
+  // 「今日の質問」と「これまでの質問」の履歴を1本のストリームで賄う。
+  // dateKeyは'yyyy-MM-dd'の固定長なので辞書順＝日付順になり、
+  // 単一フィールドのorderByで済む（複合インデックス不要）。
+  Stream<List<QuestionAnswer>> watchRecentAnswers(String coupleId, {int limit = 60}) {
+    return _answersRef(coupleId)
+        .orderBy('dateKey', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs.map(QuestionAnswer.fromDoc).toList());
+  }
 }

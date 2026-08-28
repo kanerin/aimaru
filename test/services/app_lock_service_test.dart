@@ -37,4 +37,26 @@ void main() {
     expect(await service.isEnabled(), isFalse);
     expect(await service.verifyPin('1234'), isFalse);
   });
+
+  test('生体認証の設定は初期状態でオフ', () async {
+    final service = AppLockService();
+    expect(await service.isBiometricEnabled(), isFalse);
+  });
+
+  test('生体認証の設定を保存・読み出しできる', () async {
+    final service = AppLockService();
+    await service.setBiometricEnabled(true);
+
+    expect(await service.isBiometricEnabled(), isTrue);
+  });
+
+  test('disableでPINと一緒に生体認証の設定も消える', () async {
+    final service = AppLockService();
+    await service.setPin('1234');
+    await service.setBiometricEnabled(true);
+
+    await service.disable();
+
+    expect(await service.isBiometricEnabled(), isFalse);
+  });
 }
