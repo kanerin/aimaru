@@ -17,6 +17,7 @@ import {
   seedAlbumPhoto,
   seedAnniversary,
   seedChat,
+  seedChore,
   seedCouple,
   seedDiaryEntry,
   seedEvent,
@@ -368,6 +369,52 @@ describe("todos — メンバー境界", () => {
   it("未認証はTODOに一切アクセスできない", async () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/todos/todo-4`).set({ text: "x" }));
+  });
+});
+
+describe("chores — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedChore(testEnv);
+  });
+
+  it("メンバーは家事を読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
+  });
+
+  it("メンバー以外は家事を読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
+  });
+
+  it("メンバーは家事を作成・完了切り替え・担当変更・削除できる", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/chores/chore-2`).set({
+        coupleId: COUPLE_ID,
+        title: "ゴミ出し",
+        assignedTo: USER_A,
+        done: false,
+        createdBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ done: true }));
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ assignedTo: USER_B }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).delete());
+  });
+
+  it("メンバー以外は家事を作成・更新・削除できない", async () => {
+    const ref = asC().doc(`couples/${COUPLE_ID}/chores/chore-3`);
+    await assertFails(ref.set({ title: "勝手な家事" }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ done: true }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).delete());
+  });
+
+  it("未認証は家事に一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-4`).set({ title: "x" }));
   });
 });
 

@@ -30,6 +30,7 @@ void main() {
     expect(decoded['todos'], isEmpty);
     expect(decoded['questionAnswers'], isEmpty);
     expect(decoded['diaryEntries'], isEmpty);
+    expect(decoded['chores'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
 
@@ -175,6 +176,24 @@ void main() {
     expect(entry['dateKey'], '2026-01-01');
     expect(entry['uid'], 'user-a');
     expect(entry['text'], '公園を散歩した');
+  });
+
+  test('家事分担を書き出す', () async {
+    await col('chores').doc('chore-1').set({
+      'coupleId': coupleId,
+      'title': '皿洗い',
+      'assignedTo': 'user-a',
+      'done': false,
+      'createdBy': 'user-a',
+      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+    });
+
+    final json = await service.exportAsJson(coupleId);
+    final chore = (jsonDecode(json)['chores'] as List).single as Map<String, dynamic>;
+
+    expect(chore['title'], '皿洗い');
+    expect(chore['assignedTo'], 'user-a');
+    expect(chore['done'], false);
   });
 
   test('別のカップルのデータは含まれない', () async {
