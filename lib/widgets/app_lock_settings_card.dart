@@ -10,8 +10,20 @@ import '../utils/app_theme.dart';
 // プライバシー機能。TimeTreeには無く、カップルアプリ全般で定番の機能
 // （docs/open-issues.md参照）。ThemeControllerと同じくシングルトンの
 // AppLockController.instanceをListenableBuilderで直接見る。
-class AppLockSettingsCard extends StatelessWidget {
+//
+// 端末が指紋・顔認証に対応していれば「生体認証で解除」のトグルも出す。
+// 端末への問い合わせは1回で済ませたいので、Futureをstateに保持して使い回す
+// （ListenableBuilderの再構築のたびに問い合わせ直さないため）。
+class AppLockSettingsCard extends StatefulWidget {
   const AppLockSettingsCard({super.key});
+
+  @override
+  State<AppLockSettingsCard> createState() => _AppLockSettingsCardState();
+}
+
+class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
+  late final Future<bool> _biometricAvailable =
+      AppLockController.instance.isBiometricAvailableOnDevice();
 
   Future<void> _onToggle(BuildContext context, bool value) async {
     if (value) {
@@ -82,6 +94,7 @@ class AppLockSettingsCard extends StatelessWidget {
                 Switch(value: enabled, onChanged: (v) => _onToggle(context, v)),
               ]),
               if (enabled) ...[
+                _buildBiometricRow(),
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -97,6 +110,39 @@ class AppLockSettingsCard extends StatelessWidget {
       },
     );
   }
+
+  // 生体認証のトグル。端末が非対応・指紋未登録なら行ごと出さない
+  // （設定できないトグルを見せても迷わせるだけなので）。
+  Widget _buildBiometricRow() => FutureBuilder<bool>(
+    future: _biometricAvailable,
+    builder: (context, snap) {
+      if (snap.data != true) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Row(children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('指紋・顔認証で解除', style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
+                )),
+                SizedBox(height: 4),
+                Text(
+                  '端末に登録済みの指紋・顔でも解除できます。パスコードもこれまで通り使えます',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.5),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: AppLockController.instance.biometricEnabled,
+            onChanged: (v) => AppLockController.instance.setBiometricEnabled(v),
+          ),
+        ]),
+      );
+    },
+  );
 }
 
 // 新しいPINを2回入力させ、一致した場合だけ確定するダイアログ。

@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 予定登録通知・リマインダー通知の表示に必要（Android 13+）-->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- アプリロックの解除に使う指紋・顔認証（local_auth）に必要 -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
         android:label="aimaru"
         android:name="${applicationName}"

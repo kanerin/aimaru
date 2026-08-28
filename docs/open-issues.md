@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-27 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-28 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **41件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **85件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
-| Flutter 単体・ウィジェット | `flutter test` | **458件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **487件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -36,9 +36,9 @@ test/screens/todos_screen_test.dart               8   やりたいことリス�
 test/utils/chat_date_divider_test.dart            5   トーク画面の日付区切り線を出すかどうかの判定
 test/services/google_calendar_cache_service_test.dart 6 Google予定のprivate指定とキャッシュへの反映
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
-test/utils/daily_question_picker_test.dart        3   デイリー質問の決定的な選択
-test/services/question_service_test.dart          4   デイリー質問への回答のCRUD
-test/screens/questions_screen_test.dart           5   ふたりの質問画面のロード・エラー・回答状態
+test/utils/daily_question_picker_test.dart        5   デイリー質問の決定的な選択・日付キーからの質問復元
+test/services/question_service_test.dart          8   デイリー質問への回答のCRUD・過去分を含む直近の取得
+test/screens/questions_screen_test.dart           9   ふたりの質問画面のロード・エラー・回答状態・過去分の履歴表示
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/services/anniversary_service_test.dart       3   複数記念日のCRUD
 test/screens/anniversary_hub_screen_test.dart      6   記念日タブ（次に会う日・記念日・記念日リスト）のロード・エラー・並び順・空表示
@@ -497,6 +497,39 @@ Cloud Functionsの変更は無い。
 も許可している（`uid`の書き換えだけは所有権の乗っ取りになるため引き続き禁止）。
 一覧はdateKeyの降順で直近60件（2人分で30日相当）を`orderBy`+`limit`で取得するのみで、
 複合索引は増やしていない。`DataExportService`のJSON書き出しにも`diaryEntries`を追加した。
+
+2026-08-28、アプリ内フォーム経由の機能要望2件（Issue #87・#88）を実装した（本PR）。
+
+Issue #87（ふたりの質問の過去分を見たい）は、`QuestionService.watchRecentAnswers`
+（dateKey降順で直近60件、`orderBy`+`limit`のみで複合索引は増やしていない）を追加し、
+`QuestionsScreen`の下に「これまでの質問」として日付ごとのカードを並べる形にした。
+質問文はFirestoreに保存していない（日付から決定的に選ぶ設計）ため、履歴側では
+`questionForDateKey`で日付キーから復元している。**過去分でも「自分が回答するまで
+相手の回答は見えない」ルールはそのまま効かせている**——ここを緩めると、答えずに
+待って相手の回答だけ読む、が成立してしまうため。`firestore.rules`の変更は無い
+（`questionAnswers`はもともとメンバーなら全件読める）。
+
+Issue #88（アプリロックの解除に指紋認証を使いたい）は`local_auth`を導入し、
+`lib/services/biometric_service.dart`（`BiometricAuthenticator`インターフェースと
+local_authを叩く実装）・`AppLockController`の`biometricEnabled`/`unlockWithBiometrics`
+を追加した。**PINは常に残す**（指紋が濡れて反応しない・怪我をしたといった場面で
+アプリを開けなくなるのを避けるため）ので、生体認証はPINの置き換えではなく上乗せの
+解除手段になる。`AppLockScreen`は開いた直後に一度だけ自動で認証を求め、キャンセル
+されてもPIN入力欄とやり直しボタンを残す。`AuthenticationOptions`は`biometricOnly: true`
+にしてある——端末のパスコードへフォールバックすると、端末のロックを開けられる相手が
+素通りできてしまい「端末を渡した相手に中身を見せない」という目的が崩れるため。
+
+ネイティブ側は3点。Androidは`MainActivity`を`FlutterFragmentActivity`に変更し
+（androidx.biometricのBiometricPromptがFragmentActivityを要求する。`FlutterActivity`の
+ままだと認証ダイアログを出す時点で失敗する）、`AndroidManifest.xml`に
+`android.permission.USE_BIOMETRIC`を追加。iOSは`Info.plist`に
+`NSFaceIDUsageDescription`を追加した（未設定だとFace IDの初回利用でクラッシュする）。
+local_authはプラットフォームチャネル越しの呼び出しで単体テストから実行できないため、
+`AppLockController.biometrics`を`@visibleForTesting`で差し替え可能にし、
+`test/helpers/fake_biometric_authenticator.dart`をテストから差し込んでいる。
+端末が非対応・指紋未登録の場合は設定画面のトグル自体を出さない。
+Firestoreには一切保存しない端末ローカルの機能なので、`firestore.rules`・
+Cloud Functionsの変更は無い。
 
 ### P2 — 余力があれば
 

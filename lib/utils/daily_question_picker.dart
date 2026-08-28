@@ -44,3 +44,13 @@ String pickDailyQuestion(DateTime date) {
   final dayOfYear = date.difference(startOfYear).inDays;
   return dailyQuestions[dayOfYear % dailyQuestions.length];
 }
+
+/// 'yyyy-MM-dd' 形式の日付キーから、その日に出ていた質問を返す。
+/// 過去の回答一覧（履歴）は日付キーしか持たないため、そこから質問文を
+/// 復元するのに使う（質問はサーバーに保存せず日付から決定的に選ぶ設計）。
+/// 解釈できないキーの場合はnullを返す。
+String? questionForDateKey(String dateKey) {
+  final date = DateTime.tryParse(dateKey);
+  if (date == null) return null;
+  return pickDailyQuestion(date);
+}
