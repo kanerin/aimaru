@@ -14,7 +14,7 @@
 | Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **41件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **85件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
-| Flutter 単体・ウィジェット | `flutter test` | **379件すべて通過**（ローカルで確認、CIでも要確認） |
+| Flutter 単体・ウィジェット | `flutter test` | **458件すべて通過**（ローカルで確認、CIでも要確認） |
 
 テストの内訳:
 
@@ -42,6 +42,7 @@ test/screens/questions_screen_test.dart           5   ふたりの質問画面�
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/services/anniversary_service_test.dart       3   複数記念日のCRUD
 test/screens/anniversary_hub_screen_test.dart      6   記念日タブ（次に会う日・記念日・記念日リスト）のロード・エラー・並び順・空表示
+test/screens/event_form_screen_test.dart          7   予定フォーム（新規作成・編集・バリデーション・保存失敗・公開範囲・Google同期・画像アップロード）
 test/widget_test.dart                             3   スモーク
 integration_test/app_test.dart                    1   起動（実機必要・CIでは走らない）
 functions/src/reminder_logic.test.ts             22   リマインダー判定・メンバー別送信済み管理
@@ -202,6 +203,14 @@ SHA-1登録もやり直す必要がある。何より、Androidはパッケー�
   「予定の公開範囲（private）」グループを追加した。
   `event_form_screen.dart`/`calendar_screen.dart`自体は元々テストが無く（外部サービスへの
   直接依存が多く注入可能な構造になっていない）、このPRでもそこまでは着手していない。
+
+2026-08-28、上記のうち`event_form_screen.dart`にウィジェットテストを追加した（reduce-debt枠、
+本PR）。`EventService`/`StorageService`/`GoogleCalendarService`をコンストラクタから注入できる
+ようにし（`bug_report_screen.dart`と同じ「serviceOverride + 遅延getter」パターン）、新規作成・
+編集・タイトル未入力時のバリデーション・保存失敗時のエラー表示・「自分だけに表示」トグル・
+Googleカレンダー同期・画像アップロードの7経路を`test/screens/event_form_screen_test.dart`で
+確認した。`calendar_screen.dart`（756行、複数のFirestoreストリームとGoogleカレンダーキャッシュに
+依存し規模が大きい）は今回のスコープに含めておらず、次回以降の課題として残っている。
 
 ### P1 — 次に効くもの
 
