@@ -19,12 +19,23 @@ class EventFormScreen extends StatefulWidget {
   // タイトルだけ引き継ぎたいケース用。existingがある場合はそちらを優先する。
   final String? initialTitle;
 
+  // テストからFirebase/Google APIに触れずに検証するための注入ポイント
+  // （bug_report_screen.dartのserviceOverrideと同じ設計）。
+  final EventService? eventServiceOverride;
+  final StorageService? storageServiceOverride;
+  final GoogleCalendarService? calendarServiceOverride;
+  final List<File>? initialImagesForTest;
+
   const EventFormScreen({
     super.key,
     required this.coupleId,
     this.existing,
     this.initialDate,
     this.initialTitle,
+    this.eventServiceOverride,
+    this.storageServiceOverride,
+    this.calendarServiceOverride,
+    this.initialImagesForTest,
   });
 
   @override
@@ -32,10 +43,19 @@ class EventFormScreen extends StatefulWidget {
 }
 
 class _EventFormScreenState extends State<EventFormScreen> {
-  final _eventService    = EventService();
-  final _storageService  = StorageService();
-  final _calendarService = GoogleCalendarService();
-  final _picker          = ImagePicker();
+  // serviceOverrideを使うテストではFirebase初期化なしに動けるよう、
+  // 未使用の場合のみ生成する（bug_report_screen.dartと同じ遅延getterパターン）。
+  EventService?          _eventServiceInstance;
+  StorageService?        _storageServiceInstance;
+  GoogleCalendarService? _calendarServiceInstance;
+  final _picker = ImagePicker();
+
+  EventService get _eventService =>
+      widget.eventServiceOverride ?? (_eventServiceInstance ??= EventService());
+  StorageService get _storageService =>
+      widget.storageServiceOverride ?? (_storageServiceInstance ??= StorageService());
+  GoogleCalendarService get _calendarService =>
+      widget.calendarServiceOverride ?? (_calendarServiceInstance ??= GoogleCalendarService());
 
   late final _titleCtrl    =
       TextEditingController(text: widget.existing?.title ?? widget.initialTitle ?? '');
@@ -52,7 +72,7 @@ class _EventFormScreenState extends State<EventFormScreen> {
   bool _syncGoogle = false;
   late final List<String> _existingImages = List.from(widget.existing?.imageUrls ?? []);
 
-  final List<File> _newImages = [];
+  late final List<File> _newImages = List.from(widget.initialImagesForTest ?? const []);
   bool _saving = false;
 
   bool get _isEdit => widget.existing != null;
