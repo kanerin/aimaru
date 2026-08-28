@@ -531,6 +531,16 @@ local_authはプラットフォームチャネル越しの呼び出しで単体�
 Firestoreには一切保存しない端末ローカルの機能なので、`firestore.rules`・
 Cloud Functionsの変更は無い。
 
+2026-08-28、市場動向調査（propose-feature）で設定画面に「家事分担」（`ChoresScreen` /
+`ChoreService`、`couples/{coupleId}/chores`）を追加した。カップルアプリのレビュー記事で
+家事分担・交換日記が人気機能として挙がっており、交換日記（DiaryScreen）は先に
+実装済みだったため対になる機能として追加した。TimeTreeにはこの概念自体が無い
+差別化要素。`todos`と同じくどちらのメンバーも自由に追加・完了切り替え・削除でき、
+加えて担当者（自分/相手/どちらでも、`assignedTo`のuidまたはnull）を指定できる。
+完了済みを一括で未完了に戻す`resetAllDone`（週次リセット想定）も追加した。
+`firestore.rules`は`todos`と同一のメンバー境界ルールを追加しただけで、新しい
+バリデーションは無い。`DataExportService`のJSON書き出しにも`chores`を追加した。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
