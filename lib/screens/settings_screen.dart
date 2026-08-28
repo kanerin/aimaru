@@ -19,6 +19,7 @@ import '../widgets/app_lock_settings_card.dart';
 import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
 import 'bug_report_screen.dart';
+import 'chores_screen.dart';
 import 'diary_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
@@ -515,6 +516,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'その日あったことを自由に書き残せます。相手の分もいつでも読めます',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => DiaryScreen(
+                coupleId: widget.coupleId,
+                memberIds: _couple?.memberIds ?? const [],
+                partnerName: _partnerName ?? 'パートナー',
+              )),
+            ),
+          ),
+
+          const SizedBox(height: 28),
+          const _SectionLabel('暮らし'),
+          _NavigationRow(
+            title: '家事分担',
+            subtitle: 'やることを書き出して担当を決め、完了をチェックできます。TimeTreeには無い機能です',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ChoresScreen(
                 coupleId: widget.coupleId,
                 memberIds: _couple?.memberIds ?? const [],
                 partnerName: _partnerName ?? 'パートナー',

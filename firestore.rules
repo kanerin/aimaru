@@ -83,6 +83,14 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
+      // 家事分担チェックリスト。todosと同じくどちらのメンバーも自由に
+      // 追加・完了切り替え・担当変更・削除できる（片方しか操作できないと
+      // 分担として機能しないため）。
+      match /chores/{choreId} {
+        allow read, write: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
+
       match /anniversaries/{anniversaryId} {
         allow read, write: if request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;

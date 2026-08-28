@@ -390,6 +390,56 @@ class TodoItem {
   };
 }
 
+// ── ChoreItem（家事分担）─────────────────────────────────
+// 同棲・二人暮らしのカップル向け「家事分担」チェックリスト。市場調査
+// （2026年8月）で家事分担・交換日記が人気機能として挙がっており、交換日記
+// （DiaryEntry）は先に実装済みのため、対になる家事分担を追加する。TimeTreeには
+// この概念自体が無い差別化要素。assignedToで「誰の担当か」を持たせつつ、
+// todosと同じくどちらのメンバーも自由に追加・完了・削除できる（片方しか
+// 操作できないと分担として機能しないため）。
+class ChoreItem {
+  final String id;
+  final String coupleId;
+  final String title;
+  // 担当者のuid。null（どちらでも）も許容する。
+  final String? assignedTo;
+  final bool done;
+  final String createdBy;
+  final DateTime createdAt;
+
+  ChoreItem({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    this.assignedTo,
+    this.done = false,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory ChoreItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return ChoreItem(
+      id:         doc.id,
+      coupleId:   d['coupleId'] ?? '',
+      title:      d['title'] ?? '',
+      assignedTo: d['assignedTo'],
+      done:       d['done'] ?? false,
+      createdBy:  d['createdBy'] ?? '',
+      createdAt:  (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':   coupleId,
+    'title':      title,
+    'assignedTo': assignedTo,
+    'done':       done,
+    'createdBy':  createdBy,
+    'createdAt':  Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── AnniversaryItem（複数記念日）────────────────────────
 // CoupleModel.anniversary（付き合い始めた日）は1件しか持てないが、
 // プロポーズ・入籍・初デートなど、カップルは複数の記念日を追いたいことが多い
