@@ -218,7 +218,7 @@ class _HomeShellState extends State<_HomeShell> {
       // ② AI チャット
       AiChatScreen(coupleId: _coupleId!),
       // ③ カップルチャット
-      ChatScreen(coupleId: _coupleId!),
+      ChatScreen(coupleId: _coupleId!, isActive: _index == 2),
       // ④ 記念日
       AnniversaryHubScreen(coupleId: _coupleId!),
       // ⑤ やりたいことリスト
