@@ -138,6 +138,19 @@ export async function seedChore(testEnv, choreId = "chore-1") {
   });
 }
 
+export async function seedShoppingItem(testEnv, itemId = "item-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/shoppingItems/${itemId}`).set({
+      coupleId: COUPLE_ID,
+      title: "牛乳",
+      quantity: "1本",
+      done: false,
+      createdBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}
+
 export async function seedAnniversary(testEnv, anniversaryId = "anniversary-1") {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/anniversaries/${anniversaryId}`).set({

@@ -18,6 +18,7 @@ import {
   seedAnniversary,
   seedChat,
   seedChore,
+  seedShoppingItem,
   seedCouple,
   seedDiaryEntry,
   seedEvent,
@@ -415,6 +416,51 @@ describe("chores — メンバー境界", () => {
   it("未認証は家事に一切アクセスできない", async () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-4`).set({ title: "x" }));
+  });
+});
+
+describe("shoppingItems — メンバー境界", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedShoppingItem(testEnv);
+  });
+
+  it("メンバーは買い物リストを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).get());
+  });
+
+  it("メンバー以外は買い物リストを読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).get());
+  });
+
+  it("メンバーはアイテムを作成・購入済み切り替え・削除できる", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/shoppingItems/item-2`).set({
+        coupleId: COUPLE_ID,
+        title: "卵",
+        quantity: "1パック",
+        done: false,
+        createdBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).update({ done: true }),
+    );
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).delete());
+  });
+
+  it("メンバー以外はアイテムを作成・更新・削除できない", async () => {
+    const ref = asC().doc(`couples/${COUPLE_ID}/shoppingItems/item-3`);
+    await assertFails(ref.set({ title: "勝手なアイテム" }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).update({ done: true }));
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).delete());
+  });
+
+  it("未認証は買い物リストに一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/shoppingItems/item-4`).set({ title: "x" }));
   });
 });
 

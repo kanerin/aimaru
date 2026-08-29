@@ -91,6 +91,14 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
+      // 買い物リスト。choresと同じくどちらのメンバーも自由に
+      // 追加・購入済み切り替え・削除できる（片方しか操作できないと
+      // 共有買い物リストとして機能しないため）。
+      match /shoppingItems/{itemId} {
+        allow read, write: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+      }
+
       match /anniversaries/{anniversaryId} {
         allow read, write: if request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;

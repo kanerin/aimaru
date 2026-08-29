@@ -32,6 +32,7 @@ class DataExportService {
       coupleRef.collection('questionAnswers').get(),
       coupleRef.collection('diaryEntries').get(),
       coupleRef.collection('chores').get(),
+      coupleRef.collection('shoppingItems').get(),
     ]);
 
     final events = results[0].docs
@@ -46,6 +47,8 @@ class DataExportService {
     final diaryEntries =
         results[4].docs.map(DiaryEntry.fromDoc).map(_diaryEntryToJson).toList();
     final chores = results[5].docs.map(ChoreItem.fromDoc).map(_choreToJson).toList();
+    final shoppingItems =
+        results[6].docs.map(ShoppingItem.fromDoc).map(_shoppingItemToJson).toList();
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -56,6 +59,7 @@ class DataExportService {
       'questionAnswers': questionAnswers,
       'diaryEntries': diaryEntries,
       'chores': chores,
+      'shoppingItems': shoppingItems,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -116,5 +120,14 @@ class DataExportService {
     'done': c.done,
     'createdBy': c.createdBy,
     'createdAt': c.createdAt.toIso8601String(),
+  };
+
+  Map<String, dynamic> _shoppingItemToJson(ShoppingItem s) => {
+    'id': s.id,
+    'title': s.title,
+    'quantity': s.quantity,
+    'done': s.done,
+    'createdBy': s.createdBy,
+    'createdAt': s.createdAt.toIso8601String(),
   };
 }

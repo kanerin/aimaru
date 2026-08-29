@@ -440,6 +440,55 @@ class ChoreItem {
   };
 }
 
+// ── ShoppingItem（買い物リスト）───────────────────────────
+// 市場調査（2026年8月）で夫婦・カップル向けアプリの人気機能として挙がって
+// いた「買い物リスト」。TimeTreeにはこの概念自体が無く、todos（やりたい
+// ことリスト）・chores（家事分担）とは別に、日用品や食材の買い出しを2人で
+// 共有するための機能。quantityは「2個」「1本」のような自由記述（数量の
+// 単位がアイテムによってバラバラなため、数値+単位のような構造化はしない）。
+class ShoppingItem {
+  final String id;
+  final String coupleId;
+  final String title;
+  // 個数・分量の自由記述。未指定も許容する。
+  final String? quantity;
+  final bool done;
+  final String createdBy;
+  final DateTime createdAt;
+
+  ShoppingItem({
+    required this.id,
+    required this.coupleId,
+    required this.title,
+    this.quantity,
+    this.done = false,
+    required this.createdBy,
+    required this.createdAt,
+  });
+
+  factory ShoppingItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return ShoppingItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      title:     d['title'] ?? '',
+      quantity:  d['quantity'],
+      done:      d['done'] ?? false,
+      createdBy: d['createdBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'title':     title,
+    'quantity':  quantity,
+    'done':      done,
+    'createdBy': createdBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── AnniversaryItem（複数記念日）────────────────────────
 // CoupleModel.anniversary（付き合い始めた日）は1件しか持てないが、
 // プロポーズ・入籍・初デートなど、カップルは複数の記念日を追いたいことが多い
