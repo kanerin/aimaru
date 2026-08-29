@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-08-28 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-08-29 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -554,6 +554,17 @@ Cloud Functionsの変更は無い。
 完了済みを一括で未完了に戻す`resetAllDone`（週次リセット想定）も追加した。
 `firestore.rules`は`todos`と同一のメンバー境界ルールを追加しただけで、新しい
 バリデーションは無い。`DataExportService`のJSON書き出しにも`chores`を追加した。
+
+2026-08-29、市場動向調査（propose-feature）で設定画面に「買い物リスト」
+（`ShoppingListScreen` / `ShoppingListService`、`couples/{coupleId}/shoppingItems`）を
+追加した。夫婦・カップル向けアプリの比較記事で家事分担と並ぶ人気機能として
+挙がっており、TimeTreeにはこの概念自体が無い差別化要素。`todos`・`chores`とは別に、
+日用品・食材の買い出しを2人で共有する。`quantity`（「1本」「2個」等）は自由記述の
+任意フィールド（数量の単位がアイテムによってバラバラなため構造化はしない）。
+choresの`resetAllDone`（完了済みを未完了に戻す週次リセット）とは異なり、買い物リストは
+購入済みになったら消したいものなので`clearDone`で一括削除する設計にした。
+`firestore.rules`は`chores`と同一のメンバー境界ルールを追加しただけ。`DataExportService`の
+JSON書き出しにも`shoppingItems`を追加した。
 
 ### P2 — 余力があれば
 
