@@ -23,6 +23,7 @@ import 'chores_screen.dart';
 import 'diary_screen.dart';
 import 'ics_import_screen.dart';
 import 'questions_screen.dart';
+import 'shopping_list_screen.dart';
 import 'trash_screen.dart';
 
 const _reminderOptions = <int, String>{
@@ -534,6 +535,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 memberIds: _couple?.memberIds ?? const [],
                 partnerName: _partnerName ?? 'パートナー',
               )),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _NavigationRow(
+            title: '買い物リスト',
+            subtitle: '日用品や食材の買い出しを2人で共有できます。TimeTreeには無い機能です',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => ShoppingListScreen(coupleId: widget.coupleId)),
             ),
           ),
 

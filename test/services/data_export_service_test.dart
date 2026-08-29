@@ -31,6 +31,7 @@ void main() {
     expect(decoded['questionAnswers'], isEmpty);
     expect(decoded['diaryEntries'], isEmpty);
     expect(decoded['chores'], isEmpty);
+    expect(decoded['shoppingItems'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
 
@@ -194,6 +195,24 @@ void main() {
     expect(chore['title'], '皿洗い');
     expect(chore['assignedTo'], 'user-a');
     expect(chore['done'], false);
+  });
+
+  test('買い物リストを書き出す', () async {
+    await col('shoppingItems').doc('item-1').set({
+      'coupleId': coupleId,
+      'title': '牛乳',
+      'quantity': '1本',
+      'done': false,
+      'createdBy': 'user-a',
+      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+    });
+
+    final json = await service.exportAsJson(coupleId);
+    final item = (jsonDecode(json)['shoppingItems'] as List).single as Map<String, dynamic>;
+
+    expect(item['title'], '牛乳');
+    expect(item['quantity'], '1本');
+    expect(item['done'], false);
   });
 
   test('別のカップルのデータは含まれない', () async {
