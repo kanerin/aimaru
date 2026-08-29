@@ -19,16 +19,34 @@ import 'image_detail_screen.dart';
 // ── カップル間の通常チャット（AIチャットとは別）───────
 class ChatScreen extends StatefulWidget {
   final String coupleId;
-  const ChatScreen({super.key, required this.coupleId});
+  // ホーム画面のIndexedStackはタブを離れてもこの画面をマウントしたまま
+  // 保持する（main.dart参照）ため、「表示中のタブかどうか」は親から
+  // 明示的に渡してもらう必要がある。
+  final bool isActive;
+  // テストからFirebaseに触れずに検証するためのオーバーライド（本番の呼び出しはそのまま）。
+  final ChatService? chatServiceOverride;
+  final CoupleService? coupleServiceOverride;
+  final String? currentUidOverride;
+  final Stream<List<ChatMessage>>? messagesStreamOverride;
+
+  const ChatScreen({
+    super.key,
+    required this.coupleId,
+    required this.isActive,
+    this.chatServiceOverride,
+    this.coupleServiceOverride,
+    this.currentUidOverride,
+    this.messagesStreamOverride,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _chatService     = ChatService();
+  late final _chatService     = widget.chatServiceOverride ?? ChatService();
   final _storageService  = StorageService();
-  final _coupleService   = CoupleService();
+  late final _coupleService   = widget.coupleServiceOverride ?? CoupleService();
   final _imageSaveService = ImageSaveService();
   final _picker          = ImagePicker();
   final _controller      = TextEditingController();
@@ -37,25 +55,44 @@ class _ChatScreenState extends State<ChatScreen> {
   // build()の中で作ると、入力のたびの再ビルドで購読し直して履歴が一瞬消える。
   // ストリームは1本だけ作って使い回す。
   late final Stream<List<ChatMessage>> _messagesStream =
-      _chatService.watchMessages(widget.coupleId);
+      widget.messagesStreamOverride ?? _chatService.watchMessages(widget.coupleId);
 
-  String get _myUid => FirebaseAuth.instance.currentUser!.uid;
+  String get _myUid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
   String? _partnerName;
   // パートナーのuidが分かるまでは既読ストリームを作れないためnullable。
   Stream<DateTime?>? _partnerReadStream;
   bool _sendingImage = false;
 
-  // メッセージ一覧を購読し、初回・新着のたびに自分の既読時刻を更新する
-  // （画面を開いている＝既読、が自然なチャットの既読UX）。
+  // メッセージ一覧を購読し、このタブを表示している間だけ、初回・新着のたびに
+  // 自分の既読時刻を更新する（画面を開いている＝既読、が自然なチャットの既読UX）。
+  // isActiveを見ずに更新すると、IndexedStackで裏に隠れている間に届いた
+  // メッセージまで既読扱いになってしまう（パートナーが見ていないのに
+  // 「既読」と出る不具合の原因だった）。
   late final StreamSubscription<List<ChatMessage>> _readMarkerSub;
 
   @override
   void initState() {
     super.initState();
     _loadPartner();
-    _readMarkerSub = _messagesStream.listen((_) {
+    _readMarkerSub = _messagesStream.listen(
+      (_) {
+        if (widget.isActive) {
+          _chatService.markAsRead(widget.coupleId);
+        }
+      },
+      // 通信・権限エラーはStreamBuilder側の表示で扱うので、ここでは
+      // 拾い手のない例外として落ちないよう握りつぶす。
+      onError: (_) {},
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 裏に隠れている間に届いたメッセージも、タブを開いた瞬間に既読にする。
+    if (widget.isActive && !oldWidget.isActive) {
       _chatService.markAsRead(widget.coupleId);
-    });
+    }
   }
 
   @override
@@ -180,6 +217,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   return StreamBuilder<List<ChatMessage>>(
                     stream: _messagesStream,
                     builder: (context, snap) {
+                      if (snap.hasError) {
+                        return const Center(
+                          child: Text('メッセージの読み込みに失敗しました',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                        );
+                      }
                       final messages = snap.data ?? [];
                       if (!snap.hasData) {
                         return Center(child: CircularProgressIndicator(color: appAccent(context)));
