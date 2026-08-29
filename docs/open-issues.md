@@ -212,6 +212,20 @@ Googleカレンダー同期・画像アップロードの7経路を`test/screens
 確認した。`calendar_screen.dart`（756行、複数のFirestoreストリームとGoogleカレンダーキャッシュに
 依存し規模が大きい）は今回のスコープに含めておらず、次回以降の課題として残っている。
 
+2026-08-29、上記の残りだった`calendar_screen.dart`にウィジェットテストを追加した（reduce-debt枠、
+本PR）。`EventService`/`GoogleCalendarService`/`GoogleCalendarCacheService`/`SettingsService`/
+`CoupleService`をコンストラクタから注入できるようにし（既存の`serviceOverride` + 遅延getterと
+同じ設計）、あわせて「今日」を固定する`nowOverride`（`anniversary_hub_screen.dart`と同じ設計）も
+追加してテストを日付非依存にした。作業の過程で、この画面のメイン予定ストリーム
+（`_eventsStream`のStreamBuilder）が`hasError`を一切見ておらず、権限エラー等でストリームが
+失敗すると「予定が0件の空のカレンダー」に見えたまま固まる不具合を見つけたため、
+todos_screen.dart等と同じ文言のエラー表示を追加した（CLAUDE.mdの当該ルール自体への違反箇所
+だった）。`test/screens/calendar_screen_test.dart`でストリームエラー時の表示・データ表示・
+日付タップでの選択表示切り替え・private予定の鍵アイコン・予定詳細/予定作成画面への遷移
+（Firebase未初期化のテストではpushされたことのみ確認、todos_screen_test.dartと同じ設計）を
+確認した。Googleカレンダー同期・メンバー名表示（`_loadMembers`が直接`FirebaseFirestore.instance`
+を参照している経路）はスコープに含めていない。
+
 ### P1 — 次に効くもの
 
 旧9〜12（画像から予定を読み取る／2人の空き時間検出／共有TODO／他社アプリからの移行手段）は

@@ -42,23 +42,62 @@ class _Member {
 
 class CalendarScreen extends StatefulWidget {
   final String coupleId;
-  const CalendarScreen({super.key, required this.coupleId});
+  // 以下はテストからFirebase/Google APIに触れずに検証するための注入ポイント。
+  // 未指定時はすべて本番実装（bug_report_screen.dart等と同じ「serviceOverride +
+  // 遅延getter」設計）。
+  final Stream<Map<DateTime, List<AimaruEvent>>>? eventsStreamOverride;
+  final EventService? eventServiceOverride;
+  final GoogleCalendarService? googleCalendarServiceOverride;
+  final GoogleCalendarCacheService? googleCalendarCacheServiceOverride;
+  final SettingsService? settingsServiceOverride;
+  final CoupleService? coupleServiceOverride;
+  final String? currentUidOverride;
+  // テストから「今日」を固定するための注入ポイント（未指定時はDateTime.now）。
+  final DateTime Function()? nowOverride;
+  const CalendarScreen({
+    super.key,
+    required this.coupleId,
+    this.eventsStreamOverride,
+    this.eventServiceOverride,
+    this.googleCalendarServiceOverride,
+    this.googleCalendarCacheServiceOverride,
+    this.settingsServiceOverride,
+    this.coupleServiceOverride,
+    this.currentUidOverride,
+    this.nowOverride,
+  });
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  final _eventService        = EventService();
-  final _googleCalendar      = GoogleCalendarService();
-  final _googleCalendarCache = GoogleCalendarCacheService();
-  final _settingsService     = SettingsService();
-  final _coupleService       = CoupleService();
+  // 各サービスは生成時にFirebaseFirestore.instance等へ即座に触れるため、
+  // override付きのテストではFirebase初期化なしに動けるよう、実際に使うときまで
+  // 生成を遅らせる（todos_screen.dartの_todoServiceと同じ設計）。
+  EventService? _eventServiceInstance;
+  EventService get _eventService => _eventServiceInstance ??= widget.eventServiceOverride ?? EventService();
 
-  String get _selfUid => FirebaseAuth.instance.currentUser!.uid;
+  GoogleCalendarService? _googleCalendarInstance;
+  GoogleCalendarService get _googleCalendar =>
+      _googleCalendarInstance ??= widget.googleCalendarServiceOverride ?? GoogleCalendarService();
 
-  DateTime _focusedDay  = DateTime.now();
-  DateTime _selectedDay = DateTime.now();
+  GoogleCalendarCacheService? _googleCalendarCacheInstance;
+  GoogleCalendarCacheService get _googleCalendarCache =>
+      _googleCalendarCacheInstance ??= widget.googleCalendarCacheServiceOverride ?? GoogleCalendarCacheService();
+
+  SettingsService? _settingsServiceInstance;
+  SettingsService get _settingsService => _settingsServiceInstance ??= widget.settingsServiceOverride ?? SettingsService();
+
+  CoupleService? _coupleServiceInstance;
+  CoupleService get _coupleService => _coupleServiceInstance ??= widget.coupleServiceOverride ?? CoupleService();
+
+  String get _selfUid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
+
+  // widget.nowOverrideはテストから「今日」を固定するための注入ポイント
+  // （initStateで確定させる。フィールド初期化子だとwidgetがまだ未設定のため）。
+  late DateTime _focusedDay;
+  late DateTime _selectedDay;
 
   // true: ヘッダー/フッター以外全体にカレンダーを表示（各日に予定のプレビュー付き）
   // false: 現行の「小さめカレンダー(ドット表示) + 下部に選択日の予定リスト」表示
@@ -73,7 +112,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   // 戻る。月を送ると予定が一瞬消えてから出てくるのはこれが原因なので、
   // ストリームはこの画面で1本だけ作って使い回す。
   late final Stream<Map<DateTime, List<AimaruEvent>>> _eventsStream =
-      _eventService.watchEventsAsMap(widget.coupleId);
+      widget.eventsStreamOverride ?? _eventService.watchEventsAsMap(widget.coupleId);
 
   StreamSubscription<Map<String, List<GCalEventSummary>>>? _gcalSub;
   Map<DateTime, List<_GcalEntry>> _gcalByDate = {};
@@ -101,6 +140,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    final now = (widget.nowOverride ?? DateTime.now)();
+    _focusedDay  = now;
+    _selectedDay = now;
     _initGoogleCalendar();
     _loadDisplayPrefs();
     _loadMembers();
@@ -320,6 +362,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
       body: StreamBuilder<Map<DateTime, List<AimaruEvent>>>(
         stream: _eventsStream,
         builder: (context, snap) {
+          // hasDataだけを見ていると、権限エラー等でストリームがエラーに
+          // 落ちたときに「予定が無いだけ」に見える空のカレンダーで固まる
+          // （todos_screen.dartと同じ理由でここも明示的にハンドリングする）。
+          if (snap.hasError) {
+            return const Center(
+              child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+            );
+          }
           // 毎年繰り返す予定は1件しか保存されていないので、表示する年の
           // 発生日へ展開する。前後の月が別の年に食い込むため±1年を含める。
           final eventsMap = expandRecurringEvents(
