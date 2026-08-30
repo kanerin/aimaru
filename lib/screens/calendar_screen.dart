@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -168,10 +167,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     try {
       final couple = await _coupleService.getMyCouple();
       if (couple == null || !mounted) return;
+      final rawProfiles = await _coupleService.getMemberProfiles(couple.memberIds);
       final profiles = <String, _Member>{};
       for (final uid in couple.memberIds) {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-        final data = doc.data();
+        final data = rawProfiles[uid];
         profiles[uid] = _Member(
           uid: uid,
           name: (data?['displayName'] as String?)?.isNotEmpty == true
