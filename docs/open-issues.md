@@ -224,7 +224,19 @@ todos_screen.dart等と同じ文言のエラー表示を追加した（CLAUDE.md
 日付タップでの選択表示切り替え・private予定の鍵アイコン・予定詳細/予定作成画面への遷移
 （Firebase未初期化のテストではpushされたことのみ確認、todos_screen_test.dartと同じ設計）を
 確認した。Googleカレンダー同期・メンバー名表示（`_loadMembers`が直接`FirebaseFirestore.instance`
-を参照している経路）はスコープに含めていない。
+を参照している経路）はスコープに含めていなかった。
+
+2026-08-30、上記の残りだったGoogleカレンダー同期・メンバー名表示のテストを追加した
+（reduce-debt枠、本PR）。`_loadMembers`が`FirebaseFirestore.instance`に直接触れていたため
+既存の`coupleServiceOverride`を通しても差し込めなかった箇所を解消するため、`CoupleService`に
+`getMemberProfiles`（既存の`getPartnerName`と同じ注入済みの`_db`経由）を新設し、
+`calendar_screen.dart`側の生の`cloud_firestore`依存を削除した。
+`test/screens/calendar_screen_test.dart`に、メンバーの表示名が予定のアバターへ反映されること、
+パートナーの共有Googleカレンダー予定が📅アイコン付きで表示されること、パートナーがprivate
+指定したGoogle予定はクライアント側フィルタリングで表示されないことの3件を追加した
+（`GoogleCalendarService`本体は実際のGoogle Sign-Inプラグインを叩くため、`fetchEvents`だけ
+差し替えるフェイクサブクラスをテスト内に用意した）。これで`calendar_screen.dart`の主要経路の
+テスト整備は完了した。
 
 ### P1 — 次に効くもの
 
