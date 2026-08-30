@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/calendar_screen.dart';
 import 'package:aimaru/services/couple_service.dart';
+import 'package:aimaru/services/google_calendar_cache_service.dart';
+import 'package:aimaru/services/google_calendar_service.dart';
 
 // カレンダー画面がストリームエラーで（無限ローディングではなく、予定が0件に
 // 見える空のカレンダーで）固まらないことと、基本的な表示・遷移経路を確かめる。
@@ -34,6 +37,8 @@ void main() {
   Widget wrap(
     Stream<Map<DateTime, List<AimaruEvent>>> stream, {
     NavigatorObserver? observer,
+    GoogleCalendarService? googleCalendarServiceOverride,
+    GoogleCalendarCacheService? googleCalendarCacheServiceOverride,
   }) =>
       MaterialApp(
         navigatorObservers: observer != null ? [observer] : [],
@@ -44,6 +49,8 @@ void main() {
           // _loadMembersはFirestoreの生のusers参照へ進まず早期return するため、
           // Firebase未初期化のテストでも安全に動く。
           coupleServiceOverride: CoupleService(firestore: db, uid: meUid),
+          googleCalendarServiceOverride: googleCalendarServiceOverride,
+          googleCalendarCacheServiceOverride: googleCalendarCacheServiceOverride,
           currentUidOverride: meUid,
           nowOverride: () => today,
         ),
@@ -163,6 +170,121 @@ void main() {
 
     await controller.close();
   });
+
+  testWidgets('メンバーの表示名を読み込んで予定のアバターに反映する', (tester) async {
+    const partnerUid = 'partner';
+    await db.collection('couples').doc(coupleId).set({
+      'memberIds': [meUid, partnerUid],
+      'inviteCode': 'ABCDEF',
+      'createdAt': Timestamp.fromDate(today),
+    });
+    await db.collection('users').doc(partnerUid).set({'displayName': 'あいこ'});
+
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(controller.stream));
+    // _loadMembersはgetMyCouple → getMemberProfilesと非同期を挟むため、
+    // 予定を流し込む前に一度落ち着かせておく。
+    await tester.pumpAndSettle();
+
+    controller.add({
+      today: [buildEvent(title: '相手の予定', createdBy: partnerUid)],
+    });
+    await tester.pump();
+
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+
+    expect(find.text('あ'), findsOneWidget);
+
+    await controller.close();
+  });
+
+  testWidgets('パートナーの共有Googleカレンダー予定が📅アイコン付きで表示される', (tester) async {
+    SharedPreferences.setMockInitialValues({'show_google_calendar': true});
+    const partnerUid = 'partner';
+    await db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('googleCalendarCache')
+        .doc(partnerUid)
+        .set({
+      'events': [
+        GCalEventSummary(
+          id: 'g1',
+          title: 'ジムに行く',
+          start: today,
+          end: today.add(const Duration(hours: 1)),
+          allDay: false,
+        ).toMap(),
+      ],
+      'updatedAt': Timestamp.fromDate(today),
+    });
+
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      googleCalendarServiceOverride: _FakeGoogleCalendarService(),
+      googleCalendarCacheServiceOverride: GoogleCalendarCacheService(firestore: db, uid: meUid),
+    ));
+    await tester.pumpAndSettle();
+
+    controller.add({});
+    await tester.pump();
+
+    expect(find.textContaining('ジムに行く'), findsOneWidget);
+    expect(find.textContaining('📅'), findsWidgets);
+
+    await controller.close();
+  });
+
+  testWidgets('パートナーがprivate指定したGoogle予定は表示されない', (tester) async {
+    SharedPreferences.setMockInitialValues({'show_google_calendar': true});
+    const partnerUid = 'partner';
+    await db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('googleCalendarCache')
+        .doc(partnerUid)
+        .set({
+      'events': [
+        GCalEventSummary(
+          id: 'g2',
+          title: '内緒の予定',
+          start: today,
+          end: today.add(const Duration(hours: 1)),
+          allDay: false,
+          visibility: EventVisibility.private,
+        ).toMap(),
+      ],
+      'updatedAt': Timestamp.fromDate(today),
+    });
+
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      googleCalendarServiceOverride: _FakeGoogleCalendarService(),
+      googleCalendarCacheServiceOverride: GoogleCalendarCacheService(firestore: db, uid: meUid),
+    ));
+    await tester.pumpAndSettle();
+
+    controller.add({});
+    await tester.pump();
+
+    expect(find.textContaining('内緒の予定'), findsNothing);
+
+    await controller.close();
+  });
+}
+
+// GoogleCalendarService本体はGoogleSignInの実プラグインを叩くため、
+// テストからはfetchEventsだけ差し替えて実際のGoogle通信を避ける。
+class _FakeGoogleCalendarService extends GoogleCalendarService {
+  @override
+  Future<List<GCalEventSummary>> fetchEvents({
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      [];
 }
 
 class _RecordingNavigatorObserver extends NavigatorObserver {

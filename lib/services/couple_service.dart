@@ -172,6 +172,19 @@ class CoupleService {
     return doc.data()?['displayName'] as String?;
   }
 
+  // ── メンバー（自分+パートナー）の表示名・アイコンをまとめて取得 ──
+  // calendar_screen.dartの_loadMembersがFirebaseFirestore.instanceへ
+  // 直接触れていたため注入不可能でテストが書けなかった箇所を、既存の
+  // getPartnerNameと同じ_db経由に寄せて解消する。
+  Future<Map<String, Map<String, dynamic>?>> getMemberProfiles(List<String> uids) async {
+    final result = <String, Map<String, dynamic>?>{};
+    for (final uid in uids) {
+      final doc = await _db.collection('users').doc(uid).get();
+      result[uid] = doc.data();
+    }
+    return result;
+  }
+
   // ── 6桁コード生成 ─────────────────────────────────
   // 以前は現在時刻(マイクロ秒)にインデックスを足して文字を選んでいたため、
   // 6文字が文字表の連番（例: ABCDEF）になり、コードが推測可能だった。

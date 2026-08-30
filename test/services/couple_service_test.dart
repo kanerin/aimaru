@@ -187,6 +187,26 @@ void main() {
 
       expect(await service.getPartnerName(couple!), isNull);
     });
+
+    test('メンバー全員分のプロフィールをまとめて取得できる', () async {
+      await db.collection('users').doc(meUid).set({
+        'displayName': 'わたし',
+        'photoUrl': 'https://example.com/me.png',
+      });
+      await db.collection('users').doc(partnerUid).set({'displayName': 'あいこ'});
+
+      final profiles = await serviceFor(meUid).getMemberProfiles([meUid, partnerUid]);
+
+      expect(profiles[meUid]?['displayName'], 'わたし');
+      expect(profiles[meUid]?['photoUrl'], 'https://example.com/me.png');
+      expect(profiles[partnerUid]?['displayName'], 'あいこ');
+    });
+
+    test('プロフィールが無いuidにはnullを返す', () async {
+      final profiles = await serviceFor(meUid).getMemberProfiles([otherUid]);
+
+      expect(profiles[otherUid], isNull);
+    });
   });
 
   group('ペアの解消', () {
