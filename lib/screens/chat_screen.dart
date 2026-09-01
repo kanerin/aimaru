@@ -151,6 +151,67 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _toggleReaction(ChatMessage m, String emoji) {
+    if (m.reactions[_myUid] == emoji) {
+      _chatService.removeReaction(widget.coupleId, m.id);
+    } else {
+      _chatService.setReaction(widget.coupleId, m.id, emoji);
+    }
+  }
+
+  Future<void> _showReactionPicker(ChatMessage m) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.navyCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 12,
+                children: ChatService.quickReactionEmojis.map((emoji) {
+                  final mine = m.reactions[_myUid] == emoji;
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _toggleReaction(m, emoji);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: mine
+                            ? appAccent(context).withValues(alpha: 0.25)
+                            : Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                    ),
+                  );
+                }).toList(),
+              ),
+              if (m.imageUrl == null) ...[
+                const Divider(height: 24, color: AppColors.hairline),
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded, color: AppColors.textSecond),
+                  title: const Text('コピー'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _copyText(m.text);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openImageDetail(String url) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: url)),
@@ -345,7 +406,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: GestureDetector(
               onTap: () => _openImageDetail(m.imageUrl!),
-              onLongPress: () => _saveImageToDevice(m.imageUrl!),
+              onLongPress: () => _showReactionPicker(m),
               child: CachedNetworkImage(
                 imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
                 memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
@@ -371,7 +432,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } else {
       content = GestureDetector(
-        onLongPress: () => _copyText(m.text),
+        onLongPress: () => _showReactionPicker(m),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
@@ -395,6 +456,7 @@ class _ChatScreenState extends State<ChatScreen> {
         crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           content,
+          if (m.reactions.isNotEmpty) _buildReactionsRow(m),
           Padding(
             padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
             child: Row(
@@ -410,6 +472,38 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(height: 6),
         ],
+      ),
+    );
+  }
+
+  // 絵文字ごとの人数をまとめて小さなピルで表示する。タップで自分の
+  // リアクションをその場でトグルできる（外す/この絵文字に切り替える）。
+  Widget _buildReactionsRow(ChatMessage m) {
+    final counts = <String, int>{};
+    for (final emoji in m.reactions.values) {
+      counts[emoji] = (counts[emoji] ?? 0) + 1;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        children: counts.entries.map((e) {
+          final mine = m.reactions[_myUid] == e.key;
+          return GestureDetector(
+            onTap: () => _toggleReaction(m, e.key),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: mine
+                    ? appAccent(context).withValues(alpha: 0.2)
+                    : AppColors.navySurface,
+                borderRadius: BorderRadius.circular(12),
+                border: mine ? Border.all(color: appAccent(context)) : null,
+              ),
+              child: Text('${e.key} ${e.value}', style: const TextStyle(fontSize: 11)),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
