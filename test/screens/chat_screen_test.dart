@@ -105,6 +105,69 @@ void main() {
     expect((await myReadStatusDoc()).exists, isTrue);
   });
 
+  testWidgets('リアクションが人数付きピルで表示される', (tester) async {
+    final message = ChatMessage(
+      id: 'msg-1',
+      coupleId: coupleId,
+      text: 'こんにちは',
+      senderId: partnerUid,
+      timestamp: DateTime(2026, 1, 1),
+      reactions: {meUid: '❤️', partnerUid: '👍'},
+    );
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    expect(find.text('❤️ 1'), findsOneWidget);
+    expect(find.text('👍 1'), findsOneWidget);
+  });
+
+  testWidgets('長押しでリアクションピッカーを開き、絵文字をタップすると保存される', (tester) async {
+    await meChatService.sendMessage(coupleId, text: 'こんにちは');
+    final message = (await meChatService.watchMessages(coupleId).first).single;
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    await tester.longPress(find.text('こんにちは'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('❤️').first);
+    await tester.pumpAndSettle();
+
+    final doc = await db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('chats')
+        .doc(message.id)
+        .get();
+    expect((doc.data()?['reactions'] as Map)[meUid], '❤️');
+  });
+
+  testWidgets('自分がすでに付けたリアクションのピルをタップすると外れる', (tester) async {
+    await meChatService.sendMessage(coupleId, text: 'こんにちは');
+    final sent = (await meChatService.watchMessages(coupleId).first).single;
+    await meChatService.setReaction(coupleId, sent.id, '👍');
+    final message = (await meChatService.watchMessages(coupleId).first).single;
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    await tester.tap(find.text('👍 1'));
+    await tester.pumpAndSettle();
+
+    final doc = await db
+        .collection('couples')
+        .doc(coupleId)
+        .collection('chats')
+        .doc(message.id)
+        .get();
+    expect((doc.data()?['reactions'] as Map).containsKey(meUid), isFalse);
+  });
+
   testWidgets('メッセージストリームがエラーになったら無限ローディングではなくエラー表示にする', (tester) async {
     // _messagesStreamは既読マーカーの購読とStreamBuilderの両方から
     // listenされるため、本番のFirestoreの.snapshots()と同様broadcastにする。

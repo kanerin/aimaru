@@ -37,6 +37,48 @@ void main() {
       expect(messages.first.senderId, meUid);
       expect(messages.last.senderId, partnerUid);
     });
+
+    test('送信直後のメッセージはreactionsが空', () async {
+      await meService.sendMessage(coupleId, text: 'おはよう');
+
+      final message = (await meService.watchMessages(coupleId).first).single;
+      expect(message.reactions, isEmpty);
+    });
+  });
+
+  group('リアクション', () {
+    late String messageId;
+
+    setUp(() async {
+      await meService.sendMessage(coupleId, text: 'おはよう');
+      messageId = (await meService.watchMessages(coupleId).first).single.id;
+    });
+
+    test('setReactionで自分のリアクションが付く', () async {
+      await partnerService.setReaction(coupleId, messageId, '❤️');
+
+      final message = (await meService.watchMessages(coupleId).first).single;
+      expect(message.reactions, {partnerUid: '❤️'});
+    });
+
+    test('setReactionを別の絵文字で呼ぶと自分の分だけ上書きされる', () async {
+      await meService.setReaction(coupleId, messageId, '👍');
+      await partnerService.setReaction(coupleId, messageId, '❤️');
+      await meService.setReaction(coupleId, messageId, '😢');
+
+      final message = (await meService.watchMessages(coupleId).first).single;
+      expect(message.reactions, {meUid: '😢', partnerUid: '❤️'});
+    });
+
+    test('removeReactionで自分のリアクションだけ消える', () async {
+      await meService.setReaction(coupleId, messageId, '👍');
+      await partnerService.setReaction(coupleId, messageId, '❤️');
+
+      await meService.removeReaction(coupleId, messageId);
+
+      final message = (await meService.watchMessages(coupleId).first).single;
+      expect(message.reactions, {partnerUid: '❤️'});
+    });
   });
 
   group('既読状態', () {

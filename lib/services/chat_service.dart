@@ -3,6 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/models.dart';
 
 class ChatService {
+  // Between・Pairyなど主要なカップルアプリはメッセージへのリアクション
+  // （スタンプ的な絵文字反応）を持つが、AIMARUのトークはこれまで
+  // テキストと画像を送るだけだった（2026年9月時点の競合調査）。
+  static const List<String> quickReactionEmojis = ['❤️', '😂', '😮', '😢', '👍', '🙏'];
+
   // 引数なしで生成すると本番のFirebaseを使う（既存の呼び出しはそのまま）。
   // テストからは firestore / uid を差し込んでFirebaseに触れずに検証する。
   ChatService({FirebaseFirestore? firestore, String? uid})
@@ -57,5 +62,15 @@ class ChatService {
       final ts = data?['lastReadAt'] as Timestamp?;
       return ts?.toDate();
     });
+  }
+
+  // ── 自分のリアクションを設定（同じ絵文字を選び直す場合はremoveReactionを使う）──
+  Future<void> setReaction(String coupleId, String messageId, String emoji) async {
+    await _chatsRef(coupleId).doc(messageId).update({'reactions.$_uid': emoji});
+  }
+
+  // ── 自分のリアクションを外す ──────────────────────
+  Future<void> removeReaction(String coupleId, String messageId) async {
+    await _chatsRef(coupleId).doc(messageId).update({'reactions.$_uid': FieldValue.delete()});
   }
 }

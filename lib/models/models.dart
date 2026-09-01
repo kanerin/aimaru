@@ -220,6 +220,8 @@ class ChatMessage {
   final String senderId;
   final DateTime timestamp;
   final bool isAi;
+  // uid -> 絵文字。1人につき1つまで（同じ絵文字を選び直すとトグルで外れる）。
+  final Map<String, String> reactions;
 
   ChatMessage({
     required this.id,
@@ -229,6 +231,7 @@ class ChatMessage {
     required this.senderId,
     required this.timestamp,
     this.isAi = false,
+    this.reactions = const {},
   });
 
   factory ChatMessage.fromDoc(DocumentSnapshot doc) {
@@ -241,6 +244,7 @@ class ChatMessage {
       senderId:  d['senderId'] ?? '',
       timestamp: (d['timestamp'] as Timestamp).toDate(),
       isAi:      d['isAi'] ?? false,
+      reactions: Map<String, String>.from(d['reactions'] as Map? ?? {}),
     );
   }
 
@@ -251,6 +255,7 @@ class ChatMessage {
     'senderId':  senderId,
     'timestamp': Timestamp.fromDate(timestamp),
     'isAi':      isAi,
+    'reactions': reactions,
   };
 }
 
