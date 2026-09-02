@@ -574,24 +574,36 @@ export const submitBugReport = onCall<SubmitBugReportRequest>(
       throw new HttpsError("internal", "判定結果を解釈できませんでした");
     }
 
-    if (triage.classification === "invalid") {
-      return { accepted: false, classification: triage.classification, summary: triage.summary };
-    }
-
+    // invalidでも必ず記録を残す。以前はFirestoreへ一切書かずに戻っていたが、
+    // それだと報告が跡形もなく消えていた（アプリの「送った報告」にも出ず、
+    // Issueも起票されず、ログにも残らない）。分類プロンプトは
+    // 「判断に迷う場合はinvalidに倒す」「既存機能の削除・無効化を求める要望は
+    // invalid」と明示的にinvalid寄りにしてあるため、正当な機能要望が
+    // invalidへ落ちることは十分に起こり得る。捨てずに残しておけば、
+    // 本人が「送った報告」で見送りとして確認でき、拾い直しもできる。
+    const accepted = triage.classification !== "invalid";
     const ref = await db.collection("bugReports").add({
       rawText: text,
       summary: triage.summary,
       classification: triage.classification,
-      status: "pending",
+      // invalidは自動実装のキュー（pending）へ積まず、最初から見送り扱いにする。
+      status: accepted ? "pending" : "rejected",
+      ...(accepted
+        ? {}
+        : {
+            rejectCategory: "unclear",
+            reason: "AIの判定で対象外と判断されました。内容を具体的にして送り直すこともできます",
+          }),
       createdBy: uid,
       createdAt: Timestamp.now(),
     });
 
     return {
-      accepted: true,
+      accepted,
       classification: triage.classification,
       summary: triage.summary,
-      id: ref.id,
+      // 画像の添付は受理された報告にだけ許す（クライアントもacceptedのときしか呼ばない）。
+      ...(accepted ? { id: ref.id } : {}),
     };
   },
 );

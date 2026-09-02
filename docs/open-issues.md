@@ -10,8 +10,8 @@
 
 | 対象 | コマンド | 結果 |
 |---|---|---|
-| Cloud Functions（判定ロジック） | `cd functions && npm test` | **87件すべて通過**（ローカルで確認、CIでも要確認） |
-| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **41件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
+| Cloud Functions（判定ロジック） | `cd functions && npm test` | **111件すべて通過**（ローカルで確認、CIでも要確認） |
+| Cloud Functions（Firestore・Storage経路） | `cd functions && npm run test:integration` | **53件すべて通過**（ローカルで確認。下記「既知の環境上の制約」参照——2026-08-20時点でこのエージェント実行環境はNode 22系になっており、制約は解消済み） |
 | Cloud Functions の型 | `cd functions && npm run typecheck` | **通過**（テストコード込み） |
 | セキュリティルール | `cd rules_test && npm test` | **85件すべて通過**（ローカルで確認。同上の理由で制約は解消済み） |
 | Flutter 単体・ウィジェット | `flutter test` | **487件すべて通過**（ローカルで確認、CIでも要確認） |
@@ -52,7 +52,8 @@ functions/src/trash.integration.test.ts           1   保持期限を過ぎた�
 functions/src/gemini_logic.test.ts               35   askGeminiのレート制限・メンバー確認・Gemini APIレスポンス分岐
 functions/src/ask_gemini.integration.test.ts      8   Firestoreを読んだメンバー確認・レート制限のトランザクション
 functions/src/bug_report_logic.test.ts           21   バグ報告フォームの入力検証・分類プロンプト組み立て・Gemini応答の厳格パース
-functions/src/submit_bug_report.integration.test.ts 7 バグ報告専用レート制限（askGeminiと独立）・受理された報告の書き込み
+functions/src/submit_bug_report.integration.test.ts 10 バグ報告専用レート制限（askGeminiと独立）・報告の書き込み（invalidも捨てずに見送りとして残す）
+functions/scripts/feature_request_routing.test.mjs 15 機能要望のIssue起票対象の選別（status非依存・二重起票防止）とIssue本文の組み立て
 functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
 test/services/bug_report_service_test.dart       15   バグ報告送信サービス（入力検証・応答解釈・エラー分類・自分の報告一覧watchMyReports）
 test/screens/bug_report_screen_test.dart         10   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示・送った報告一覧の表示/エラー）
@@ -592,6 +593,32 @@ JSON書き出しにも`shoppingItems`を追加した。
 （`reactions.$uid`だけを書き換える設計にしているが、ルール上は元々メッセージ全体を
 書き換えられる）。`DataExportService`のJSON書き出しは対象外とした（リアクションは
 一覧性より会話中の反応そのものに価値があるUI上の要素のため）。
+
+2026-08-28、アプリから届いた機能要望が黙って消える経路を2つ塞いだ（本PR）。
+
+1つ目は`submitBugReport`（`functions/src/index.ts`）。Geminiが`invalid`と判定した報告を
+`{accepted:false}`で返すだけで**Firestoreへ一切書かずに捨てていた**。分類プロンプトは
+「判断に迷う場合はinvalidに倒す」「既存機能の削除・無効化を求める要望はinvalid」と
+意図的にinvalid寄りにしてあるため、正当な機能要望がinvalidへ落ちることは普通に起こる。
+ドキュメントが無いのでIssueも起票されず、アプリの「送った報告」にも出ず、`logger`にも
+残らないため、後から拾い直す手段が一切無かった。invalidも
+`status: 'rejected'` / `rejectCategory: 'unclear'` として保存するようにして、
+少なくとも本人が「送った報告」で確認でき、後から拾えるようにした。
+**この修正より前に捨てられた報告は復元できない**（どこにも記録が残っていない）。
+
+2つ目は`functions/scripts/route-feature-requests-to-issues.mjs`。`status == 'pending'`の
+機能要望だけをIssue化していたため、この仕組みが入る前（2026-08-21、PR #70）に届いた
+機能要望や、先に`rejected`/`done`/`in_progress`へ動いていた機能要望は永久にIssueが
+起票されないまま取り残されていた。statusではなく`issueNumber`（起票したら
+ドキュメントへ書き戻す）の有無で判定するようにして、取り残しを拾いつつ二重起票も
+防ぐようにした。あわせて、1件の`gh issue create`失敗でループごと止まって残りが
+次回まで放置されていたのをtry/catchで続行するようにし、Issue本文に報告の原文
+（信頼できない入力である旨を明記した上で引用）も載せるようにした。
+
+Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセット）だけに任せず、
+`route-feature-requests.yml`（毎日＋`workflow_dispatch`での手動実行）としても回すように
+した。Firestoreを読んで`gh`を叩くだけの軽い処理で、バグ修正の自動実装とは独立して
+回せるべきものだったため。取り残しのバックフィルもこのワークフローの手動実行で行う。
 
 ### P2 — 余力があれば
 

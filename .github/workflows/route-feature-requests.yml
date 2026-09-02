@@ -1,0 +1,73 @@
+name: Route feature requests to Issues (1x/day)
+
+# アプリ内の「バグ報告・機能要望」フォームから届き、Firestoreの bugReports へ
+# ストックされた機能要望（classification: feature_request）を、GitHub Issue へ
+# 起票する。LLMの判断を一切介さない決定的なスクリプトだけを走らせる。
+#
+# fix-bug-reports.yml の中でも同じスクリプトを呼んでいるが、あちらは2日に1回で、
+# しかもClaude Codeの実行とセットになっている。機能要望のIssue化は
+# 「Firestoreを読んでghを叩くだけ」の軽い処理で、バグ修正の自動実装とは
+# 独立して回せるべきものなので、単体のワークフローとして分けた。
+# ねらいは2つ:
+# - 起票までの待ち時間を最大2日から最大1日へ縮める
+# - fix-bug-reports.yml 側が（Claude Codeの失敗などで）落ちても、機能要望が
+#   Issue化されないまま滞留しない
+#
+# スクリプトは issueNumber をドキュメントへ書き戻して冪等にしてあるため、
+# 両方から呼ばれても二重起票しない。
+#
+# workflow_dispatch でいつでも手動実行できる。取り残しのバックフィル
+# （Issue未起票の機能要望をまとめて起票する）もこれで行う。
+
+on:
+  schedule:
+    - cron: '30 0 * * *' # 毎日 UTC 0:30（JST 9:30）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '起票せず、対象だけを出力する'
+        type: boolean
+        default: false
+
+# 手動実行とcronが重なったときに二重で走らせない（冪等ではあるが、
+# 同時実行だと同じ報告を2回起票しうる）
+concurrency:
+  group: route-feature-requests
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: develop
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        working-directory: functions
+        run: npm ci
+
+      # bugReportsコレクションの読み書きに使う（fix-bug-reports.yml と同じ資格情報）
+      - name: Write Firebase service account key
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}' > "$RUNNER_TEMP/firebase-service-account.json"
+
+      - name: Route feature requests to GitHub Issues
+        working-directory: functions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node scripts/route-feature-requests-to-issues.mjs --dry-run
+          else
+            node scripts/route-feature-requests-to-issues.mjs
+          fi
