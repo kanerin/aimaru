@@ -90,10 +90,21 @@ describe("buildTriageContents", () => {
     assert.ok(text.includes("ペア解消の機能がいらない"));
   });
 
-  it("判断に迷う場合はinvalid側に倒すよう明示する", () => {
+  it("列挙した条件に当てはまらない限りinvalidにしないよう明示する", () => {
     const contents = buildTriageContents("テスト入力");
     const text = (contents[0].parts[0] as { text: string }).text;
-    assert.ok(text.includes("判断に迷う場合はinvalid側に倒してください"));
+    // 以前は「判断に迷う場合はinvalid側に倒してください」としていたため、
+    // ただの機能要望がinvalidへ落ち、Firestoreにも残らず消えていた。
+    assert.ok(!text.includes("判断に迷う場合はinvalid側に倒してください"));
+    assert.ok(text.includes("上に挙げたinvalidの条件に当てはまらない限り、invalidにしないでください"));
+  });
+
+  it("迷った場合はfeature_requestとしてIssueへ残す方針を明示する", () => {
+    const contents = buildTriageContents("テスト入力");
+    const text = (contents[0].parts[0] as { text: string }).text;
+    assert.ok(text.includes("迷ったらfeature_requestにしてIssueへ残すほうが望ましい"));
+    // なぜそうするのか（Issue起票され人間が判断する）まで書いておく
+    assert.ok(text.includes("GitHub Issueとして起票されて"));
   });
 });
 

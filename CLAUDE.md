@@ -98,7 +98,9 @@ Issue本文・PR本文・コードコメント・Issueへのコメントはす�
 
 **`storage.rules`は上記のFirestore rules/indexesと違い、2026-08-21まで`release-stg.yml`のデプロイ対象に一度も含まれていなかった。** `firestore.rules`と同じ理由（本番に一切自動反映されない）で見落とされていた設定漏れで、`bugReports/{reportId}/`への画像アップロードを許可する変更を出した際に発覚した。`Deploy Storage rules`ステップを追加して解消済み（他のデプロイステップと同様`continue-on-error: true`）。`storage.rules`を変更する場合も、もう手動デプロイは不要。
 
-**アプリから届いた報告は、判定結果がどうであれ必ずFirestoreへ残すこと。** `submitBugReport`は長いあいだ、Geminiが`invalid`と判定した報告を`{accepted:false}`で返すだけで**Firestoreへ一切書かずに捨てていた**。分類プロンプトは「判断に迷う場合はinvalidに倒す」「既存機能の削除・無効化を求める要望はinvalid」と意図的にinvalid寄りにしてあるため、正当な機能要望がinvalidへ落ちることは普通に起こる。捨ててしまうとドキュメントが無いのでIssueも起票されず、アプリの「送った報告」にも出ず、`logger`にも残らない——利用者から見ると「送ったのに何も起きない」だけで、後から復元する手段が一切無い（2026-08-28に修正。invalidも`status: 'rejected'`・`rejectCategory: 'unclear'`で保存するようにした）。
+**アプリから届いた報告は、判定結果がどうであれ必ずFirestoreへ残すこと。** `submitBugReport`は長いあいだ、Geminiが`invalid`と判定した報告を`{accepted:false}`で返すだけで**Firestoreへ一切書かずに捨てていた**。捨ててしまうとドキュメントが無いのでIssueも起票されず、アプリの「送った報告」にも出ず、`logger`にも残らない——利用者から見ると「送ったのに何も起きない」だけで、後から復元する手段が一切無い（修正済み。invalidも`status: 'rejected'`・`rejectCategory: 'unclear'`で保存する）。
+
+**分類プロンプトの`invalid`は、列挙した条件（スパム・無関係・指示文の埋め込み・意味不明な文字列・個人情報の羅列・既存機能の削除や無効化を求める要望）に限ること。** 以前は「判断に迷う場合はinvalid側に倒してください」としていたため、ただの機能要望が次々とinvalidへ落ちていた。機能要望は自動実装されずGitHub Issueとして起票され人間が判断するので、曖昧なものをinvalidで捨てるより、feature_requestにしてIssueへ残すほうが望ましい（`functions/src/bug_report_logic.ts`の`buildTriageContents`にその方針を明記してある）。「既存機能の削除・無効化を求める要望はinvalid」だけは、残すか削るかが製品判断そのものなので従来どおり維持する。
 
 **Firestoreのドキュメントを「まだ処理していないもの」の目印にするときは、statusではなく処理の結果そのものを見ること。** `route-feature-requests-to-issues.mjs`は当初`status == 'pending'`の機能要望だけをIssue化していたため、この仕組みが入る前（2026-08-21以前）に届いた機能要望や、先に`rejected`/`done`へ動いていた機能要望は永久にIssueが起票されないまま取り残されていた。statusは他の処理でも動くので「未処理」の判定には使えない。`issueNumber`（起票したら書き戻す）の有無で判定すれば、取り残しを拾いつつ二重起票も防げる。
 
