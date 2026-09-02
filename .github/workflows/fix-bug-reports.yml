@@ -86,6 +86,11 @@ jobs:
       # GitHub Issueへ振り分ける。Claude Codeの実行より前に行うことで、
       # list-pending-bug-reports.mjs --classification=bug がその後の
       # ステップで参照するpending一覧には最初から機能要望が含まれない。
+      #
+      # 同じスクリプトを route-feature-requests.yml が毎日単体でも回している
+      # （このワークフローが落ちても機能要望が滞留しないようにするため）。
+      # スクリプトは起票したIssue番号をbugReportsへ書き戻して冪等にしてあるので、
+      # 両方から呼ばれても二重起票しない。
       - name: Route feature requests to GitHub Issues (deterministic, no LLM judgment)
         working-directory: functions
         env:

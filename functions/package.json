@@ -5,7 +5,7 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 src/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 src/*.test.ts scripts/*.test.mjs",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",

@@ -44,22 +44,45 @@ async function checkAndConsumeBugReportRateLimit(uid: string, monthStr: string):
   });
 }
 
-/** 本番の「受理された報告をbugReportsへ書き込む」処理を再現する。 */
+/**
+ * 本番の「判定結果をbugReportsへ書き込む」処理を再現する。
+ *
+ * invalidも必ず保存するのが要点。以前はinvalidだとFirestoreへ一切書かずに
+ * 戻っていたため、報告が跡形もなく消えていた（アプリの「送った報告」にも
+ * 出ず、Issueも起票されず、ログにも残らない）。
+ */
+async function storeTriagedReport(
+  uid: string,
+  rawText: string,
+  classification: "bug" | "feature_request" | "invalid",
+  summary: string,
+): Promise<string> {
+  const accepted = classification !== "invalid";
+  const ref = await db.collection("bugReports").add({
+    rawText,
+    summary,
+    classification,
+    status: accepted ? "pending" : "rejected",
+    ...(accepted
+      ? {}
+      : {
+          rejectCategory: "unclear",
+          reason: "AIの判定で対象外と判断されました。内容を具体的にして送り直すこともできます",
+        }),
+    createdBy: uid,
+    createdAt: Timestamp.now(),
+  });
+  return ref.id;
+}
+
+/** 受理された（bug / feature_request）報告だけを書き込むときの入口。 */
 async function storeAcceptedReport(
   uid: string,
   rawText: string,
   classification: "bug" | "feature_request",
   summary: string,
 ): Promise<string> {
-  const ref = await db.collection("bugReports").add({
-    rawText,
-    summary,
-    classification,
-    status: "pending",
-    createdBy: uid,
-    createdAt: Timestamp.now(),
-  });
-  return ref.id;
+  return storeTriagedReport(uid, rawText, classification, summary);
 }
 
 type AttachImagesResult =
@@ -236,6 +259,38 @@ describe("submitBugReportのFirestore経路", { skip: EMULATOR ? false : "エミ
       const result = await attachImages(USER_A, "no-such-report", ["https://example.com/a.jpg"]);
 
       assert.deepEqual(result, { ok: false, reason: "not-found" });
+    });
+  });
+
+  describe("判定結果の保存", () => {
+    it("bug / feature_request はpendingとして積まれる", async () => {
+      const id = await storeTriagedReport(USER_A, "カレンダーが開かない", "bug", "要約");
+
+      const doc = await db.collection("bugReports").doc(id).get();
+      assert.equal(doc.data()?.status, "pending");
+      assert.equal(doc.data()?.rejectCategory, undefined);
+    });
+
+    it("invalidでも捨てずに保存し、最初から見送り扱いにする", async () => {
+      const id = await storeTriagedReport(USER_A, "あああああ", "invalid", "意味の取れない内容");
+
+      const doc = await db.collection("bugReports").doc(id).get();
+      assert.ok(doc.exists, "invalidでもドキュメントが残ること（消えると本人も追えない）");
+      assert.equal(doc.data()?.status, "rejected");
+      assert.equal(doc.data()?.rejectCategory, "unclear");
+      assert.equal(doc.data()?.classification, "invalid");
+      assert.equal(doc.data()?.createdBy, USER_A, "本人が「送った報告」で読めるようcreatedByを残す");
+      assert.ok(doc.data()?.reason, "見送りの理由を残す");
+    });
+
+    it("invalidは自動実装のキュー（pending）に混ざらない", async () => {
+      await storeTriagedReport(USER_A, "あああああ", "invalid", "意味の取れない内容");
+      await storeTriagedReport(USER_A, "カレンダーが開かない", "bug", "要約");
+
+      const pending = await db.collection("bugReports").where("status", "==", "pending").get();
+
+      assert.equal(pending.size, 1);
+      assert.equal(pending.docs[0].data().classification, "bug");
     });
   });
 });
