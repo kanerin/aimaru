@@ -5,12 +5,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 class NotificationSettings {
   final bool notifyOnNewEvent;
   final bool notifyOnNewChatMessage;
+  final bool notifyOnDailyQuestion;
   final bool remindersEnabled;
   final int  reminderMinutesBefore;
 
   const NotificationSettings({
     this.notifyOnNewEvent = true,
     this.notifyOnNewChatMessage = true,
+    this.notifyOnDailyQuestion = true,
     this.remindersEnabled = true,
     this.reminderMinutesBefore = 60,
   });
@@ -18,6 +20,7 @@ class NotificationSettings {
   factory NotificationSettings.fromMap(Map<String, dynamic>? d) => NotificationSettings(
     notifyOnNewEvent:       d?['notifyOnNewEvent'] ?? true,
     notifyOnNewChatMessage: d?['notifyOnNewChatMessage'] ?? true,
+    notifyOnDailyQuestion:  d?['notifyOnDailyQuestion'] ?? true,
     remindersEnabled:       d?['remindersEnabled'] ?? true,
     reminderMinutesBefore:  d?['reminderMinutesBefore'] ?? 60,
   );
@@ -49,6 +52,12 @@ class NotificationSettingsService {
   Future<void> setNotifyOnNewChatMessage(bool value) async {
     await _db.collection('users').doc(_uid).set(
       {'notifyOnNewChatMessage': value}, SetOptions(merge: true),
+    );
+  }
+
+  Future<void> setNotifyOnDailyQuestion(bool value) async {
+    await _db.collection('users').doc(_uid).set(
+      {'notifyOnDailyQuestion': value}, SetOptions(merge: true),
     );
   }
 
