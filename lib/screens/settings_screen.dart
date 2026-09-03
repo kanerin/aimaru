@@ -61,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _accountActionInProgress = false;
 
   bool _notifyOnNewEvent = true;
+  bool _notifyOnNewChatMessage = true;
   bool _remindersEnabled = true;
   int  _reminderMinutesBefore = 60;
 
@@ -96,6 +97,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _showHolidays = holidays;
         _weekStartsMonday = weekStart;
         _notifyOnNewEvent = notif.notifyOnNewEvent;
+        _notifyOnNewChatMessage = notif.notifyOnNewChatMessage;
         _remindersEnabled = notif.remindersEnabled;
         _reminderMinutesBefore = notif.reminderMinutesBefore;
         _loadingPrefs = false;
@@ -388,6 +390,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) async {
                 setState(() => _notifyOnNewEvent = v);
                 await _notificationSettingsService.setNotifyOnNewEvent(v);
+              },
+            ),
+            const SizedBox(height: 12),
+            _SettingsSwitch(
+              title: 'トークのメッセージ通知',
+              subtitle: 'パートナーからメッセージが届いたときにプッシュ通知でお知らせします',
+              value: _notifyOnNewChatMessage,
+              onChanged: (v) async {
+                setState(() => _notifyOnNewChatMessage = v);
+                await _notificationSettingsService.setNotifyOnNewChatMessage(v);
               },
             ),
             const SizedBox(height: 12),

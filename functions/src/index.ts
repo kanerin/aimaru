@@ -35,6 +35,7 @@ import {
   validateImageUrls,
   validateReportText,
 } from "./bug_report_logic";
+import { buildChatNotificationBody } from "./chat_notification_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -69,8 +70,20 @@ interface UserDoc {
   displayName?: string;
   fcmToken?: string;
   notifyOnNewEvent?: boolean;
+  notifyOnNewChatMessage?: boolean;
   remindersEnabled?: boolean;
   reminderMinutesBefore?: number;
+}
+
+interface ChatMessageDoc {
+  text?: string;
+  imageUrl?: string;
+  senderId: string;
+  // AI（アプリ内アシスタント）が発言した場合はtrue。現状クライアントからは
+  // 常にfalseで作られるが、実際のパートナーからの発言ではないため、
+  // 誤って「〇〇さんからメッセージが届きました」という通知を送らないよう
+  // 将来の利用に備えてここでも弾いておく。
+  isAi?: boolean;
 }
 
 interface AnniversaryDoc {
@@ -135,6 +148,43 @@ export const onEventCreated = onDocumentCreated(
           "新しい予定が追加されました",
           `${creatorName}さんが「${data.title}」(${dateStr})を追加しました`,
           { type: "new_event", coupleId, eventId },
+        );
+      }),
+    );
+  },
+);
+
+// ── トーク通知: パートナーがメッセージを送ったら通知 ──────────
+export const onChatMessageCreated = onDocumentCreated(
+  "couples/{coupleId}/chats/{messageId}",
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+    const data = snap.data() as ChatMessageDoc;
+    const { coupleId, messageId } = event.params;
+
+    // AIの発言（isAi: true）は実際のパートナーからの発言ではないため通知しない。
+    if (data.isAi) return;
+
+    const coupleSnap = await db.collection("couples").doc(coupleId).get();
+    const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+    const partnerIds = memberIds.filter((id) => id !== data.senderId);
+    if (partnerIds.length === 0) return;
+
+    const senderSnap = await db.collection("users").doc(data.senderId).get();
+    const senderName = (senderSnap.data() as UserDoc | undefined)?.displayName ?? "パートナー";
+    const body = buildChatNotificationBody(data.text);
+
+    await Promise.all(
+      partnerIds.map(async (uid) => {
+        const userSnap = await db.collection("users").doc(uid).get();
+        const user = userSnap.data() as UserDoc | undefined;
+        if (!user || user.notifyOnNewChatMessage === false) return;
+        await sendFcm(
+          user.fcmToken,
+          `${senderName}さんからメッセージ`,
+          body,
+          { type: "new_chat_message", coupleId, messageId },
         );
       }),
     );
