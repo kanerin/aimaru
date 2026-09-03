@@ -7,6 +7,8 @@ import '../../models/models.dart';
 import '../../services/gemini_service.dart';
 import '../../services/event_service.dart';
 import '../../services/google_calendar_cache_service.dart';
+import '../../services/notification_settings_service.dart';
+import '../../services/shopping_list_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/recurring_events.dart';
 
@@ -14,6 +16,8 @@ class AiChatScreen extends StatefulWidget {
   final String coupleId;
   // テスト用の差し替え口（本番は未指定でImagePicker/GeminiServiceを直接使う）。
   final EventService? eventServiceOverride;
+  final NotificationSettingsService? notificationSettingsServiceOverride;
+  final ShoppingListService? shoppingListServiceOverride;
   final Future<XFile?> Function()? pickImageOverride;
   final Future<GeminiReply> Function(
     Uint8List imageBytes,
@@ -35,6 +39,8 @@ class AiChatScreen extends StatefulWidget {
     super.key,
     required this.coupleId,
     this.eventServiceOverride,
+    this.notificationSettingsServiceOverride,
+    this.shoppingListServiceOverride,
     this.pickImageOverride,
     this.analyzeImageOverride,
     this.sendMessageOverride,
@@ -49,6 +55,10 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   late final _gemini        = GeminiService(coupleId: widget.coupleId);
   late final _eventService  = widget.eventServiceOverride ?? EventService();
   late final _gcalCacheService = GoogleCalendarCacheService();
+  late final _notificationSettingsService =
+      widget.notificationSettingsServiceOverride ?? NotificationSettingsService();
+  late final _shoppingListService =
+      widget.shoppingListServiceOverride ?? ShoppingListService();
   final _picker             = ImagePicker();
   final _controller         = TextEditingController();
   final _scrollCtrl         = ScrollController();
@@ -261,9 +271,67 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       } else {
         _messages.add(_ChatItem.eventPreview(reply.events.first));
       }
+    } else if (reply.kind == GeminiReplyKind.action) {
+      _messages.add(_ChatItem.actionPreview(reply.action!));
     } else {
       _messages.add(_ChatItem.ai(reply.text));
     }
+  }
+
+  // ── アプリの操作(action)確認カードの説明文 ────────────
+  String _describeAction(GeminiAction action) {
+    switch (action.type) {
+      case GeminiActionType.notifyOnNewEvent:
+        return action.boolValue!
+            ? 'パートナーの予定登録の通知をONにします'
+            : 'パートナーの予定登録の通知をOFFにします';
+      case GeminiActionType.notifyOnNewChatMessage:
+        return action.boolValue!
+            ? 'トークのメッセージ通知をONにします'
+            : 'トークのメッセージ通知をOFFにします';
+      case GeminiActionType.remindersEnabled:
+        return action.boolValue!
+            ? '予定・記念日のリマインダー通知をONにします'
+            : '予定・記念日のリマインダー通知をOFFにします';
+      case GeminiActionType.reminderMinutesBefore:
+        return 'リマインダー通知を${_reminderMinutesLabel(action.intValue!)}に設定します';
+      case GeminiActionType.addShoppingItems:
+        return '買い物リストに追加します：${action.items.join('・')}';
+    }
+  }
+
+  String _reminderMinutesLabel(int minutes) {
+    if (minutes >= 1440) return '${minutes ~/ 1440}日前';
+    if (minutes >= 60) return '${minutes ~/ 60}時間前';
+    return '$minutes分前';
+  }
+
+  Future<void> _confirmAction(_ChatItem item, GeminiAction action) async {
+    switch (action.type) {
+      case GeminiActionType.notifyOnNewEvent:
+        await _notificationSettingsService.setNotifyOnNewEvent(action.boolValue!);
+        break;
+      case GeminiActionType.notifyOnNewChatMessage:
+        await _notificationSettingsService.setNotifyOnNewChatMessage(action.boolValue!);
+        break;
+      case GeminiActionType.remindersEnabled:
+        await _notificationSettingsService.setRemindersEnabled(action.boolValue!);
+        break;
+      case GeminiActionType.reminderMinutesBefore:
+        await _notificationSettingsService.setReminderMinutesBefore(action.intValue!);
+        break;
+      case GeminiActionType.addShoppingItems:
+        await Future.wait(
+          action.items.map((title) => _shoppingListService.addItem(widget.coupleId, title)),
+        );
+        break;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      final idx = _messages.indexOf(item);
+      if (idx >= 0) _messages[idx] = _ChatItem.ai('設定しました ✅');
+    });
   }
 
   // AIに渡す「直近の予定」テキストを組み立てる。
@@ -518,6 +586,9 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     if (item.type == _ChatType.userImage) {
       return _buildUserImage(item);
     }
+    if (item.type == _ChatType.actionPreview) {
+      return _buildActionPreview(item);
+    }
 
     final isAi = item.isAi;
     return Padding(
@@ -673,6 +744,79 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     );
   }
 
+  Widget _buildActionPreview(_ChatItem item) {
+    final action = item.action!;
+    final isShoppingItems = action.type == GeminiActionType.addShoppingItems;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, right: 48),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.navySurface,
+            borderRadius: BorderRadius.circular(18).copyWith(
+              bottomLeft: const Radius.circular(4),
+            ),
+            border: Border.all(color: appAccent(context).withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'AI PARSE',
+                style: TextStyle(
+                  fontSize: 9, letterSpacing: 2,
+                  color: appAccentSoft(context),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isShoppingItems ? '🛒 買い物リストへ追加' : '⚙️ 設定の変更',
+                style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.cream,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _describeAction(action),
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecond),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _confirmAction(item, action),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    child: const Text('実行する', style: TextStyle(fontSize: 13)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => setState(() {
+                      final idx = _messages.indexOf(item);
+                      if (idx >= 0) _messages[idx] = _ChatItem.ai('キャンセルしました。何か変更はありますか？');
+                    }),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      side: const BorderSide(color: AppColors.hairlineStrong),
+                      foregroundColor: AppColors.textSecond,
+                    ),
+                    child: const Text('キャンセル', style: TextStyle(fontSize: 13)),
+                  ),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildThinking() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -700,7 +844,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
 }
 
 // ── チャットアイテムモデル ──────────────────────────
-enum _ChatType { user, ai, eventPreview, bulkAdd, userImage }
+enum _ChatType { user, ai, eventPreview, bulkAdd, userImage, actionPreview }
 
 class _ChatItem {
   final _ChatType type;
@@ -709,6 +853,7 @@ class _ChatItem {
   final List<GeminiParsedEvent>? events;
   final int? batchId;
   final Uint8List? imageBytes;
+  final GeminiAction? action;
 
   _ChatItem._({
     required this.type,
@@ -717,6 +862,7 @@ class _ChatItem {
     this.events,
     this.batchId,
     this.imageBytes,
+    this.action,
   });
 
   factory _ChatItem.user(String t) => _ChatItem._(type: _ChatType.user, text: t);
@@ -727,6 +873,8 @@ class _ChatItem {
       _ChatItem._(type: _ChatType.bulkAdd, events: events, batchId: batchId);
   factory _ChatItem.userImage(Uint8List bytes) =>
       _ChatItem._(type: _ChatType.userImage, imageBytes: bytes);
+  factory _ChatItem.actionPreview(GeminiAction action) =>
+      _ChatItem._(type: _ChatType.actionPreview, action: action);
 
   bool get isAi => type == _ChatType.ai;
 }
