@@ -157,53 +157,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ── ペアを解消する ────────────────────────────────
-  // 共有してきたデータ（予定・チャット・写真・TODO・割り勘・ふたりの質問
-  // への回答）を両方のぶんまとめて完全に削除する。パートナー側にも一切
-  // 残らないことを、実際に削除される前にダイアログで明示する。
-  Future<void> _dissolveCouple() async {
-    final couple = _couple;
-    if (couple == null || _accountActionInProgress) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.navyCard,
-        title: const Text('ペアを解消しますか？'),
-        content: const Text(
-          'パートナーを含め、これまでの予定・チャット・写真などの記録は全て完全に削除されます。'
-          '元に戻せません。\n\n'
-          'データを残したい場合は、先に「データをエクスポート」から書き出しておいてください。',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('完全に削除する', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    setState(() => _accountActionInProgress = true);
-    try {
-      await _coupleService.dissolveCouple(couple.id);
-      if (mounted) context.go('/pairing');
-    } catch (_) {
-      if (mounted) {
-        setState(() => _accountActionInProgress = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ペアの解消に失敗しました。もう一度試してください')),
-        );
-      }
-    }
-  }
-
   // ── アカウントを削除する（退会）────────────────────
-  // ペアを組んでいる場合は先にペアを解消する（_dissolveCoupleと同じ挙動、
-  // パートナー側の記録も含めて完全に削除される）。そのあとFirebase Authの
-  // アカウントと自分のプロフィールを削除する。
+  // ペアを組んでいる場合は先にペアを解消する（パートナー側の記録も含めて
+  // 完全に削除される）。そのあとFirebase Authのアカウントと自分の
+  // プロフィールを削除する。
+  //
+  // 「ペアを解消する」という単体の設定画面ボタンは#102の要望を受けて廃止した
+  // （ペアだけ解消して両者のアカウントは残す、という中間状態は使われておらず、
+  // 誤操作でパートナーとの記録が消えるリスクの方が大きいと判断）。ただし
+  // dissolveCouple自体（CoupleService/Cloud Function）はこの退会フローが
+  // 内部的に使い続けるため残してある。
   Future<void> _deleteAccount() async {
     if (_accountActionInProgress) return;
     final pairedWarning = _couple != null
@@ -576,14 +539,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           const _SectionLabel('アカウント'),
-          if (_couple != null)
-            Center(
-              child: TextButton.icon(
-                onPressed: _accountActionInProgress ? null : _dissolveCouple,
-                icon: const Icon(Icons.link_off, size: 16, color: Colors.redAccent),
-                label: const Text('ペアを解消する', style: TextStyle(color: Colors.redAccent)),
-              ),
-            ),
           Center(
             child: TextButton.icon(
               onPressed: _accountActionInProgress ? null : _signOut,
