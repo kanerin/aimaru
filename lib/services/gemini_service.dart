@@ -4,16 +4,98 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
 
-enum GeminiReplyKind { events, text }
+enum GeminiReplyKind { events, text, action }
 
-// ── AIチャットへの応答。予定候補(events)か、通常の文章(text)のどちらか ──
+// ── AIチャットで操作できる設定・買い物リスト操作の種類 ──────────
+// 「アプリの設定をAIチャットから変更したい」（#110）という要望を受けて追加。
+// 対象はFirestoreのuserドキュメント1件・shoppingItemsコレクションへの
+// 追加だけに絞ってある。アプリロックやペア解消のような不可逆・安全に
+// 関わる設定は対象外（誤解釈で解除されると実害が大きいため）。
+enum GeminiActionType {
+  notifyOnNewEvent,
+  notifyOnNewChatMessage,
+  remindersEnabled,
+  reminderMinutesBefore,
+  addShoppingItems,
+}
+
+// リマインダー分数はsettings_screen.dartのドロップダウンと同じ選択肢に
+// 限定する。任意の数値を許すと画面の選択肢に無い半端な値になり得るため。
+const kGeminiAllowedReminderMinutes = {15, 30, 60, 180, 1440};
+
+// 買い物リストへ一度に追加できる件数の上限（誤爆で大量追加されるのを防ぐ）。
+const kGeminiMaxShoppingItems = 20;
+const kGeminiMaxShoppingItemLength = 50;
+
+class GeminiAction {
+  final GeminiActionType type;
+  final bool? boolValue;
+  final int? intValue;
+  final List<String> items;
+
+  const GeminiAction._({
+    required this.type,
+    this.boolValue,
+    this.intValue,
+    this.items = const [],
+  });
+
+  factory GeminiAction.toggle(GeminiActionType type, bool value) =>
+      GeminiAction._(type: type, boolValue: value);
+  factory GeminiAction.reminderMinutes(int minutes) =>
+      GeminiAction._(type: GeminiActionType.reminderMinutesBefore, intValue: minutes);
+  factory GeminiAction.shoppingItems(List<String> items) =>
+      GeminiAction._(type: GeminiActionType.addShoppingItems, items: items);
+}
+
+// ── AIチャットへの応答。予定候補(events)・設定操作(action)・
+// 通常の文章(text)のいずれか ──
 class GeminiReply {
   final GeminiReplyKind kind;
   final List<GeminiParsedEvent> events;
   final String text;
+  final GeminiAction? action;
 
-  const GeminiReply.events(this.events) : kind = GeminiReplyKind.events, text = '';
-  const GeminiReply.text(this.text) : kind = GeminiReplyKind.text, events = const [];
+  const GeminiReply.events(this.events)
+      : kind = GeminiReplyKind.events, text = '', action = null;
+  const GeminiReply.text(this.text)
+      : kind = GeminiReplyKind.text, events = const [], action = null;
+  const GeminiReply.action(GeminiAction this.action)
+      : kind = GeminiReplyKind.action, events = const [], text = '';
+}
+
+// ── Geminiの応答のうち{"kind":"action", ...}を厳格にパースする ─────
+// 未知のaction名・型が合わない値はすべてnullを返し、呼び出し側で
+// 「解釈できなかった」として通常のテキスト応答へ倒す。
+GeminiAction? _parseAction(Map<String, dynamic> decoded) {
+  switch (decoded['action']) {
+    case 'notify_on_new_event':
+      final v = decoded['value'];
+      return v is bool ? GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, v) : null;
+    case 'notify_on_new_chat_message':
+      final v = decoded['value'];
+      return v is bool ? GeminiAction.toggle(GeminiActionType.notifyOnNewChatMessage, v) : null;
+    case 'reminders_enabled':
+      final v = decoded['value'];
+      return v is bool ? GeminiAction.toggle(GeminiActionType.remindersEnabled, v) : null;
+    case 'reminder_minutes_before':
+      final v = decoded['value'];
+      if (v is! int || !kGeminiAllowedReminderMinutes.contains(v)) return null;
+      return GeminiAction.reminderMinutes(v);
+    case 'add_shopping_items':
+      final raw = decoded['items'];
+      if (raw is! List || raw.isEmpty || raw.length > kGeminiMaxShoppingItems) return null;
+      final items = <String>[];
+      for (final entry in raw) {
+        if (entry is! String) return null;
+        final trimmed = entry.trim();
+        if (trimmed.isEmpty || trimmed.length > kGeminiMaxShoppingItemLength) return null;
+        items.add(trimmed);
+      }
+      return GeminiAction.shoppingItems(items);
+    default:
+      return null;
+  }
 }
 
 // ── AIの応答を解釈できなかったときの定型文 ──────────────
@@ -57,6 +139,12 @@ GeminiReply parseGeminiReply(String rawResponse) {
       if (list.isNotEmpty) return GeminiReply.events(list);
     }
 
+    if (decoded['kind'] == 'action') {
+      final action = _parseAction(decoded);
+      // 解釈できないaction・値であれば設定操作として扱わず、通常の返答へ倒す
+      if (action != null) return GeminiReply.action(action);
+    }
+
     return GeminiReply.text(
       (decoded['text'] as String?) ?? kGeminiUnparseableMessage,
     );
@@ -80,7 +168,19 @@ const _kResponseFormatInstructions = '''
 「〇〇のメンバー全員の誕生日」のように複数件が該当する場合は配列に複数件含めてください。
 有名人・アーティスト・スポーツ選手などの誕生日は、あなたの知識から正確な日付を答えてください。
 
-2. それ以外（雑談、上記の「直近の予定」を使って答える質問、使い方の質問、
+2. 通知設定の変更・買い物リストへの追加など、下記の「アプリの操作」のいずれかに
+   はっきり該当する指示の場合（「〇〇して」のような明確な指示だけに使い、
+   雑談や質問には使わない）、次のいずれか1つだけを返してください:
+{"kind":"action","action":"notify_on_new_event","value":true|false}
+{"kind":"action","action":"notify_on_new_chat_message","value":true|false}
+{"kind":"action","action":"reminders_enabled","value":true|false}
+{"kind":"action","action":"reminder_minutes_before","value":15|30|60|180|1440}
+{"kind":"action","action":"add_shopping_items","items":["牛乳","卵"]}
+reminder_minutes_beforeのvalueは必ず15・30・60・180・1440のいずれかにすること
+（「10分前」のように該当しない値を指示された場合は、一番近い値を選ばずkind:"text"で
+聞き返す）。add_shopping_itemsのitemsは1件以上20件以内、それぞれ50文字以内にすること。
+
+3. それ以外（雑談、上記の「直近の予定」を使って答える質問、使い方の質問、
    予定を追加したそうだが日付や内容が曖昧で確定できない場合など）:
 {"kind":"text","text":"日本語で2〜4文の簡潔な返答。予定が曖昧な場合は『いつ・何をするか』を具体的に聞き返す。実在しないUI要素の案内はしない"}
 
@@ -147,7 +247,9 @@ class GeminiService {
 
 ## AIMARUの機能（「使い方」を聞かれたら踏まえて案内する）
 - カレンダー画面: 2人の予定を共有。月全体を見渡す表示と、1日ごとの詳細表示を日付タップで切り替えられる
-- このAIチャット: 自然言語で予定を追加したり、今後の予定について質問したりできる
+- このAIチャット: 自然言語で予定を追加したり、今後の予定について質問したりできる。
+  「通知をオフにして」「メッセージの通知は消して」「リマインダーは30分前にして」
+  「買い物リストに牛乳を追加して」のような指示にもここで直接応えられる
 - カップルチャット: パートナーと直接メッセージ・写真をやり取りできる
 - 設定画面: 通知のON/OFF・タイミング、テーマカラー、祝日表示、Googleカレンダー連携などを変更できる
 

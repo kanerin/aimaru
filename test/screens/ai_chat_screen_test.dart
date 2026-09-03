@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aimaru/screens/ai_chat_screen.dart';
 import 'package:aimaru/services/gemini_service.dart';
+import 'package:aimaru/services/notification_settings_service.dart';
+import 'package:aimaru/services/shopping_list_service.dart';
 
 // AIチャットで、応答待ち中に次のメッセージを送れてしまう不具合を防げていることを確かめる。
 //
@@ -121,5 +124,115 @@ void main() {
     expect(find.text('エラーが発生しました。もう一度試してください。'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  group('アプリの操作(action)の確認カード', () {
+    const coupleId = 'couple-1';
+    const meUid = 'user-me';
+
+    Widget wrapAction({
+      required GeminiReply reply,
+      FakeFirebaseFirestore? db,
+    }) {
+      final firestore = db ?? FakeFirebaseFirestore();
+      return MaterialApp(
+        home: AiChatScreen(
+          coupleId: coupleId,
+          buildEventsContextOverride: () async => 'なし',
+          sendMessageOverride: (message, history, {required eventsContext}) async => reply,
+          notificationSettingsServiceOverride:
+              NotificationSettingsService(firestore: firestore, uid: meUid),
+          shoppingListServiceOverride: ShoppingListService(firestore: firestore, uid: meUid),
+        ),
+      );
+    }
+
+    Future<void> sendAnyMessage(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextField), '設定変更のお願い');
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('通知をOFFにする指示は確認カードを出し、実行すると設定に反映される', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(wrapAction(
+        db: db,
+        reply: GeminiReply.action(GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
+      ));
+
+      await sendAnyMessage(tester);
+
+      expect(find.text('実行する'), findsOneWidget);
+      expect(find.textContaining('通知をOFFにします'), findsOneWidget);
+
+      await tester.tap(find.text('実行する'));
+      await tester.pump();
+
+      final doc = await db.collection('users').doc(meUid).get();
+      expect(doc.data()!['notifyOnNewEvent'], isFalse);
+      expect(find.text('設定しました ✅'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+
+    testWidgets('リマインダー分数の変更が反映される', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(wrapAction(
+        db: db,
+        reply: GeminiReply.action(GeminiAction.reminderMinutes(15)),
+      ));
+
+      await sendAnyMessage(tester);
+      await tester.tap(find.text('実行する'));
+      await tester.pump();
+
+      final doc = await db.collection('users').doc(meUid).get();
+      expect(doc.data()!['reminderMinutesBefore'], 15);
+
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+
+    testWidgets('買い物リストへの追加指示は複数件まとめて追加される', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(wrapAction(
+        db: db,
+        reply: GeminiReply.action(GeminiAction.shoppingItems(['牛乳', '卵'])),
+      ));
+
+      await sendAnyMessage(tester);
+
+      expect(find.textContaining('牛乳・卵'), findsOneWidget);
+
+      await tester.tap(find.text('実行する'));
+      await tester.pump();
+
+      final snap = await db
+          .collection('couples')
+          .doc(coupleId)
+          .collection('shoppingItems')
+          .get();
+      expect(snap.docs.map((d) => d.data()['title']), containsAll(['牛乳', '卵']));
+
+      await tester.pump(const Duration(milliseconds: 500));
+    });
+
+    testWidgets('キャンセルすると何も実行されない', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(wrapAction(
+        db: db,
+        reply: GeminiReply.action(GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
+      ));
+
+      await sendAnyMessage(tester);
+      await tester.tap(find.text('キャンセル'));
+      await tester.pump();
+
+      final doc = await db.collection('users').doc(meUid).get();
+      expect(doc.exists, isFalse);
+      expect(find.text('キャンセルしました。何か変更はありますか？'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 500));
+    });
   });
 }

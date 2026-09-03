@@ -1,7 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/services/gemini_service.dart';
+
+String _jsonList(List<String> items) => jsonEncode(items);
 
 // AIの応答文字列の解釈だけを対象にしたテスト。
 // GenerativeModelには触れないので通信もAPIキーも不要。
@@ -63,6 +67,92 @@ void main() {
 
       expect(reply.events.single.location, isNull);
       expect(reply.events.single.memo, isNull);
+    });
+  });
+
+  group('parseGeminiReply - アプリの操作(action)として解釈できる場合', () {
+    test('notify_on_new_eventのON/OFFを解釈できる', () {
+      final off = parseGeminiReply('{"kind":"action","action":"notify_on_new_event","value":false}');
+      expect(off.kind, GeminiReplyKind.action);
+      expect(off.action!.type, GeminiActionType.notifyOnNewEvent);
+      expect(off.action!.boolValue, isFalse);
+
+      final on = parseGeminiReply('{"kind":"action","action":"notify_on_new_event","value":true}');
+      expect(on.action!.boolValue, isTrue);
+    });
+
+    test('notify_on_new_chat_messageを解釈できる', () {
+      final reply = parseGeminiReply(
+        '{"kind":"action","action":"notify_on_new_chat_message","value":false}',
+      );
+      expect(reply.kind, GeminiReplyKind.action);
+      expect(reply.action!.type, GeminiActionType.notifyOnNewChatMessage);
+      expect(reply.action!.boolValue, isFalse);
+    });
+
+    test('reminders_enabledを解釈できる', () {
+      final reply = parseGeminiReply('{"kind":"action","action":"reminders_enabled","value":false}');
+      expect(reply.action!.type, GeminiActionType.remindersEnabled);
+      expect(reply.action!.boolValue, isFalse);
+    });
+
+    test('reminder_minutes_beforeは許可された値なら解釈できる', () {
+      for (final minutes in kGeminiAllowedReminderMinutes) {
+        final reply = parseGeminiReply(
+          '{"kind":"action","action":"reminder_minutes_before","value":$minutes}',
+        );
+        expect(reply.kind, GeminiReplyKind.action, reason: 'minutes=$minutes');
+        expect(reply.action!.type, GeminiActionType.reminderMinutesBefore);
+        expect(reply.action!.intValue, minutes);
+      }
+    });
+
+    test('reminder_minutes_beforeは許可されていない値だと聞き返す', () {
+      final reply = parseGeminiReply(
+        '{"kind":"action","action":"reminder_minutes_before","value":10}',
+      );
+      expect(reply.kind, GeminiReplyKind.text);
+      expect(reply.text, kGeminiUnparseableMessage);
+    });
+
+    test('add_shopping_itemsで複数件をまとめて解釈できる', () {
+      final reply = parseGeminiReply(
+        '{"kind":"action","action":"add_shopping_items","items":["牛乳","卵"]}',
+      );
+      expect(reply.kind, GeminiReplyKind.action);
+      expect(reply.action!.type, GeminiActionType.addShoppingItems);
+      expect(reply.action!.items, ['牛乳', '卵']);
+    });
+
+    test('add_shopping_itemsは空配列だと聞き返す', () {
+      final reply = parseGeminiReply('{"kind":"action","action":"add_shopping_items","items":[]}');
+      expect(reply.kind, GeminiReplyKind.text);
+    });
+
+    test('add_shopping_itemsは上限件数を超えると聞き返す', () {
+      final items = List.generate(kGeminiMaxShoppingItems + 1, (i) => 'item$i');
+      final reply = parseGeminiReply(
+        '{"kind":"action","action":"add_shopping_items","items":${_jsonList(items)}}',
+      );
+      expect(reply.kind, GeminiReplyKind.text);
+    });
+
+    test('add_shopping_itemsは文字列以外の要素があると聞き返す', () {
+      final reply = parseGeminiReply('{"kind":"action","action":"add_shopping_items","items":["牛乳",1]}');
+      expect(reply.kind, GeminiReplyKind.text);
+    });
+
+    test('未知のaction名は聞き返す', () {
+      final reply = parseGeminiReply('{"kind":"action","action":"delete_account","value":true}');
+      expect(reply.kind, GeminiReplyKind.text);
+      expect(reply.text, kGeminiUnparseableMessage);
+    });
+
+    test('valueの型が違えば聞き返す（文字列のtrueは受け付けない）', () {
+      final reply = parseGeminiReply(
+        '{"kind":"action","action":"notify_on_new_event","value":"true"}',
+      );
+      expect(reply.kind, GeminiReplyKind.text);
     });
   });
 
