@@ -36,6 +36,7 @@ import {
   validateReportText,
 } from "./bug_report_logic";
 import { buildChatNotificationBody } from "./chat_notification_logic";
+import { resolveQuestionReminderTargets, tokyoDateKey } from "./question_reminder_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -71,6 +72,7 @@ interface UserDoc {
   fcmToken?: string;
   notifyOnNewEvent?: boolean;
   notifyOnNewChatMessage?: boolean;
+  notifyOnDailyQuestion?: boolean;
   remindersEnabled?: boolean;
   reminderMinutesBefore?: number;
 }
@@ -432,6 +434,60 @@ export const sendReminders = onSchedule(
     await processOneTimeEvents(nowMs);
     await processRecurringEvents(nowMs);
     await processAnniversaryReminders(nowMs);
+  },
+);
+
+// 「ふたりの質問」（QuestionsScreen / couples/{coupleId}/questionAnswers）は
+// 開いて気づかない限り、答え忘れたまま日が変わって終わってしまう。その日まだ
+// 回答していないメンバーだけに1日1回リマインドする（question_reminder_logic参照）。
+// 全カップルを1日1回走査するだけなので、sendRemindersの15分間隔スケジュールとは
+// 分け、専用のスケジュールで実行する。
+async function processDailyQuestionReminder(nowMs: number): Promise<void> {
+  const dateKey = tokyoDateKey(nowMs);
+  const couplesSnap = await db.collection("couples").get();
+
+  for (const coupleDoc of couplesSnap.docs) {
+    const memberIds: string[] = coupleDoc.data()?.memberIds ?? [];
+    if (memberIds.length === 0) continue;
+
+    const members = await Promise.all(
+      memberIds.map(async (uid) => {
+        const [userSnap, answerSnap] = await Promise.all([
+          db.collection("users").doc(uid).get(),
+          db
+            .collection("couples")
+            .doc(coupleDoc.id)
+            .collection("questionAnswers")
+            .doc(`${dateKey}_${uid}`)
+            .get(),
+        ]);
+        const user = userSnap.data() as UserDoc | undefined;
+        return {
+          uid,
+          fcmToken: user?.fcmToken,
+          answered: answerSnap.exists,
+          notifyOnDailyQuestion: !!user && user.notifyOnDailyQuestion !== false,
+        };
+      }),
+    );
+
+    const toRemind = resolveQuestionReminderTargets(members);
+    for (const uid of toRemind) {
+      const member = members.find((m) => m.uid === uid)!;
+      await sendFcm(
+        member.fcmToken,
+        "今日の質問が届いています",
+        "「ふたりの質問」にまだ答えていません。今日の質問に答えてみましょう。",
+        { type: "question", coupleId: coupleDoc.id },
+      );
+    }
+  }
+}
+
+export const sendDailyQuestionReminder = onSchedule(
+  { schedule: "0 20 * * *", timeZone: "Asia/Tokyo" },
+  async () => {
+    await processDailyQuestionReminder(Date.now());
   },
 );
 

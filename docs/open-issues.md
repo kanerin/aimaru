@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-09-01 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-09-03 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -669,6 +669,24 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 - **設定画面の「ペアを解消する」単体ボタンは廃止した**（issue #102、2026-09-03）。ペアだけ解消して両者のアカウントは残すという中間状態はほぼ使われておらず、誤操作でパートナーとの記録（予定・チャット・写真等）が消えるリスクの方が大きいという判断。ただし`dissolveCouple`自体（`CoupleService`のメソッド・Cloud Function）は削除していない。「アカウントを削除する（退会）」フローが、ペアを組んでいる場合の後始末として内部的にそのまま呼び続けているため（設定画面のボタンをそのまま消すと退会機能自体が壊れる）。
 - **トークのメッセージ通知を追加した**（issue #111、2026-09-03）。`onEventCreated`と同じパターンで`couples/{coupleId}/chats/{messageId}`にonDocumentCreatedトリガー（`onChatMessageCreated`）を追加し、送信者以外のメンバーへFCM通知を送る。本文の切り詰め（`buildChatNotificationBody`、40文字超は`…`で省略、画像のみの場合は「写真を送りました」）は`chat_notification_logic.ts`に純粋関数として切り出し単体テスト済み。設定画面に「トークのメッセージ通知」のON/OFFスイッチ（`notifyOnNewChatMessage`、デフォルトtrue）を追加した。`isAi: true`のメッセージ（現状クライアントからは常にfalseだが将来のbot発言に備えたフィールド）は通知しない。トリガー本体（Firestoreエミュレータでの結合テスト）は、同じパターンの`onEventCreated`が元々一切テストされていない既存の慣習に合わせ、専用テストは追加していない。
 - **AIチャットから通知設定・買い物リストへの追加ができるようにした**（issue #110、2026-09-03）。`gemini_service.dart`に`GeminiReplyKind.action`を追加し、「通知をオフにして」「リマインダーは30分前にして」「買い物リストに牛乳を追加して」のような自然言語の指示を、予定追加(events)と同じ「確認カード→ボタンで実行」の流れで処理できるようにした。対象は`notifyOnNewEvent`・`notifyOnNewChatMessage`・`remindersEnabled`・`reminderMinutesBefore`（設定画面と同じ15/30/60/180/1440分のみ許可）・買い物リストへの追加（1〜20件、各50文字以内）に限定している。アプリロックやペア解消のような不可逆・安全に関わる設定は、誤解釈で実行されたときの実害が大きいため対象外にした（ユーザー本人の判断でスコープを決定済み）。「次に会える日」を変更したいという要望は、既存の予定追加(events)がそのままカバーする（次に会える日は最も近い将来の予定から自動計算される値で、独立した設定項目ではないため）。
+
+2026-09-03、市場動向調査（propose-feature）で「ふたりの質問」（QuestionsScreen）に
+デイリー質問のリマインダー通知を追加した。サービス終了したPairyの移行先として比較
+されるSumOne/Twinestは毎日決まった時刻にプロンプト通知を送る体験を持つが、AIMARUの
+「ふたりの質問」は画面を自分から開かない限り、その日の質問に気づかず日が変わって
+終わることが多かった。新設のスケジュール関数`sendDailyQuestionReminder`
+（`0 20 * * *`、Asia/Tokyo、既存の`sendReminders`とは走査対象が全く異なるため
+15分間隔のスケジュールとは分けた）が毎晩20時に全カップルを走査し、その日の質問に
+まだ回答していないメンバーだけへFCM通知を送る。判定は`question_reminder_logic.ts`
+の純粋関数（`tokyoDateKey`・`resolveQuestionReminderTargets`）に切り出し、
+`questionAnswers`のドキュメントID（`${dateKey}_$uid`）と同じdateKeyの導出になる
+よう、Cloud Functionsの実行環境のタイムゾーンに依存しないUTCベースの計算にした
+（ホストがAsia/Tokyo以外で動いていても、クライアント側の`DateFormat('yyyy-MM-dd')`
+と同じ日付キーになる）。設定画面に「ふたりの質問のリマインダー通知」のON/OFF
+スイッチ（`notifyOnDailyQuestion`、デフォルトtrue）を追加した。全カップルを
+1日1回`db.collection("couples").get()`で走査するだけの軽い処理のため、課題8で
+問題になったような複合索引やクエリ絞り込みは不要（`firestore.rules`の変更もない
+——`users/{uid}`は元々`notifyOnNewEvent`等と同列の任意フィールドを書き込める）。
 
 ## 自動化の構成
 

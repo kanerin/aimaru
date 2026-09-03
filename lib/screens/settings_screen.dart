@@ -62,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _notifyOnNewEvent = true;
   bool _notifyOnNewChatMessage = true;
+  bool _notifyOnDailyQuestion = true;
   bool _remindersEnabled = true;
   int  _reminderMinutesBefore = 60;
 
@@ -98,6 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _weekStartsMonday = weekStart;
         _notifyOnNewEvent = notif.notifyOnNewEvent;
         _notifyOnNewChatMessage = notif.notifyOnNewChatMessage;
+        _notifyOnDailyQuestion = notif.notifyOnDailyQuestion;
         _remindersEnabled = notif.remindersEnabled;
         _reminderMinutesBefore = notif.reminderMinutesBefore;
         _loadingPrefs = false;
@@ -400,6 +402,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) async {
                 setState(() => _notifyOnNewChatMessage = v);
                 await _notificationSettingsService.setNotifyOnNewChatMessage(v);
+              },
+            ),
+            const SizedBox(height: 12),
+            _SettingsSwitch(
+              title: 'ふたりの質問のリマインダー通知',
+              subtitle: '今日の質問にまだ答えていないときに、夜のうちにプッシュ通知でお知らせします',
+              value: _notifyOnDailyQuestion,
+              onChanged: (v) async {
+                setState(() => _notifyOnDailyQuestion = v);
+                await _notificationSettingsService.setNotifyOnDailyQuestion(v);
               },
             ),
             const SizedBox(height: 12),
