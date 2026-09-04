@@ -688,6 +688,33 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 問題になったような複合索引やクエリ絞り込みは不要（`firestore.rules`の変更もない
 ——`users/{uid}`は元々`notifyOnNewEvent`等と同列の任意フィールドを書き込める）。
 
+2026-09-04、市場動向調査（propose-feature）で外部カレンダー連携（iCalendar購読フィード、
+設定画面の「外部カレンダーで見る」）を追加した。TimeTreeは「設定 → カレンダー情報 →
+iCal URLをコピー」で、GoogleカレンダーやAppleカレンダーへ読み取り専用でURL購読できるが、
+AIMARUはこれまでICSの取り込み（`IcsImportScreen`）しか持たず、外へ公開する方向
+（export/購読）が無かった（2026年9月時点の競合調査）。
+- Cloud Functionsに`getCalendarFeedUrl`/`regenerateCalendarFeedUrl`（onCall）と、
+  実際にICS本文を返す`calendarFeed`（onRequest、認証を経由しない公開エンドポイント）を
+  新設した。このリポジトリで初めての`onRequest`関数のため、既存のonCall関数と違い
+  Firebase Authを経由しない前提で設計している——GoogleカレンダーやAppleカレンダーの
+  「URLで購読」機能自体がサーバー間の定期フェッチで、ログインセッションを持てないため。
+- 秘密のトークンは`users/{uid}/private/calendarFeed`に保存する。`users/{userId}`本体は
+  `firestore.rules`で認証済みなら誰でもreadできる設計（カップル外の相手の表示名等を
+  引くため）のため、そこへ直接トークンを置くとカップル外の第三者にも読めてしまう。
+  `private`サブコレクションはクライアントからの読み書きを`allow read, write: if false`で
+  一切拒否し、上記3つのCloud Functions（Admin SDK）からのみ触る。トークンは
+  `crypto.randomBytes(24)`（48桁の16進文字列）で、有効期限は設けず「作り直す」操作
+  （`regenerateCalendarFeedUrl`）で明示的に無効化する設計にした。
+- `calendarFeed`はuid+tokenの組が一致した場合のみ、そのuidが見てよい予定
+  （`isVisibleToFeedOwner`、`reminder_logic.ts`の`visibleMemberIds`と同じ考え方——
+  `visibility === 'private'`な予定は作成者本人にしか見せない）をICS
+  （iCalendar/RFC5545）形式で返す。ICS生成・エスケープ・行折り返し（75オクテット制限）・
+  終日/時刻指定/繰り返し予定の変換はすべて`calendar_feed_logic.ts`の純粋関数に切り出し、
+  単体テスト済み。繰り返し予定（毎年）はサーバー側で発生日を展開せず`RRULE:FREQ=YEARLY`
+  を出力し、展開は購読側のカレンダーアプリに任せている。
+- `firestore.rules`の`users/{userId}/private/{docId}`ルール追加に対応するテストを
+  `rules_test/firestore.test.js`へ追加（本人でも読み書きできないことを確認）。
+
 ## 自動化の構成
 
 2026-08-14 に、実際には呼び出されていなかったNotion連携の`.claude/skills/`（scheduled-run /

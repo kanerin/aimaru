@@ -19,6 +19,7 @@ import '../widgets/app_lock_settings_card.dart';
 import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
 import 'bug_report_screen.dart';
+import 'calendar_feed_screen.dart';
 import 'chores_screen.dart';
 import 'diary_screen.dart';
 import 'ics_import_screen.dart';
@@ -376,6 +377,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'TimeTreeやGoogleカレンダーなどのiCal(.ics)形式のURL・テキストから予定を取り込みます',
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => IcsImportScreen(coupleId: widget.coupleId)),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _NavigationRow(
+              title: '外部カレンダーで見る',
+              subtitle: 'AIMARUの予定を、GoogleカレンダーやAppleカレンダーからも読み取り専用で購読できます',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CalendarFeedScreen()),
               ),
             ),
           ],

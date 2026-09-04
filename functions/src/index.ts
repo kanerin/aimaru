@@ -4,7 +4,7 @@ import { getMessaging } from "firebase-admin/messaging";
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions/v2";
 import {
@@ -17,6 +17,13 @@ import {
   resolveReminderTargets,
   visibleMemberIds,
 } from "./reminder_logic";
+import {
+  buildCalendarFeedUrl,
+  buildIcsCalendar,
+  FeedEvent,
+  generateFeedToken,
+  isVisibleToFeedOwner,
+} from "./calendar_feed_logic";
 import { TRASH_RETENTION_MS } from "./trash_logic";
 import {
   callGeminiApi,
@@ -808,4 +815,125 @@ export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
   await db.recursiveDelete(db.collection("couples").doc(coupleId));
 
   return { success: true };
+});
+
+// ── 外部カレンダー連携（iCalendar購読フィード）────────────────────
+// TimeTreeは「設定 → カレンダー情報 → iCal URLをコピー」で、Googleカレンダーや
+// Appleカレンダーへ読み取り専用でURL購読できるが、AIMARUはこれまでICSの取り込み
+// （ics_import_screen.dart）しか持たず、外へ公開する方向（export/購読）が
+// 無かった（2026年9月時点の競合調査）。
+//
+// トークンは users/{uid}/private/calendarFeed に保存する。users/{userId}本体は
+// firestore.rulesで認証済みなら誰でもreadできる設計のため、そこへ秘密のトークンを
+// 直接置くと、カップル外の第三者にも読めてしまう。privateサブコレクションは
+// クライアントからの読み書きを一切拒否し（allow read, write: if false）、
+// このファイルのCloud Functions（Admin SDK）からのみ触る。
+interface CalendarFeedTokenDoc {
+  token?: string;
+}
+
+function calendarFeedTokenRef(uid: string) {
+  return db.collection("users").doc(uid).collection("private").doc("calendarFeed");
+}
+
+async function ensureCalendarFeedToken(uid: string): Promise<string> {
+  const ref = calendarFeedTokenRef(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const existing = (snap.data() as CalendarFeedTokenDoc | undefined)?.token;
+    if (existing) return existing;
+
+    const token = generateFeedToken();
+    tx.set(ref, { token, createdAt: Timestamp.now() });
+    return token;
+  });
+}
+
+function calendarFeedUrlFor(uid: string, token: string): string {
+  return buildCalendarFeedUrl(process.env.GCLOUD_PROJECT ?? "aimaru-7eb2e", uid, token);
+}
+
+// 既存のトークンがあれば使い回し、無ければ発行してURLを返す。
+export const getCalendarFeedUrl = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です");
+  }
+  const uid = request.auth.uid;
+  const token = await ensureCalendarFeedToken(uid);
+  return { url: calendarFeedUrlFor(uid, token) };
+});
+
+// 今のリンクを無効化し、新しいトークンでURLを発行し直す。リンクを誤って
+// 共有してしまった場合の取り消し手段（トークン自体には有効期限を設けていない）。
+export const regenerateCalendarFeedUrl = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "ログインが必要です");
+  }
+  const uid = request.auth.uid;
+  const token = generateFeedToken();
+  await calendarFeedTokenRef(uid).set({ token, createdAt: Timestamp.now() });
+  return { url: calendarFeedUrlFor(uid, token) };
+});
+
+interface CalendarFeedEventDoc {
+  title: string;
+  date: Timestamp;
+  endDate?: Timestamp | null;
+  createdBy: string;
+  recurring?: boolean;
+  allDay?: boolean;
+  location?: string | null;
+  memo?: string | null;
+  deletedAt?: Timestamp | null;
+  visibility?: string;
+}
+
+// GoogleカレンダーやAppleカレンダーの「URLで購読」から直接叩かれる、認証を
+// 経由しない公開エンドポイント。uid+tokenの組が正しい場合のみ、そのuidが
+// 見てよい予定（visibility違反禁止はisVisibleToFeedOwner参照）をICSで返す。
+export const calendarFeed = onRequest(async (req, res) => {
+  const uid = typeof req.query.uid === "string" ? req.query.uid : undefined;
+  const token = typeof req.query.token === "string" ? req.query.token : undefined;
+  if (!uid || !token) {
+    res.status(400).send("invalid request");
+    return;
+  }
+
+  const tokenSnap = await calendarFeedTokenRef(uid).get();
+  const storedToken = (tokenSnap.data() as CalendarFeedTokenDoc | undefined)?.token;
+  if (!storedToken || storedToken !== token) {
+    res.status(403).send("invalid token");
+    return;
+  }
+
+  const coupleSnap = await db
+    .collection("couples")
+    .where("memberIds", "array-contains", uid)
+    .limit(1)
+    .get();
+
+  const feedEvents: FeedEvent[] = [];
+  if (!coupleSnap.empty) {
+    const eventsSnap = await coupleSnap.docs[0].ref.collection("events").get();
+    for (const doc of eventsSnap.docs) {
+      const data = doc.data() as CalendarFeedEventDoc;
+      if (data.deletedAt) continue;
+      if (!isVisibleToFeedOwner(data.visibility, data.createdBy, uid)) continue;
+
+      feedEvents.push({
+        id: doc.id,
+        title: data.title,
+        start: data.date.toDate(),
+        end: data.endDate ? data.endDate.toDate() : null,
+        allDay: !!data.allDay,
+        recurring: !!data.recurring,
+        location: data.location ?? null,
+        memo: data.memo ?? null,
+      });
+    }
+  }
+
+  res.set("Content-Type", "text/calendar; charset=utf-8");
+  res.set("Cache-Control", "private, max-age=900");
+  res.send(buildIcsCalendar(feedEvents, Date.now()));
 });
