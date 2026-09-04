@@ -1075,6 +1075,42 @@ describe("users — reportCallMonth/reportCallCountはクライアントから�
   });
 });
 
+// 外部カレンダー連携（calendarFeedトークン）の置き場。users/{userId}本体は
+// 認証済みなら誰でもreadできる設計のため、そこへ秘密のトークンを直接置くと
+// カップル外の第三者にも読めてしまう。getCalendarFeedUrl/regenerateCalendarFeedUrl/
+// calendarFeed（いずれもCloud Functions、Admin SDK）からのみ読み書きし、
+// クライアントには本人であっても一切開けない。
+describe("users/{uid}/private — クライアントからは本人でも読み書きできない", () => {
+  it("本人でもcalendarFeedトークンを読めない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .doc(`users/${USER_A}/private/calendarFeed`)
+        .set({ token: "secret-token" });
+    });
+
+    await assertFails(asA().doc(`users/${USER_A}/private/calendarFeed`).get());
+  });
+
+  it("本人でもcalendarFeedトークンを書き込めない", async () => {
+    await assertFails(
+      asA().doc(`users/${USER_A}/private/calendarFeed`).set({ token: "secret-token" }),
+    );
+  });
+
+  it("他人はなおさら読み書きできない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .doc(`users/${USER_A}/private/calendarFeed`)
+        .set({ token: "secret-token" });
+    });
+
+    await assertFails(asB().doc(`users/${USER_A}/private/calendarFeed`).get());
+    await assertFails(
+      asB().doc(`users/${USER_A}/private/calendarFeed`).set({ token: "hijacked" }),
+    );
+  });
+});
+
 describe("bugReports — 書き込みは常に拒否、読み取りは自分の報告のみ", () => {
   // submitBugReport（Cloud Functions、Admin SDK）だけが書き込める。
   // Gemini判定を経ずにクライアントが直接キューへ書き込めると、

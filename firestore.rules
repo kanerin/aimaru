@@ -197,6 +197,15 @@ service cloud.firestore {
               ['aiCallDate', 'aiCallCount', 'reportCallMonth', 'reportCallCount'])
           : !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['aiCallDate', 'aiCallCount', 'reportCallMonth', 'reportCallCount']));
+
+      // 外部カレンダー連携（calendarFeedトークン）の置き場。users/{userId}本体は
+      // 上のとおり認証済みなら誰でもreadできる設計のため、そこへ秘密のトークンを
+      // 直接置くと、カップル外の第三者にも読めてしまう。getCalendarFeedUrl /
+      // regenerateCalendarFeedUrl / calendarFeed（いずれもCloud Functions、Admin SDK）
+      // からのみ読み書きし、クライアントには一切開けない。
+      match /private/{docId} {
+        allow read, write: if false;
+      }
     }
 
     // バグ報告・機能要望はsubmitBugReport（Cloud Functions、Admin SDK）からのみ
