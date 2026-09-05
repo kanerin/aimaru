@@ -50,6 +50,12 @@
 	<!-- アプリロックの解除にFace IDを使うために必要（local_auth） -->
 	<key>NSFaceIDUsageDescription</key>
 	<string>アプリロックの解除にFace IDを使用します</string>
+	<!-- 予定・バグ報告フォームへの画像添付で写真を選ぶために必要（image_picker） -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>予定やバグ報告に添付する写真を選ぶために使用します</string>
+	<!-- チャット・予定の画像を端末に保存するために必要（gal）。無いと保存操作でクラッシュする -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>画像を端末の写真ライブラリに保存するために使用します</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -326,6 +326,31 @@ narrowing していない（`recurring == true` の全件走査のまま）。�
 |---|---|---|---|
 | 13 | **iOS が未整備** | REQ-030 / FEAT-049 | 片方が使えないとカップルアプリは価値がゼロになる |
 
+2026-09-05、課題13のフェーズ1として、`ios/Runner/Info.plist`に不足していた
+写真ライブラリ関連の利用目的の説明を追加した（reduce-debt枠、本PR）。
+`image_save_service.dart`の`Gal.putImageBytes`（チャット・予定の画像を端末に
+保存する機能）は`NSPhotoLibraryAddUsageDescription`が無いとiOSでは即座に
+クラッシュする（Appleは説明文の無い保護リソースへのアクセスをアプリごと
+終了させる仕様）。`ai_chat_screen.dart`/`chat_screen.dart`/`event_form_screen.dart`/
+`bug_report_screen.dart`が使う`ImagePicker`（いずれも`ImageSource.gallery`のみ、
+カメラは未使用）も、公式ドキュメントが常に追加を推奨している
+`NSPhotoLibraryUsageDescription`が無かったため合わせて追加した。
+（本来はCIに署名なしの`flutter build ios --no-codesign`を検証するジョブを
+追加してこの種の見落としを機械的に検知したかったが、このエージェントの
+GitHub Appトークンには`.github/workflows/`配下を変更する権限が無く
+`refusing to allow a GitHub App to create or update workflow`でpushが拒否された
+ため断念した。ワークフロー権限を持つ人間が`ci.yml`へmacOSランナーでの
+`flutter build ios --no-codesign`ジョブを追加できれば、以後はこの種の
+iOS特有の設定漏れを毎回機械的に検知できる）。
+
+**次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
+Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
+（bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
+実機での動作確認、`release-stg.yml`/`release.yml`でのiOS配布（TestFlight等）の
+整備。いずれも人間専用の作業（Apple Developer登録、Firebase Console/CLIでの
+新規アプリ登録、GitHub Appへのworkflows権限付与）が前提になるため、次に
+この課題へ着手する際はまずそれらが揃っているかを確認すること。
+
 設定画面に「次に会う日」カード（`NextMeetingCard`）を追加した（本PR）。遠距離・多忙で
 頻繁に会えないカップル向けのトレンド（次に会える日までのカウントダウン）に対応する、
 記念日カードと対になる機能。既存の`anniversary`と同じ形（`couples/{coupleId}`の1フィールド）
