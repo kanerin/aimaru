@@ -106,6 +106,37 @@ void main() {
     await controller.close();
   });
 
+  group('連続回答日数（ストリーク）', () {
+    testWidgets('連続していなければストリーク表示は出さない', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await tester.pumpWidget(wrap(controller.stream));
+
+      controller.add([buildAnswer(uid: uidA, text: '今日の回答')]);
+      await tester.pump();
+
+      expect(find.textContaining('日連続'), findsNothing);
+
+      await controller.close();
+    });
+
+    testWidgets('今日を含めて2人とも連続で回答していればストリークを表示する', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await tester.pumpWidget(wrap(controller.stream));
+
+      controller.add([
+        buildAnswer(uid: uidA, dateKey: '2026-08-17', text: '今日のわたし'),
+        buildAnswer(uid: uidB, dateKey: '2026-08-17', text: '今日のあいて'),
+        buildAnswer(uid: uidA, dateKey: '2026-08-16', text: '昨日のわたし'),
+        buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '昨日のあいて'),
+      ]);
+      await tester.pump();
+
+      expect(find.text('🔥 2日連続'), findsOneWidget);
+
+      await controller.close();
+    });
+  });
+
   group('これまでの質問（過去分の閲覧）', () {
     testWidgets('過去分が無ければ履歴の見出しを出さない', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();

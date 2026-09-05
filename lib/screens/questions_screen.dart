@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/question_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/daily_question_picker.dart';
+import '../utils/question_streak.dart';
 import '../widgets/section_label.dart';
 
 // ── ふたりの質問（デイリー質問）─────────────────────────
@@ -105,6 +106,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           final myAnswer = answerOf(_uid, _dateKey);
           final partnerUid = _partnerUid;
           final partnerAnswer = partnerUid.isEmpty ? null : answerOf(partnerUid, _dateKey);
+          final streak = computeQuestionStreak(answers, widget.memberIds, _now);
 
           // 過去の日付（今日を除く）を新しい順に。ストリームはFirestore側でも
           // 新しい順に並んでいるが、テストからの注入では順序を保証できないため
@@ -121,7 +123,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildQuestionCard(),
+                _buildQuestionCard(streak),
                 const SizedBox(height: 20),
                 if (myAnswer == null)
                   _buildAnswerInput()
@@ -152,7 +154,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     );
   }
 
-  Widget _buildQuestionCard() => Container(
+  Widget _buildQuestionCard(int streak) => Container(
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: AppColors.navySurface,
@@ -162,7 +164,15 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('今日の質問', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('今日の質問', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            if (streak > 0)
+              Text('🔥 $streak日連続',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: appAccent(context))),
+          ],
+        ),
         const SizedBox(height: 8),
         Text(_question, style: const TextStyle(
           fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.5)),
