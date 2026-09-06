@@ -139,6 +139,19 @@ service cloud.firestore {
         allow delete: if request.auth.uid == resource.data.uid;
       }
 
+      // きょうの気分（ドキュメントID = '${dateKey}_$uid'）。diaryEntriesと同じく
+      // 自分の分は書き直せるが、uidの書き換えは所有権の乗っ取りになるため禁止する。
+      // 選び直すだけの機能で書いた内容を消したい場面が無いため、deleteは許可しない。
+      match /moodEntries/{entryId} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && request.auth.uid == request.resource.data.uid;
+        allow update: if request.auth.uid == resource.data.uid
+          && request.resource.data.uid == resource.data.uid;
+      }
+
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。
       // メンバーなら誰でも読めるが、書き込みは自分の分のみ。
       match /googleCalendarCache/{uid} {

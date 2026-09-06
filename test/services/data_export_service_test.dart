@@ -32,6 +32,7 @@ void main() {
     expect(decoded['diaryEntries'], isEmpty);
     expect(decoded['chores'], isEmpty);
     expect(decoded['shoppingItems'], isEmpty);
+    expect(decoded['moodEntries'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
 
@@ -213,6 +214,23 @@ void main() {
     expect(item['title'], '牛乳');
     expect(item['quantity'], '1本');
     expect(item['done'], false);
+  });
+
+  test('きょうの気分を書き出す', () async {
+    await col('moodEntries').doc('2026-01-01_user-a').set({
+      'coupleId': coupleId,
+      'dateKey': '2026-01-01',
+      'uid': 'user-a',
+      'mood': 'great',
+      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+    });
+
+    final json = await service.exportAsJson(coupleId);
+    final entry = (jsonDecode(json)['moodEntries'] as List).single as Map<String, dynamic>;
+
+    expect(entry['dateKey'], '2026-01-01');
+    expect(entry['uid'], 'user-a');
+    expect(entry['mood'], 'great');
   });
 
   test('別のカップルのデータは含まれない', () async {
