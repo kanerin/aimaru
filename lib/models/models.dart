@@ -687,6 +687,69 @@ class DiaryEntry {
   };
 }
 
+// ── MoodOption / MoodEntry（きょうの気分）─────────────────
+// Amora・Pairedなど関係性ウェルネス系アプリが2025〜2026年にかけて強化して
+// きた「気分チェックイン」の差別化要素（2026年9月時点の競合調査）。
+// ふたりの日記（自由記述）・ふたりの質問（相手の回答を伏せる）とは別の
+// もっと気軽な入口として、1日1回、固定の選択肢から今の気分を選ぶだけにする。
+// idは'${dateKey}_$uid'（1人1日1件、setで上書き）。
+class MoodOption {
+  final String key;
+  final String emoji;
+  final String label;
+
+  const MoodOption(this.key, this.emoji, this.label);
+}
+
+const List<MoodOption> moodOptions = [
+  MoodOption('great', '😄', '最高'),
+  MoodOption('good', '🙂', '良い'),
+  MoodOption('okay', '😐', 'ふつう'),
+  MoodOption('bad', '😔', 'いまいち'),
+  MoodOption('awful', '😢', 'つらい'),
+];
+
+MoodOption moodOptionFor(String key) =>
+    moodOptions.firstWhere((o) => o.key == key, orElse: () => moodOptions[2]);
+
+class MoodEntry {
+  final String id;
+  final String coupleId;
+  final String dateKey; // 'yyyy-MM-dd'
+  final String uid;
+  final String mood; // MoodOption.key
+  final DateTime createdAt;
+
+  MoodEntry({
+    required this.id,
+    required this.coupleId,
+    required this.dateKey,
+    required this.uid,
+    required this.mood,
+    required this.createdAt,
+  });
+
+  factory MoodEntry.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return MoodEntry(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      dateKey:   d['dateKey'] ?? '',
+      uid:       d['uid'] ?? '',
+      mood:      d['mood'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'dateKey':   dateKey,
+    'uid':       uid,
+    'mood':      mood,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── BugReportRecord（自分が送ったバグ報告・機能要望の状況）────────
 // submitBugReport（Cloud Functions）が書き込んだドキュメントを、
 // 送信者本人だけがfirestore.rulesで読める（他人の報告は見えない）。

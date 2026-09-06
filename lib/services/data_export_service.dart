@@ -4,8 +4,8 @@ import '../models/models.dart';
 
 // ── データエクスポート ────────────────────────────────
 // カップルで共有しているデータ（予定・思い出＝写真付きの予定・チャット・
-// やりたいことリスト・ふたりの質問への回答・ふたりの日記・家事分担）を
-// JSONとして書き出す。
+// やりたいことリスト・ふたりの質問への回答・ふたりの日記・家事分担・
+// きょうの気分）をJSONとして書き出す。
 // AIMARUはカップル2人で作るデータなので、片方の視点だけを切り出すのではなく、
 // カップル全体の共有データをそのまま対象にする。
 //
@@ -33,6 +33,7 @@ class DataExportService {
       coupleRef.collection('diaryEntries').get(),
       coupleRef.collection('chores').get(),
       coupleRef.collection('shoppingItems').get(),
+      coupleRef.collection('moodEntries').get(),
     ]);
 
     final events = results[0].docs
@@ -49,6 +50,8 @@ class DataExportService {
     final chores = results[5].docs.map(ChoreItem.fromDoc).map(_choreToJson).toList();
     final shoppingItems =
         results[6].docs.map(ShoppingItem.fromDoc).map(_shoppingItemToJson).toList();
+    final moodEntries =
+        results[7].docs.map(MoodEntry.fromDoc).map(_moodEntryToJson).toList();
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -60,6 +63,7 @@ class DataExportService {
       'diaryEntries': diaryEntries,
       'chores': chores,
       'shoppingItems': shoppingItems,
+      'moodEntries': moodEntries,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -129,5 +133,13 @@ class DataExportService {
     'done': s.done,
     'createdBy': s.createdBy,
     'createdAt': s.createdAt.toIso8601String(),
+  };
+
+  Map<String, dynamic> _moodEntryToJson(MoodEntry m) => {
+    'id': m.id,
+    'dateKey': m.dateKey,
+    'uid': m.uid,
+    'mood': m.mood,
+    'createdAt': m.createdAt.toIso8601String(),
   };
 }

@@ -198,3 +198,15 @@ export async function seedDiaryEntry(testEnv, { uid = USER_A, dateKey = "2026-08
     });
   });
 }
+
+export async function seedMoodEntry(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/moodEntries/${dateKey}_${uid}`).set({
+      coupleId: COUPLE_ID,
+      dateKey,
+      uid,
+      mood: "good",
+      createdAt: new Date("2026-08-17T10:00:00"),
+    });
+  });
+}
