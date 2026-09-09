@@ -27,6 +27,7 @@ import 'mood_screen.dart';
 import 'questions_screen.dart';
 import 'shopping_list_screen.dart';
 import 'trash_screen.dart';
+import 'wishlist_screen.dart';
 
 const _reminderOptions = <int, String>{
   15:   '15分前',
@@ -552,6 +553,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: '日用品や食材の買い出しを2人で共有できます。TimeTreeには無い機能です',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => ShoppingListScreen(coupleId: widget.coupleId)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _NavigationRow(
+            title: 'ほしいものリスト',
+            subtitle: 'プレゼントに欲しいものを書いておけます。相手が「用意する」を押しても、あなたには表示されません',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => WishlistScreen(
+                coupleId: widget.coupleId,
+                memberIds: _couple?.memberIds ?? const [],
+                partnerName: _partnerName ?? 'パートナー',
+              )),
             ),
           ),
 

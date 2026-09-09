@@ -151,6 +151,18 @@ export async function seedShoppingItem(testEnv, itemId = "item-1") {
   });
 }
 
+export async function seedWishlistItem(testEnv, itemId = "wish-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/wishlistItems/${itemId}`).set({
+      coupleId: COUPLE_ID,
+      text: "マグカップ",
+      url: null,
+      addedBy: USER_A,
+      createdAt: new Date("2026-08-12T10:00:00"),
+    });
+  });
+}
+
 export async function seedAnniversary(testEnv, anniversaryId = "anniversary-1") {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/anniversaries/${anniversaryId}`).set({

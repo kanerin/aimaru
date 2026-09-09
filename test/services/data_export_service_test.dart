@@ -33,6 +33,7 @@ void main() {
     expect(decoded['chores'], isEmpty);
     expect(decoded['shoppingItems'], isEmpty);
     expect(decoded['moodEntries'], isEmpty);
+    expect(decoded['wishlistItems'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
 
@@ -231,6 +232,29 @@ void main() {
     expect(entry['dateKey'], '2026-01-01');
     expect(entry['uid'], 'user-a');
     expect(entry['mood'], 'great');
+  });
+
+  test('ほしいものリストを書き出す（予約状態は含まない）', () async {
+    await col('wishlistItems').doc('wish-1').set({
+      'coupleId': coupleId,
+      'text': 'マグカップ',
+      'url': 'https://example.com',
+      'addedBy': 'user-a',
+      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+    });
+    await col('wishlistReservations').doc('wish-1').set({
+      'reservedBy': 'user-b',
+      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 2)),
+    });
+
+    final json = await service.exportAsJson(coupleId);
+    final decoded = jsonDecode(json) as Map<String, dynamic>;
+    final item = (decoded['wishlistItems'] as List).single as Map<String, dynamic>;
+
+    expect(item['text'], 'マグカップ');
+    expect(item['url'], 'https://example.com');
+    expect(item['addedBy'], 'user-a');
+    expect(decoded.containsKey('wishlistReservations'), isFalse);
   });
 
   test('別のカップルのデータは含まれない', () async {
