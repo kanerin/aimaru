@@ -26,6 +26,7 @@ import {
   seedMoodEntry,
   seedQuestionAnswer,
   seedTodo,
+  seedWishlistItem,
 } from "./helpers.js";
 
 // Firestore セキュリティルールのテスト。
@@ -462,6 +463,141 @@ describe("shoppingItems — メンバー境界", () => {
   it("未認証は買い物リストに一切アクセスできない", async () => {
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/shoppingItems/item-1`).get());
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/shoppingItems/item-4`).set({ title: "x" }));
+  });
+});
+
+describe("wishlistItems — メンバー境界、削除は追加した本人のみ", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedWishlistItem(testEnv);
+  });
+
+  it("メンバーはほしいものリストを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).get());
+  });
+
+  it("メンバー以外はほしいものリストを読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).get());
+  });
+
+  it("メンバーは自分をaddedByとしてアイテムを作成できるが、他人になりすませない", async () => {
+    await assertSucceeds(
+      asA().doc(`couples/${COUPLE_ID}/wishlistItems/wish-2`).set({
+        coupleId: COUPLE_ID,
+        text: "ヘッドホン",
+        url: null,
+        addedBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/wishlistItems/wish-3`).set({
+        coupleId: COUPLE_ID,
+        text: "なりすまし",
+        url: null,
+        addedBy: USER_B,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+  });
+
+  it("追加した本人は削除できるが、相手は削除できない（wish-1のaddedByはUSER_A）", async () => {
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).delete());
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).delete());
+  });
+
+  it("編集は誰にも許可しない", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).update({ text: "書き換え" }),
+    );
+  });
+
+  it("未認証は一切アクセスできない", async () => {
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/wishlistItems/wish-1`).get());
+  });
+});
+
+describe("wishlistReservations — 予約した本人だけが読み書きでき、追加した本人からは見えない", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedWishlistItem(testEnv); // wish-1、addedBy: USER_A
+  });
+
+  it("追加した本人以外（USER_B）は自分をreservedByとして予約できる", async () => {
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_B,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+  });
+
+  it("追加した本人（USER_A）は自分のアイテムを予約できない", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+  });
+
+  it("他人になりすまして予約はできない", async () => {
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_A,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
+  });
+
+  it("予約した本人は読めるが、追加した本人（欲しい側）は読めない——サプライズを守るため", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_B,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      });
+    });
+
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).get());
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).get());
+  });
+
+  it("予約した本人は取り消せるが、追加した本人は取り消せない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_B,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      });
+    });
+
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).delete());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).delete());
+  });
+
+  it("編集は誰にも許可しない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_B,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      });
+    });
+
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).update({
+        reservedBy: USER_B,
+        createdAt: new Date("2026-08-13T10:00:00"),
+      }),
+    );
+  });
+
+  it("メンバー以外は予約できない", async () => {
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/wishlistReservations/wish-1`).set({
+        reservedBy: USER_C,
+        createdAt: new Date("2026-08-12T10:00:00"),
+      }),
+    );
   });
 });
 

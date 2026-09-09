@@ -5,7 +5,7 @@ import '../models/models.dart';
 // ── データエクスポート ────────────────────────────────
 // カップルで共有しているデータ（予定・思い出＝写真付きの予定・チャット・
 // やりたいことリスト・ふたりの質問への回答・ふたりの日記・家事分担・
-// きょうの気分）をJSONとして書き出す。
+// きょうの気分・ほしいものリスト）をJSONとして書き出す。
 // AIMARUはカップル2人で作るデータなので、片方の視点だけを切り出すのではなく、
 // カップル全体の共有データをそのまま対象にする。
 //
@@ -34,6 +34,7 @@ class DataExportService {
       coupleRef.collection('chores').get(),
       coupleRef.collection('shoppingItems').get(),
       coupleRef.collection('moodEntries').get(),
+      coupleRef.collection('wishlistItems').get(),
     ]);
 
     final events = results[0].docs
@@ -52,6 +53,11 @@ class DataExportService {
         results[6].docs.map(ShoppingItem.fromDoc).map(_shoppingItemToJson).toList();
     final moodEntries =
         results[7].docs.map(MoodEntry.fromDoc).map(_moodEntryToJson).toList();
+    // 予約状態（wishlistReservations）はサプライズを壊さないためあえて
+    // 対象外にする。追加した本人がエクスポートすると相手の予約状況を
+    // 読めてしまい、firestore.rulesで隠している意味が無くなるため。
+    final wishlistItems =
+        results[8].docs.map(WishlistItem.fromDoc).map(_wishlistItemToJson).toList();
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -64,6 +70,7 @@ class DataExportService {
       'chores': chores,
       'shoppingItems': shoppingItems,
       'moodEntries': moodEntries,
+      'wishlistItems': wishlistItems,
     };
 
     return const JsonEncoder.withIndent('  ').convert(data);
@@ -141,5 +148,13 @@ class DataExportService {
     'uid': m.uid,
     'mood': m.mood,
     'createdAt': m.createdAt.toIso8601String(),
+  };
+
+  Map<String, dynamic> _wishlistItemToJson(WishlistItem w) => {
+    'id': w.id,
+    'text': w.text,
+    'url': w.url,
+    'addedBy': w.addedBy,
+    'createdAt': w.createdAt.toIso8601String(),
   };
 }

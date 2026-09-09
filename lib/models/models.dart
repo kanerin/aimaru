@@ -846,3 +846,48 @@ const Map<String, String> bugReportRejectCategoryLabels = {
 
 String describeBugReportRejectCategory(String? category) =>
     bugReportRejectCategoryLabels[category] ?? bugReportRejectCategoryLabels['other']!;
+
+// ── WishlistItem（ほしいものリスト）────────────────────────
+// 記念日・誕生日のプレゼント選びに使う「欲しいものリスト」。todos・choresと
+// 違い、パートナーが「予約」したかどうかは追加した本人（欲しい側）には見せない
+// （サプライズを壊さないため）。予約状態は別コレクション
+// （wishlistReservations、firestore.rulesを参照）で管理し、このモデル自体は
+// 予約状態を一切持たない。
+class WishlistItem {
+  final String id;
+  final String coupleId;
+  final String text;
+  // 商品ページ等へのリンク。未指定も許容する。
+  final String? url;
+  final String addedBy;
+  final DateTime createdAt;
+
+  WishlistItem({
+    required this.id,
+    required this.coupleId,
+    required this.text,
+    this.url,
+    required this.addedBy,
+    required this.createdAt,
+  });
+
+  factory WishlistItem.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return WishlistItem(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      text:      d['text'] ?? '',
+      url:       d['url'],
+      addedBy:   d['addedBy'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'text':      text,
+    'url':       url,
+    'addedBy':   addedBy,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}

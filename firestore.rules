@@ -171,6 +171,34 @@ service cloud.firestore {
         allow read, write: if request.auth.uid == uid && request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
+
+      // ほしいものリスト。アイテム自体（誰が何を欲しいか）はメンバーなら
+      // 誰でも読めるが、削除は追加した本人のみ（相手のリストを勝手に
+      // 消せないように）。編集は想定していない。
+      match /wishlistItems/{itemId} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && request.auth.uid == request.resource.data.addedBy;
+        allow delete: if request.auth.uid == resource.data.addedBy;
+        allow update: if false;
+      }
+
+      // ほしいものリストの「予約」（ドキュメントID = itemId）。googleEventVisibility
+      // と同じく本人しか読み書きできない設計だが、書き込めるのは予約した本人
+      // （wishlistItemsを追加した本人以外）だけという点が異なる。追加した本人
+      // （欲しい側）はこのドキュメントを一切読めない——読めてしまうと
+      // 「相手が用意してくれるかどうか」が事前にわかりサプライズが壊れるため。
+      match /wishlistReservations/{itemId} {
+        allow read: if request.auth.uid == resource.data.reservedBy;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && request.auth.uid == request.resource.data.reservedBy
+          && get(/databases/$(database)/documents/couples/$(coupleId)/wishlistItems/$(itemId)).data.addedBy != request.auth.uid;
+        allow delete: if request.auth.uid == resource.data.reservedBy;
+        allow update: if false;
+      }
     }
 
     // 招待コード参加フローの事前確認専用。coupleIdと参加者のuidだけを
