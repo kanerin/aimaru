@@ -1,7 +1,7 @@
 name: Reduce technical debt (1x/day)
 
 # docs/open-issues.md のP0/P1のうちコード変更だけで完結するものを1つ選んで実装し、
-# developへPRを作成してauto-mergeする。propose-feature.yml（機能追加枠）は
+# developへPRを作成してauto-mergeする。propose-feature.yml（既存機能の磨き込み枠）は
 # 「Firebase設定・シークレット・課金構成に関わる変更を避ける」方針のため、
 # そこに該当するP0/P1課題がいつまでも選ばれない問題への対応。
 # developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が

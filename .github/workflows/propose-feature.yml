@@ -1,7 +1,8 @@
-name: Propose & implement feature (1x/day)
+name: Polish existing feature (1x/day)
 
-# 市場動向・競合を調査した上で、競合差分の解消につながる改善（中規模なものを含む）を
-# 1つ選んで実装し、developへPRを作成してauto-mergeする。
+# 新機能の追加ではなく、既存機能のUX・完成度を磨き込む改善を1つ選んで実装し、
+# developへPRを作成してauto-mergeする（2026-09-10、新機能追加枠から方針転換。
+# 詳細はdocs/open-issues.md「自動化の構成」参照）。
 # developへの反映後、release-stgへのfast-forward昇格は promote-to-stg.yml が
 # CI成功をトリガーに自動で行う（このワークフロー自身はrelease-stgに触れない）。
 #
@@ -69,8 +70,9 @@ jobs:
           # display_report: Claudeが何を分析し何を実装・マージしたかをGitHub Actionsの
           # Step Summaryに表示する。
           display_report: true
-          # WebSearchで市場動向・競合調査を行い、中規模な改善まで積極的に検討するため
-          # 通常より探索・実装のターン数がかかる想定でmax-turnsを引き上げている。
+          # コードベースの洗い出し（既存機能の粗さ探し）に加え、必要に応じてWebSearchで
+          # 競合の作り込みを参考にするため、通常より探索・実装のターン数がかかる想定で
+          # max-turnsを引き上げている。
           # allowedToolsの値はスペースを含む（Bash(git commit:*)等）ため、
           # 全体をダブルクォートで囲まないとスペースでトークン分割されて壊れる
           claude_args: --max-turns 150 --allowedTools "Read,Grep,Glob,Edit,Write,WebSearch,Bash(git *),Bash(flutter *),Bash(npm *),Bash(gh issue list:*),Bash(gh issue create:*),Bash(gh pr create:*),Bash(gh pr merge:*),Bash(gh pr list:*),Bash(gh pr view:*)"

@@ -1,4 +1,4 @@
-# 残課題（最終更新: 2026-09-09 / 基準ブランチ `develop`）
+# 残課題（最終更新: 2026-09-10 / 基準ブランチ `develop`）
 
 このファイルは「今どこまで出来ていて、何が残っているか」を1枚で把握するためのもの。
 2026-08-14にNotion連携の自動更新（`notion-audit`スキル）は廃止した。今後はPRの中で
@@ -815,9 +815,22 @@ GitHub Issueへ起票してrejected（out_of_scope）にする。人間がその
 メンションして初めて`claude-mention.yml`が実装する。cronの頻度も1日2回から
 5時間おきへ変更した。
 
+2026-09-10、`propose-feature.yml`の方針を「市場動向調査に基づく新機能の追加」から
+「既存機能のUX・完成度の磨き込み」へ転換した（ユーザー本人の指示）。2026-08-14の
+自動実装化以降、この枠は買い物リスト・家事分担・共有日記・きょうの気分・ふたりの質問の
+ストリーク表示・ほしいものリスト・外部カレンダー連携・トークのリアクションなど、
+競合との機能差分を埋める新機能を毎日1件のペースで追加し続けてきた。その結果、
+機能の幅そのものは十分に揃った一方、個々の機能の完成度（エラー/空状態処理の抜け、
+画面間の一貫性、操作の手触り、アクセシビリティなど）を磨く工程が手薄なまま新機能だけが
+積み上がる状態になっていた。`.claude/commands/propose-feature.md`を全面的に書き換え、
+新しい画面・Firestoreコレクションを伴う「新機能」の追加は対象外とし、既存機能の粗さを
+コードベースの洗い出し（`hasError`未対応・空状態未対応・一貫性の欠如など）から見つけて
+1件ずつ改善する運用に変えた。ブランチ命名（`feature/auto-`）・滞留ガード・PR/auto-mergeの
+フローなど、機能面以外の仕組みは変更していない。
+
 ```
 reduce-debt.yml       1日1回cron（朝）   docs/open-issues.mdのP0/P1のうちコード変更だけで完結するものを1つ実装 → develop へPR → CI成功でauto-merge
-propose-feature.yml   1日1回cron（夜）   市場動向調査 → 改善を1つ実装 → develop へPR → CI成功でauto-merge
+propose-feature.yml   1日1回cron（夜）   既存機能のUX・完成度を磨き込む改善を1つ実装 → develop へPR → CI成功でauto-merge（2026-09-10、新機能追加枠から方針転換）
 fix-bug-reports.yml   5時間おきcron      Firestoreのbug報告ストックから未着手のバグ報告1件を実装 → develop へPR → CI成功でauto-merge（機能要望はIssue化のみ、人間承認制）
 test-report.yml       週2-3回cron        テスト実行（プレーンshell）→ 失敗時のみClaudeが分析してIssueへ
 backmerge.yml          release-prd push契機  戻しマージPR自動作成 → コンフリクト時のみClaudeが分析コメント
