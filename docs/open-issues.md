@@ -343,6 +343,21 @@ GitHub Appトークンには`.github/workflows/`配下を変更する権限が�
 `flutter build ios --no-codesign`ジョブを追加できれば、以後はこの種の
 iOS特有の設定漏れを毎回機械的に検知できる）。
 
+2026-09-14、課題13のフェーズ2として、招待QR/リンク経由のペアリング
+（`aimaru://join?code=XXXXXX`）をiOSで開けるようにした（reduce-debt枠、本PR）。
+`AndroidManifest.xml`には既にこのスキーム用の`intent-filter`
+（`scheme="aimaru" host="join"`）があったが、`ios/Runner/Info.plist`には対応する
+`CFBundleURLTypes`が無く、iOSでは招待リンクをタップしてもアプリが開かず
+`DeepLinkService`（`lib/services/deep_link_service.dart`）に到達しない状態だった
+（カスタムURLスキームはUniversal Linksと違いApple Developer登録・ドメイン設定を
+要らないため、Apple Developer登録前の現状でも着手できるコード変更）。
+`Info.plist`に`CFBundleURLSchemes`が`aimaru`の`CFBundleURLTypes`エントリを追加した。
+`app_links`パッケージはFlutterプラグインとして`GeneratedPluginRegistrant`経由で
+URLオープンを受け取るため、`AppDelegate.swift`側の追加コードは不要。
+Info.plistのみの変更で検証可能なDartロジックが無いため専用テストは追加していない
+（`flutter analyze`・`flutter test`（614件）で既存機能に影響が無いことのみ確認、
+課題13フェーズ1・PR #117と同じ方針）。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
