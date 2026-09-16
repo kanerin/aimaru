@@ -44,4 +44,14 @@ void main() {
     expect(find.byType(ImageDetailScreen), findsNothing);
     expect(find.text('open'), findsOneWidget);
   });
+
+  testWidgets('閉じるボタン・保存ボタンにツールチップが設定されている', (tester) async {
+    await tester.pumpWidget(wrap());
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byTooltip('閉じる'), findsOneWidget);
+    expect(find.byTooltip('画像を保存'), findsOneWidget);
+  });
 }

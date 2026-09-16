@@ -34,6 +34,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         leading: IconButton(
           icon: const Icon(Icons.close),
+          tooltip: '閉じる',
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
@@ -44,6 +45,7 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.download_rounded),
+            tooltip: '画像を保存',
             onPressed: _saving ? null : _save,
           ),
         ],
