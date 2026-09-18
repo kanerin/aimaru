@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/models.dart';
 import '../services/wishlist_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/confirm_delete_dialog.dart';
 
 // ── ほしいものリスト ──────────────────────────────────
 // 市場調査（propose-feature）でカップル・夫婦向けアプリのレビュー記事に
@@ -75,6 +76,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   Future<void> _delete(WishlistItem item) async {
     await _service.deleteItem(item);
+  }
+
+  // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
+  Future<void> _confirmAndDelete(WishlistItem item) async {
+    final confirmed = await confirmDelete(
+      context,
+      title: 'ほしいものを削除',
+      message: '「${item.text}」を削除します。元に戻せません。',
+    );
+    if (!confirmed) return;
+    await _delete(item);
   }
 
   Future<void> _toggleReserve(WishlistItem item, bool reserved) async {
@@ -216,7 +228,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
               tooltip: '削除',
-              onPressed: () => _delete(item),
+              onPressed: () => _confirmAndDelete(item),
             )
           else
             InkWell(
@@ -259,6 +271,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         child: const Icon(Icons.delete_outline, color: Colors.redAccent),
+      ),
+      confirmDismiss: (_) => confirmDelete(
+        context,
+        title: 'ほしいものを削除',
+        message: '「${item.text}」を削除します。元に戻せません。',
       ),
       onDismissed: (_) => _delete(item),
       child: tile,

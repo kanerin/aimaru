@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/chore_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/confirm_delete_dialog.dart';
 
 // ── 家事分担 ──────────────────────────────────────────
 // 同棲・二人暮らしのカップル向け「家事分担」チェックリスト。市場調査
@@ -75,6 +76,17 @@ class _ChoresScreenState extends State<ChoresScreen> {
 
   Future<void> _delete(ChoreItem chore) async {
     await _choreService.deleteChore(chore);
+  }
+
+  // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
+  Future<void> _confirmAndDelete(ChoreItem chore) async {
+    final confirmed = await confirmDelete(
+      context,
+      title: '家事を削除',
+      message: '「${chore.title}」を削除します。元に戻せません。',
+    );
+    if (!confirmed) return;
+    await _delete(chore);
   }
 
   Future<void> _resetAllDone() async {
@@ -206,6 +218,11 @@ class _ChoresScreenState extends State<ChoresScreen> {
         ),
         child: const Icon(Icons.delete_outline, color: Colors.redAccent),
       ),
+      confirmDismiss: (_) => confirmDelete(
+        context,
+        title: '家事を削除',
+        message: '「${chore.title}」を削除します。元に戻せません。',
+      ),
       onDismissed: (_) => _delete(chore),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -262,7 +279,7 @@ class _ChoresScreenState extends State<ChoresScreen> {
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
                   tooltip: '削除',
-                  onPressed: () => _delete(chore),
+                  onPressed: () => _confirmAndDelete(chore),
                 ),
               ],
             ),

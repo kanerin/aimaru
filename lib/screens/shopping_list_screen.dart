@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/shopping_list_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/confirm_delete_dialog.dart';
 
 // ── 買い物リスト ──────────────────────────────────────
 // 市場調査（2026年8月、propose-feature）で夫婦・カップル向けアプリの
@@ -58,6 +59,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
 
   Future<void> _delete(ShoppingItem item) async {
     await _service.deleteItem(item);
+  }
+
+  // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
+  Future<void> _confirmAndDelete(ShoppingItem item) async {
+    final confirmed = await confirmDelete(
+      context,
+      title: '買い物リストから削除',
+      message: '「${item.title}」を削除します。元に戻せません。',
+    );
+    if (!confirmed) return;
+    await _delete(item);
   }
 
   Future<void> _clearDone() async {
@@ -174,6 +186,11 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         ),
         child: const Icon(Icons.delete_outline, color: Colors.redAccent),
       ),
+      confirmDismiss: (_) => confirmDelete(
+        context,
+        title: '買い物リストから削除',
+        message: '「${item.title}」を削除します。元に戻せません。',
+      ),
       onDismissed: (_) => _delete(item),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -232,7 +249,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
                   tooltip: '削除',
-                  onPressed: () => _delete(item),
+                  onPressed: () => _confirmAndDelete(item),
                 ),
               ],
             ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/todo_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import 'event_form_screen.dart';
 
 // ── 共有TODO・やりたいことリスト ──────────────────────
@@ -58,6 +59,17 @@ class _TodosScreenState extends State<TodosScreen> {
 
   Future<void> _delete(TodoItem todo) async {
     await _todoService.deleteTodo(todo);
+  }
+
+  // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
+  Future<void> _confirmAndDelete(TodoItem todo) async {
+    final confirmed = await confirmDelete(
+      context,
+      title: 'やりたいことを削除',
+      message: '「${todo.text}」を削除します。元に戻せません。',
+    );
+    if (!confirmed) return;
+    await _delete(todo);
   }
 
   // タイトルをタップしたときに、そのままカレンダーの新規予定として登録できる
@@ -190,6 +202,11 @@ class _TodosScreenState extends State<TodosScreen> {
         ),
         child: const Icon(Icons.delete_outline, color: Colors.redAccent),
       ),
+      confirmDismiss: (_) => confirmDelete(
+        context,
+        title: 'やりたいことを削除',
+        message: '「${todo.text}」を削除します。元に戻せません。',
+      ),
       onDismissed: (_) => _delete(todo),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -260,7 +277,7 @@ class _TodosScreenState extends State<TodosScreen> {
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
                   tooltip: '削除',
-                  onPressed: () => _delete(todo),
+                  onPressed: () => _confirmAndDelete(todo),
                 ),
               ],
             ),

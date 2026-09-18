@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -136,7 +137,7 @@ void main() {
     await controller.close();
   });
 
-  testWidgets('削除ボタンを押すとTodoServiceのdeleteTodoが呼ばれる', (tester) async {
+  testWidgets('削除ボタンは確認をとってから消す（キャンセルすれば残る）', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = TodoService(firestore: db, uid: 'u1');
     await db
@@ -152,16 +153,27 @@ void main() {
     controller.add([sampleTodo]);
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pump();
-
-    final doc = await db
+    Future<DocumentSnapshot<Map<String, dynamic>>> storedDoc() => db
         .collection('couples')
         .doc('couple-1')
         .collection('todos')
         .doc('t1')
         .get();
-    expect(doc.exists, isFalse);
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('元に戻せません'), findsOneWidget);
+
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect((await storedDoc()).exists, isTrue, reason: 'キャンセルでは消さない');
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+
+    expect((await storedDoc()).exists, isFalse);
 
     await controller.close();
   });
