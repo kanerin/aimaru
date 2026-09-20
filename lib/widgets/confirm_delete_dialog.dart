@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../utils/app_theme.dart';
 
 // 削除確認ダイアログ。元に戻せない削除（ゴミ箱を持たないコレクション）を
-// 複数の画面（やりたいことリスト・家事分担・買い物リスト・ほしいものリスト等）
+// 複数の画面（やりたいことリスト・買い物リスト・ほしいものリスト等）
 // で共通の文言・ボタン配置にするための共有ヘルパー。
 Future<bool> confirmDelete(
   BuildContext context, {

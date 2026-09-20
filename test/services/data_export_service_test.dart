@@ -29,10 +29,7 @@ void main() {
     expect(decoded['chats'], isEmpty);
     expect(decoded['todos'], isEmpty);
     expect(decoded['questionAnswers'], isEmpty);
-    expect(decoded['diaryEntries'], isEmpty);
-    expect(decoded['chores'], isEmpty);
     expect(decoded['shoppingItems'], isEmpty);
-    expect(decoded['moodEntries'], isEmpty);
     expect(decoded['wishlistItems'], isEmpty);
     expect(decoded['exportedAt'], isNotEmpty);
   });
@@ -163,42 +160,6 @@ void main() {
     expect(answer['text'], '初デートの場所');
   });
 
-  test('ふたりの日記を書き出す', () async {
-    await col('diaryEntries').doc('2026-01-01_user-a').set({
-      'coupleId': coupleId,
-      'dateKey': '2026-01-01',
-      'uid': 'user-a',
-      'text': '公園を散歩した',
-      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
-      'updatedAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
-    });
-
-    final json = await service.exportAsJson(coupleId);
-    final entry = (jsonDecode(json)['diaryEntries'] as List).single as Map<String, dynamic>;
-
-    expect(entry['dateKey'], '2026-01-01');
-    expect(entry['uid'], 'user-a');
-    expect(entry['text'], '公園を散歩した');
-  });
-
-  test('家事分担を書き出す', () async {
-    await col('chores').doc('chore-1').set({
-      'coupleId': coupleId,
-      'title': '皿洗い',
-      'assignedTo': 'user-a',
-      'done': false,
-      'createdBy': 'user-a',
-      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
-    });
-
-    final json = await service.exportAsJson(coupleId);
-    final chore = (jsonDecode(json)['chores'] as List).single as Map<String, dynamic>;
-
-    expect(chore['title'], '皿洗い');
-    expect(chore['assignedTo'], 'user-a');
-    expect(chore['done'], false);
-  });
-
   test('買い物リストを書き出す', () async {
     await col('shoppingItems').doc('item-1').set({
       'coupleId': coupleId,
@@ -215,23 +176,6 @@ void main() {
     expect(item['title'], '牛乳');
     expect(item['quantity'], '1本');
     expect(item['done'], false);
-  });
-
-  test('きょうの気分を書き出す', () async {
-    await col('moodEntries').doc('2026-01-01_user-a').set({
-      'coupleId': coupleId,
-      'dateKey': '2026-01-01',
-      'uid': 'user-a',
-      'mood': 'great',
-      'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
-    });
-
-    final json = await service.exportAsJson(coupleId);
-    final entry = (jsonDecode(json)['moodEntries'] as List).single as Map<String, dynamic>;
-
-    expect(entry['dateKey'], '2026-01-01');
-    expect(entry['uid'], 'user-a');
-    expect(entry['mood'], 'great');
   });
 
   test('ほしいものリストを書き出す（予約状態は含まない）', () async {

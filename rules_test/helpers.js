@@ -125,19 +125,6 @@ export async function seedTodo(testEnv, todoId = "todo-1") {
   });
 }
 
-export async function seedChore(testEnv, choreId = "chore-1") {
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc(`couples/${COUPLE_ID}/chores/${choreId}`).set({
-      coupleId: COUPLE_ID,
-      title: "皿洗い",
-      assignedTo: null,
-      done: false,
-      createdBy: USER_A,
-      createdAt: new Date("2026-08-12T10:00:00"),
-    });
-  });
-}
-
 export async function seedShoppingItem(testEnv, itemId = "item-1") {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await ctx.firestore().doc(`couples/${COUPLE_ID}/shoppingItems/${itemId}`).set({
@@ -198,27 +185,3 @@ export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "202
   });
 }
 
-export async function seedDiaryEntry(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc(`couples/${COUPLE_ID}/diaryEntries/${dateKey}_${uid}`).set({
-      coupleId: COUPLE_ID,
-      dateKey,
-      uid,
-      text: "公園を散歩した",
-      createdAt: new Date("2026-08-17T10:00:00"),
-      updatedAt: new Date("2026-08-17T10:00:00"),
-    });
-  });
-}
-
-export async function seedMoodEntry(testEnv, { uid = USER_A, dateKey = "2026-08-17" } = {}) {
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().doc(`couples/${COUPLE_ID}/moodEntries/${dateKey}_${uid}`).set({
-      coupleId: COUPLE_ID,
-      dateKey,
-      uid,
-      mood: "good",
-      createdAt: new Date("2026-08-17T10:00:00"),
-    });
-  });
-}

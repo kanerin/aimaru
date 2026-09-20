@@ -7,7 +7,7 @@ import '../widgets/confirm_delete_dialog.dart';
 // ── 買い物リスト ──────────────────────────────────────
 // 市場調査（2026年8月、propose-feature）で夫婦・カップル向けアプリの
 // 人気機能として挙がっていた「買い物リスト」。TimeTreeにはこの概念自体が
-// 無い差別化要素。todos（やりたいことリスト）・chores（家事分担）とは別に、
+// 無い差別化要素。todos（やりたいことリスト）とは別に、
 // 日用品・食材の買い出しを2人で共有する。
 class ShoppingListScreen extends StatefulWidget {
   final String coupleId;

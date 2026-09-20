@@ -17,13 +17,10 @@ import {
   seedAlbumPhoto,
   seedAnniversary,
   seedChat,
-  seedChore,
   seedShoppingItem,
   seedCouple,
-  seedDiaryEntry,
   seedEvent,
   seedInviteCode,
-  seedMoodEntry,
   seedQuestionAnswer,
   seedTodo,
   seedWishlistItem,
@@ -375,52 +372,6 @@ describe("todos — メンバー境界", () => {
   });
 });
 
-describe("chores — メンバー境界", () => {
-  beforeEach(async () => {
-    await seedCouple(testEnv);
-    await seedChore(testEnv);
-  });
-
-  it("メンバーは家事を読める", async () => {
-    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
-    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
-  });
-
-  it("メンバー以外は家事を読めない", async () => {
-    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
-  });
-
-  it("メンバーは家事を作成・完了切り替え・担当変更・削除できる", async () => {
-    await assertSucceeds(
-      asA().doc(`couples/${COUPLE_ID}/chores/chore-2`).set({
-        coupleId: COUPLE_ID,
-        title: "ゴミ出し",
-        assignedTo: USER_A,
-        done: false,
-        createdBy: USER_A,
-        createdAt: new Date("2026-08-12T10:00:00"),
-      }),
-    );
-    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ done: true }));
-    await assertSucceeds(
-      asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ assignedTo: USER_B }),
-    );
-    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/chores/chore-1`).delete());
-  });
-
-  it("メンバー以外は家事を作成・更新・削除できない", async () => {
-    const ref = asC().doc(`couples/${COUPLE_ID}/chores/chore-3`);
-    await assertFails(ref.set({ title: "勝手な家事" }));
-    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).update({ done: true }));
-    await assertFails(asC().doc(`couples/${COUPLE_ID}/chores/chore-1`).delete());
-  });
-
-  it("未認証は家事に一切アクセスできない", async () => {
-    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-1`).get());
-    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/chores/chore-4`).set({ title: "x" }));
-  });
-});
-
 describe("shoppingItems — メンバー境界", () => {
   beforeEach(async () => {
     await seedCouple(testEnv);
@@ -746,165 +697,6 @@ describe("questionAnswers — メンバー境界・自分の回答のみ書き�
     await assertFails(asAnon().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_A}`).get());
     await assertFails(
       asAnon().doc(`couples/${COUPLE_ID}/questionAnswers/2026-08-17_${USER_C}`).set({ uid: USER_C }),
-    );
-  });
-});
-
-describe("diaryEntries — メンバー境界・自分の日記のみ書き換え可", () => {
-  beforeEach(async () => {
-    await seedCouple(testEnv);
-    await seedDiaryEntry(testEnv, { uid: USER_A });
-  });
-
-  it("メンバーは日記を読める", async () => {
-    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).get());
-    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).get());
-  });
-
-  it("メンバー以外は日記を読めない", async () => {
-    await assertFails(asC().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).get());
-  });
-
-  it("自分の日記は作成できる", async () => {
-    await assertSucceeds(
-      asB().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_B}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_B,
-        text: "映画を見た",
-        createdAt: new Date("2026-08-17T11:00:00"),
-        updatedAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("相手のuidを騙って日記を作成できない", async () => {
-    await assertFails(
-      asB().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_A,
-        text: "なりすまし",
-        createdAt: new Date("2026-08-17T11:00:00"),
-        updatedAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("自分の日記は書き直し・削除できる", async () => {
-    await assertSucceeds(
-      asA().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).update({ text: "書き直した" }),
-    );
-    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).delete());
-  });
-
-  it("相手の日記は書き換え・削除できない", async () => {
-    await assertFails(
-      asB().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).update({ text: "改ざん" }),
-    );
-    await assertFails(asB().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).delete());
-  });
-
-  it("自分の日記でもuidを書き換える更新はできない", async () => {
-    await assertFails(
-      asA().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).update({ uid: USER_B }),
-    );
-  });
-
-  it("メンバー以外は日記を作成できない", async () => {
-    await assertFails(
-      asC().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_C}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_C,
-        text: "割り込み",
-        createdAt: new Date("2026-08-17T11:00:00"),
-        updatedAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("未認証は日記に一切アクセスできない", async () => {
-    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_A}`).get());
-    await assertFails(
-      asAnon().doc(`couples/${COUPLE_ID}/diaryEntries/2026-08-17_${USER_C}`).set({ uid: USER_C }),
-    );
-  });
-});
-
-describe("moodEntries — メンバー境界・自分の気分のみ書き換え可", () => {
-  beforeEach(async () => {
-    await seedCouple(testEnv);
-    await seedMoodEntry(testEnv, { uid: USER_A });
-  });
-
-  it("メンバーは気分を読める", async () => {
-    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).get());
-    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).get());
-  });
-
-  it("メンバー以外は気分を読めない", async () => {
-    await assertFails(asC().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).get());
-  });
-
-  it("自分の気分は作成できる", async () => {
-    await assertSucceeds(
-      asB().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_B}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_B,
-        mood: "great",
-        createdAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("相手のuidを騙って気分を作成できない", async () => {
-    await assertFails(
-      asB().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_A,
-        mood: "great",
-        createdAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("自分の気分は選び直せる", async () => {
-    await assertSucceeds(
-      asA().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).update({ mood: "bad" }),
-    );
-  });
-
-  it("相手の気分は書き換えられない", async () => {
-    await assertFails(
-      asB().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).update({ mood: "bad" }),
-    );
-  });
-
-  it("自分の気分でもuidを書き換える更新はできない", async () => {
-    await assertFails(
-      asA().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).update({ uid: USER_B }),
-    );
-  });
-
-  it("メンバー以外は気分を作成できない", async () => {
-    await assertFails(
-      asC().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_C}`).set({
-        coupleId: COUPLE_ID,
-        dateKey: "2026-08-17",
-        uid: USER_C,
-        mood: "great",
-        createdAt: new Date("2026-08-17T11:00:00"),
-      }),
-    );
-  });
-
-  it("未認証は気分に一切アクセスできない", async () => {
-    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_A}`).get());
-    await assertFails(
-      asAnon().doc(`couples/${COUPLE_ID}/moodEntries/2026-08-17_${USER_C}`).set({ uid: USER_C }),
     );
   });
 });

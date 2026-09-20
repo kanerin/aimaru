@@ -671,6 +671,14 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 した。Firestoreを読んで`gh`を叩くだけの軽い処理で、バグ修正の自動実装とは独立して
 回せるべきものだったため。取り残しのバックフィルもこのワークフローの手動実行で行う。
 
+2026-09-20、「家事分担」（`ChoresScreen`/`ChoreService`）・「ふたりの日記」（`DiaryScreen`/`DiaryService`）・
+「きょうの気分」（`MoodScreen`/`MoodService`）の3機能を削除した（ユーザー本人の指示）。画面・サービス・
+モデル（`ChoreItem`/`DiaryEntry`/`MoodEntry`）・設定画面の導線・`DataExportService`の書き出し・
+`firestore.rules`のルールとそのrules_testを取り除いた。**Firestore上の既存データ
+（`chores`/`diaryEntries`/`moodEntries`）は削除していない**（不可逆な操作のため）。ルールを外したので
+クライアントからは読み書きできず、ペア解消・退会時の`recursiveDelete`で`couples/{coupleId}`
+配下ごと消える。上の各セクションにある3機能の実装記録は経緯として残してある。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
