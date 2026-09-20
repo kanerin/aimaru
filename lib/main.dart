@@ -13,6 +13,7 @@ import 'utils/app_theme.dart';
 import 'screens/app_lock_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/pairing_screen.dart';
+import 'screens/questions_route_screen.dart';
 import 'screens/ai_chat_screen.dart';
 import 'screens/anniversary_hub_screen.dart';
 import 'screens/calendar_screen.dart';
@@ -96,6 +97,13 @@ final _router = GoRouter(
     GoRoute(
       path: '/home',
       builder: (_, __) => const _HomeShell(),
+      routes: [
+        // ふたりの質問の通知タップの遷移先（NotificationService）。
+        GoRoute(
+          path: 'questions',
+          builder: (_, __) => const QuestionsRouteScreen(),
+        ),
+      ],
     ),
   ],
 );
