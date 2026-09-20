@@ -550,7 +550,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 10),
           _NavigationRow(
             title: '買い物リスト',
-            subtitle: '日用品や食材の買い出しを2人で共有できます。TimeTreeには無い機能です',
+            subtitle: '日用品や食材の買い出しを2人で共有できます',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => ShoppingListScreen(coupleId: widget.coupleId)),
             ),
