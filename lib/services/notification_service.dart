@@ -9,6 +9,19 @@ import 'package:go_router/go_router.dart';
 // ここでは特別な処理は不要（アプリのisolateが別なのでトップレベル関数が必須）。
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
+// 通知タップ時の遷移先。ペイロードの`type`が"question"（ふたりの質問の
+// 未回答リマインダー、functions/src/index.tsのsendDailyQuestionReminder）なら
+// 質問画面へ、それ以外は従来どおりホーム（カレンダー）へ飛ばす。
+// `/home/questions`は`/home`の子ルートなので、戻るとホームに戻れる。
+String routeForNotificationData(Map<String, dynamic> data) {
+  switch (data['type']) {
+    case 'question':
+      return '/home/questions';
+    default:
+      return '/home';
+  }
+}
+
 // ── FCMのトークン保存・フォアグラウンド通知表示・タップ遷移を担当 ──
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -75,7 +88,7 @@ class NotificationService {
   }
 
   void _onMessageTap(RemoteMessage message) {
-    // 予定詳細への直接遷移は今後の拡張。まずはカレンダー画面へ。
-    _router?.go('/home');
+    // 予定詳細への直接遷移は今後の拡張。質問以外はまずカレンダー画面へ。
+    _router?.go(routeForNotificationData(message.data));
   }
 }
