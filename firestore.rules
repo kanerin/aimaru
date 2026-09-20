@@ -83,15 +83,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
       }
 
-      // 家事分担チェックリスト。todosと同じくどちらのメンバーも自由に
-      // 追加・完了切り替え・担当変更・削除できる（片方しか操作できないと
-      // 分担として機能しないため）。
-      match /chores/{choreId} {
-        allow read, write: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
-      }
-
-      // 買い物リスト。choresと同じくどちらのメンバーも自由に
+      // 買い物リスト。todosと同じくどちらのメンバーも自由に
       // 追加・購入済み切り替え・削除できる（片方しか操作できないと
       // 共有買い物リストとして機能しないため）。
       match /shoppingItems/{itemId} {
@@ -123,33 +115,6 @@ service cloud.firestore {
         allow create: if request.auth.uid in
           get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
           && request.auth.uid == request.resource.data.uid;
-      }
-
-      // ふたりの日記（ドキュメントID = '${dateKey}_$uid'）。questionAnswersと違い
-      // 相手の回答を伏せる仕組みが無い自由記述の日記のため、自分の分は
-      // 書き直し・削除ができる（uidの書き換えだけは所有権の乗っ取りになるため禁止）。
-      match /diaryEntries/{entryId} {
-        allow read: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
-        allow create: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
-          && request.auth.uid == request.resource.data.uid;
-        allow update: if request.auth.uid == resource.data.uid
-          && request.resource.data.uid == resource.data.uid;
-        allow delete: if request.auth.uid == resource.data.uid;
-      }
-
-      // きょうの気分（ドキュメントID = '${dateKey}_$uid'）。diaryEntriesと同じく
-      // 自分の分は書き直せるが、uidの書き換えは所有権の乗っ取りになるため禁止する。
-      // 選び直すだけの機能で書いた内容を消したい場面が無いため、deleteは許可しない。
-      match /moodEntries/{entryId} {
-        allow read: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
-        allow create: if request.auth.uid in
-          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
-          && request.auth.uid == request.resource.data.uid;
-        allow update: if request.auth.uid == resource.data.uid
-          && request.resource.data.uid == resource.data.uid;
       }
 
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。

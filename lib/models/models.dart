@@ -395,61 +395,10 @@ class TodoItem {
   };
 }
 
-// ── ChoreItem（家事分担）─────────────────────────────────
-// 同棲・二人暮らしのカップル向け「家事分担」チェックリスト。市場調査
-// （2026年8月）で家事分担・交換日記が人気機能として挙がっており、交換日記
-// （DiaryEntry）は先に実装済みのため、対になる家事分担を追加する。TimeTreeには
-// この概念自体が無い差別化要素。assignedToで「誰の担当か」を持たせつつ、
-// todosと同じくどちらのメンバーも自由に追加・完了・削除できる（片方しか
-// 操作できないと分担として機能しないため）。
-class ChoreItem {
-  final String id;
-  final String coupleId;
-  final String title;
-  // 担当者のuid。null（どちらでも）も許容する。
-  final String? assignedTo;
-  final bool done;
-  final String createdBy;
-  final DateTime createdAt;
-
-  ChoreItem({
-    required this.id,
-    required this.coupleId,
-    required this.title,
-    this.assignedTo,
-    this.done = false,
-    required this.createdBy,
-    required this.createdAt,
-  });
-
-  factory ChoreItem.fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    return ChoreItem(
-      id:         doc.id,
-      coupleId:   d['coupleId'] ?? '',
-      title:      d['title'] ?? '',
-      assignedTo: d['assignedTo'],
-      done:       d['done'] ?? false,
-      createdBy:  d['createdBy'] ?? '',
-      createdAt:  (d['createdAt'] as Timestamp).toDate(),
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'coupleId':   coupleId,
-    'title':      title,
-    'assignedTo': assignedTo,
-    'done':       done,
-    'createdBy':  createdBy,
-    'createdAt':  Timestamp.fromDate(createdAt),
-  };
-}
-
 // ── ShoppingItem（買い物リスト）───────────────────────────
 // 市場調査（2026年8月）で夫婦・カップル向けアプリの人気機能として挙がって
 // いた「買い物リスト」。TimeTreeにはこの概念自体が無く、todos（やりたい
-// ことリスト）・chores（家事分担）とは別に、日用品や食材の買い出しを2人で
-// 共有するための機能。quantityは「2個」「1本」のような自由記述（数量の
+// ことリスト）とは別に、日用品や食材の買い出しを2人で共有するための機能。quantityは「2個」「1本」のような自由記述（数量の
 // 単位がアイテムによってバラバラなため、数値+単位のような構造化はしない）。
 class ShoppingItem {
   final String id;
@@ -641,115 +590,6 @@ class QuestionAnswer {
   };
 }
 
-// ── DiaryEntry（ふたりの日記）───────────────────────────
-// 「共有日記」は競合（Between Us等）が持つ差別化要素。ふたりの質問と違い
-// 相手の回答を伏せる仕組みは無く、自分の分はいつでも書き直せる
-// （idは'${dateKey}_$uid'で1人1日1件、setで上書き・updatedAtで最終保存日時を追う）。
-class DiaryEntry {
-  final String id;
-  final String coupleId;
-  final String dateKey; // 'yyyy-MM-dd'
-  final String uid;
-  final String text;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-
-  DiaryEntry({
-    required this.id,
-    required this.coupleId,
-    required this.dateKey,
-    required this.uid,
-    required this.text,
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  factory DiaryEntry.fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    return DiaryEntry(
-      id:        doc.id,
-      coupleId:  d['coupleId'] ?? '',
-      dateKey:   d['dateKey'] ?? '',
-      uid:       d['uid'] ?? '',
-      text:      d['text'] ?? '',
-      createdAt: (d['createdAt'] as Timestamp).toDate(),
-      updatedAt: (d['updatedAt'] as Timestamp).toDate(),
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'coupleId':  coupleId,
-    'dateKey':   dateKey,
-    'uid':       uid,
-    'text':      text,
-    'createdAt': Timestamp.fromDate(createdAt),
-    'updatedAt': Timestamp.fromDate(updatedAt),
-  };
-}
-
-// ── MoodOption / MoodEntry（きょうの気分）─────────────────
-// Amora・Pairedなど関係性ウェルネス系アプリが2025〜2026年にかけて強化して
-// きた「気分チェックイン」の差別化要素（2026年9月時点の競合調査）。
-// ふたりの日記（自由記述）・ふたりの質問（相手の回答を伏せる）とは別の
-// もっと気軽な入口として、1日1回、固定の選択肢から今の気分を選ぶだけにする。
-// idは'${dateKey}_$uid'（1人1日1件、setで上書き）。
-class MoodOption {
-  final String key;
-  final String emoji;
-  final String label;
-
-  const MoodOption(this.key, this.emoji, this.label);
-}
-
-const List<MoodOption> moodOptions = [
-  MoodOption('great', '😄', '最高'),
-  MoodOption('good', '🙂', '良い'),
-  MoodOption('okay', '😐', 'ふつう'),
-  MoodOption('bad', '😔', 'いまいち'),
-  MoodOption('awful', '😢', 'つらい'),
-];
-
-MoodOption moodOptionFor(String key) =>
-    moodOptions.firstWhere((o) => o.key == key, orElse: () => moodOptions[2]);
-
-class MoodEntry {
-  final String id;
-  final String coupleId;
-  final String dateKey; // 'yyyy-MM-dd'
-  final String uid;
-  final String mood; // MoodOption.key
-  final DateTime createdAt;
-
-  MoodEntry({
-    required this.id,
-    required this.coupleId,
-    required this.dateKey,
-    required this.uid,
-    required this.mood,
-    required this.createdAt,
-  });
-
-  factory MoodEntry.fromDoc(DocumentSnapshot doc) {
-    final d = doc.data() as Map<String, dynamic>;
-    return MoodEntry(
-      id:        doc.id,
-      coupleId:  d['coupleId'] ?? '',
-      dateKey:   d['dateKey'] ?? '',
-      uid:       d['uid'] ?? '',
-      mood:      d['mood'] ?? '',
-      createdAt: (d['createdAt'] as Timestamp).toDate(),
-    );
-  }
-
-  Map<String, dynamic> toMap() => {
-    'coupleId':  coupleId,
-    'dateKey':   dateKey,
-    'uid':       uid,
-    'mood':      mood,
-    'createdAt': Timestamp.fromDate(createdAt),
-  };
-}
-
 // ── BugReportRecord（自分が送ったバグ報告・機能要望の状況）────────
 // submitBugReport（Cloud Functions）が書き込んだドキュメントを、
 // 送信者本人だけがfirestore.rulesで読める（他人の報告は見えない）。
@@ -848,7 +688,7 @@ String describeBugReportRejectCategory(String? category) =>
     bugReportRejectCategoryLabels[category] ?? bugReportRejectCategoryLabels['other']!;
 
 // ── WishlistItem（ほしいものリスト）────────────────────────
-// 記念日・誕生日のプレゼント選びに使う「欲しいものリスト」。todos・choresと
+// 記念日・誕生日のプレゼント選びに使う「欲しいものリスト」。todosと
 // 違い、パートナーが「予約」したかどうかは追加した本人（欲しい側）には見せない
 // （サプライズを壊さないため）。予約状態は別コレクション
 // （wishlistReservations、firestore.rulesを参照）で管理し、このモデル自体は

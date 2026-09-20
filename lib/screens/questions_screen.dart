@@ -15,7 +15,7 @@ import '../widgets/section_label.dart';
 // 伏せておき、相手の回答に引っ張られない素直な回答を引き出す。
 //
 // 今日の分だけでなく、過去の質問と回答も同じ画面から振り返れる
-// （ふたりの日記と同じく、直近をまとめて1本のストリームで読む）。
+// （直近をまとめて1本のストリームで読む）。
 class QuestionsScreen extends StatefulWidget {
   final String coupleId;
   final List<String> memberIds;

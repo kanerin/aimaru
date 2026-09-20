@@ -20,10 +20,7 @@ import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
 import 'bug_report_screen.dart';
 import 'calendar_feed_screen.dart';
-import 'chores_screen.dart';
-import 'diary_screen.dart';
 import 'ics_import_screen.dart';
-import 'mood_screen.dart';
 import 'questions_screen.dart';
 import 'shopping_list_screen.dart';
 import 'trash_screen.dart';
@@ -509,45 +506,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               MaterialPageRoute(builder: (_) => AlbumScreen(coupleId: widget.coupleId)),
             ),
           ),
-          const SizedBox(height: 10),
-          _NavigationRow(
-            title: 'ふたりの日記',
-            subtitle: 'その日あったことを自由に書き残せます。相手の分もいつでも読めます',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => DiaryScreen(
-                coupleId: widget.coupleId,
-                memberIds: _couple?.memberIds ?? const [],
-                partnerName: _partnerName ?? 'パートナー',
-              )),
-            ),
-          ),
-          const SizedBox(height: 10),
-          _NavigationRow(
-            title: 'きょうの気分',
-            subtitle: '絵文字を選ぶだけで今の気分を共有できます。落ち込んでいるときに気づいてあげられます',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => MoodScreen(
-                coupleId: widget.coupleId,
-                memberIds: _couple?.memberIds ?? const [],
-                partnerName: _partnerName ?? 'パートナー',
-              )),
-            ),
-          ),
 
           const SizedBox(height: 28),
           const _SectionLabel('暮らし'),
-          _NavigationRow(
-            title: '家事分担',
-            subtitle: 'やることを書き出して担当を決め、完了をチェックできます。TimeTreeには無い機能です',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => ChoresScreen(
-                coupleId: widget.coupleId,
-                memberIds: _couple?.memberIds ?? const [],
-                partnerName: _partnerName ?? 'パートナー',
-              )),
-            ),
-          ),
-          const SizedBox(height: 10),
           _NavigationRow(
             title: '買い物リスト',
             subtitle: '日用品や食材の買い出しを2人で共有できます。TimeTreeには無い機能です',
