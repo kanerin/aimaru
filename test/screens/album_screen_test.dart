@@ -194,6 +194,43 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('常時表示の削除ボタンをタップして削除を確定するとStorageとAlbumServiceの両方から削除する', (tester) async {
+    final db = FakeFirebaseFirestore();
+    final service = AlbumService(firestore: db, uid: 'u1');
+    await db
+        .collection('couples')
+        .doc('couple-1')
+        .collection('albumPhotos')
+        .doc('p1')
+        .set(samplePhoto.toMap());
+
+    final deletedUrls = <String>[];
+    final storage = _FakeStorageService(deleteImpl: (url) async => deletedUrls.add(url));
+
+    final controller = StreamController<List<AlbumPhoto>>();
+    await tester.pumpWidget(wrap(controller.stream, albumService: service, storageService: storage));
+    controller.add([samplePhoto]);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('写真を削除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('この写真を削除しますか？'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '削除'));
+    await tester.pumpAndSettle();
+
+    expect(deletedUrls, ['https://example.com/a.jpg']);
+    final doc = await db
+        .collection('couples')
+        .doc('couple-1')
+        .collection('albumPhotos')
+        .doc('p1')
+        .get();
+    expect(doc.exists, isFalse);
+
+    await controller.close();
+  });
+
   testWidgets('削除ダイアログでキャンセルすると何も消えない', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = AlbumService(firestore: db, uid: 'u1');

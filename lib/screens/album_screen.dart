@@ -165,23 +165,47 @@ class _AlbumScreenState extends State<AlbumScreen> {
   }
 
   Widget _buildTile(AlbumPhoto photo) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: photo.imageUrl)),
-      ),
-      onLongPress: () => _confirmDelete(photo),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: CachedNetworkImage(
-          imageUrl: photo.imageUrl,
-          fit: BoxFit.cover,
-          placeholder: (_, __) => Container(color: AppColors.navySurface),
-          errorWidget: (_, __, ___) => Container(
-            color: AppColors.navySurface,
-            child: const Icon(Icons.broken_image_outlined, color: AppColors.textMuted),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: photo.imageUrl)),
+          ),
+          // 長押しは従来からの近道として残すが、削除できること自体が
+          // 気づかれない操作だったため、下の丸い×ボタンを常に見える
+          // 削除の入口として追加する。
+          onLongPress: () => _confirmDelete(photo),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: CachedNetworkImage(
+              imageUrl: photo.imageUrl,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => Container(color: AppColors.navySurface),
+              errorWidget: (_, __, ___) => Container(
+                color: AppColors.navySurface,
+                child: const Icon(Icons.broken_image_outlined, color: AppColors.textMuted),
+              ),
+            ),
           ),
         ),
-      ),
+        Positioned(
+          top: 2, right: 2,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.45),
+            shape: const CircleBorder(),
+            child: IconButton(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+              iconSize: 16,
+              tooltip: '写真を削除',
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => _confirmDelete(photo),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
