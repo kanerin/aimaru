@@ -679,6 +679,23 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 クライアントからは読み書きできず、ペア解消・退会時の`recursiveDelete`で`couples/{coupleId}`
 配下ごと消える。上の各セクションにある3機能の実装記録は経緯として残してある。
 
+2026-09-24、市場動向調査ではなく既存機能の磨き込み（propose-feature）で、やりたいことリスト・
+ほしいものリスト・買い物リスト（`TodosScreen`/`WishlistScreen`/`ShoppingListScreen`）の
+追加・削除が失敗したときに何も起きない（サイレントに失敗する）不具合を直した。3画面とも
+`_add`が「入力欄を即座にクリアしてからFirestoreへ書き込む」実装で、書き込みが通信/権限
+エラーで失敗しても入力欄は既に空になっているため、**ユーザーが入力した内容がエラー表示も
+無いまま消えていた**。`_delete`（削除確認ダイアログ・スワイプ削除の両方）も同様で、
+削除確認までして「削除」を押したのに失敗しても何のフィードバックも無かった。他の画面
+（`event_form_screen.dart`の保存失敗、`next_meeting_card.dart`・`days_off_card.dart`の
+保存失敗）は既に`try/catch`＋`SnackBar`で失敗を伝える作りだったため、この3画面だけが
+その作法から外れていた。対応は`try/catch`で囲み、失敗時は入力欄の文字列を戻し
+（削除は戻すものが無いのでそのまま）、「追加に失敗しました。もう一度お試しください」
+「削除に失敗しました。もう一度お試しください」を`SnackBar`で表示するようにした。
+`TodoService`/`WishlistService`/`ShoppingListService`のメソッド自体は変更していない
+（呼び出し側の画面だけの変更）。各画面のテストに、常に例外を投げるフェイクサービス
+（`_ThrowingTodoService`等、`event_form_screen_test.dart`の`_ThrowingEventService`と
+同じ設計）を使って追加・削除それぞれの失敗時の挙動を確認するテストを追加した。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

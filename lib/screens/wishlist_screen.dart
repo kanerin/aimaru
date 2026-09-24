@@ -71,11 +71,29 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final url = _urlController.text.trim();
     _textController.clear();
     _urlController.clear();
-    await _service.addItem(widget.coupleId, text, url: url.isEmpty ? null : url);
+    try {
+      await _service.addItem(widget.coupleId, text, url: url.isEmpty ? null : url);
+    } catch (e) {
+      _textController.text = text;
+      _urlController.text = url;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('追加に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   Future<void> _delete(WishlistItem item) async {
-    await _service.deleteItem(item);
+    try {
+      await _service.deleteItem(item);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
