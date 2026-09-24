@@ -54,11 +54,28 @@ class _TodosScreenState extends State<TodosScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
-    await _todoService.addTodo(widget.coupleId, text);
+    try {
+      await _todoService.addTodo(widget.coupleId, text);
+    } catch (e) {
+      _controller.text = text;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('追加に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   Future<void> _delete(TodoItem todo) async {
-    await _todoService.deleteTodo(todo);
+    try {
+      await _todoService.deleteTodo(todo);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。

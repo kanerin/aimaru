@@ -223,4 +223,54 @@ void main() {
 
     await controller.close();
   });
+
+  testWidgets('追加に失敗したら入力欄の文字列を戻してエラーを表示する', (tester) async {
+    final controller = StreamController<List<WishlistItem>>();
+    await tester.pumpWidget(wrap(controller.stream, wishlistService: _ThrowingWishlistService()));
+
+    controller.add([]);
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).at(0), '腕時計');
+    await tester.enterText(find.byType(TextField).at(1), 'https://example.com/watch');
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+
+    expect(find.text('追加に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(find.text('腕時計'), findsOneWidget, reason: '失敗したら入力欄に文字列を戻す');
+    expect(find.text('https://example.com/watch'), findsOneWidget);
+
+    await controller.close();
+  });
+
+  testWidgets('削除に失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<WishlistItem>>();
+    await tester.pumpWidget(wrap(controller.stream, wishlistService: _ThrowingWishlistService()));
+
+    controller.add([mine]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('削除に失敗しました。もう一度お試しください'), findsOneWidget);
+
+    await controller.close();
+  });
+}
+
+class _ThrowingWishlistService extends WishlistService {
+  _ThrowingWishlistService() : super(firestore: FakeFirebaseFirestore(), uid: 'user-me');
+
+  @override
+  Future<WishlistItem> addItem(String coupleId, String text, {String? url}) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> deleteItem(WishlistItem item) {
+    throw Exception('firestore unavailable');
+  }
 }

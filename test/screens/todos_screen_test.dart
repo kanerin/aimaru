@@ -241,6 +241,40 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('追加に失敗したら入力欄の文字列を戻してエラーを表示する', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, todoService: _ThrowingTodoService()));
+
+    controller.add(const []);
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), '温泉に行く');
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pump();
+
+    expect(find.text('追加に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(find.text('温泉に行く'), findsOneWidget, reason: '失敗したら入力欄に文字列を戻す');
+
+    await controller.close();
+  });
+
+  testWidgets('削除に失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, todoService: _ThrowingTodoService()));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('削除に失敗しました。もう一度お試しください'), findsOneWidget);
+
+    await controller.close();
+  });
+
   testWidgets('自分が既に興味ありを付けているTodoは塗りつぶしハートで表示される', (tester) async {
     final controller = StreamController<List<TodoItem>>();
     await tester.pumpWidget(wrap(controller.stream, currentUid: 'u1'));
@@ -263,6 +297,20 @@ void main() {
 
     await controller.close();
   });
+}
+
+class _ThrowingTodoService extends TodoService {
+  _ThrowingTodoService() : super(firestore: FakeFirebaseFirestore(), uid: 'u1');
+
+  @override
+  Future<TodoItem> addTodo(String coupleId, String text) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> deleteTodo(TodoItem todo) {
+    throw Exception('firestore unavailable');
+  }
 }
 
 class _RecordingNavigatorObserver extends NavigatorObserver {

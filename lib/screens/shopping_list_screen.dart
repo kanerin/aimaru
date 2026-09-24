@@ -54,11 +54,29 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     final quantity = _quantityController.text.trim();
     _titleController.clear();
     _quantityController.clear();
-    await _service.addItem(widget.coupleId, title, quantity: quantity.isEmpty ? null : quantity);
+    try {
+      await _service.addItem(widget.coupleId, title, quantity: quantity.isEmpty ? null : quantity);
+    } catch (e) {
+      _titleController.text = title;
+      _quantityController.text = quantity;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('追加に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   Future<void> _delete(ShoppingItem item) async {
-    await _service.deleteItem(item);
+    try {
+      await _service.deleteItem(item);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   // ゴミ箱を持たないコレクションのため、元に戻せない削除は必ず確認を挟む。
