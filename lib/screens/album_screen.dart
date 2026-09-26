@@ -7,6 +7,7 @@ import '../models/models.dart';
 import '../services/album_service.dart';
 import '../services/storage_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import 'image_detail_screen.dart';
 
 // ── 共有アルバム ────────────────────────────────────────
@@ -78,22 +79,12 @@ class _AlbumScreenState extends State<AlbumScreen> {
   }
 
   Future<void> _confirmDelete(AlbumPhoto photo) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.navyCard,
-        title: const Text('この写真を削除しますか？'),
-        content: const Text('削除すると元に戻せません'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('削除', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDelete(
+      context,
+      title: 'この写真を削除しますか？',
+      message: '削除すると元に戻せません',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       await _storageService.deleteImage(photo.imageUrl);
