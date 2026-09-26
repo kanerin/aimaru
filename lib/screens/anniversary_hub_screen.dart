@@ -7,6 +7,7 @@ import '../services/couple_service.dart';
 import '../utils/anniversary_calculator.dart';
 import '../utils/app_theme.dart';
 import '../widgets/anniversary_card.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/next_meeting_card.dart';
 
 // ── 記念日タブ ────────────────────────────────────────
@@ -141,22 +142,12 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
 
   Future<void> _deleteAnniversary(AnniversaryItem item) async {
     // 記念日は元に戻せない（予定と違いゴミ箱が無い）ので、必ず確認を挟む。
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.navyCard,
-        title: const Text('記念日を削除'),
-        content: Text('「${item.title}」を削除します。元に戻せません。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('削除', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
+    final confirmed = await confirmDelete(
+      context,
+      title: '記念日を削除',
+      message: '「${item.title}」を削除します。元に戻せません。',
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     await _anniversaryService.deleteAnniversary(item);
   }
