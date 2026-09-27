@@ -14,6 +14,7 @@ import '../services/image_save_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/chat_date_divider.dart';
 import '../utils/chat_read_status.dart';
+import '../widgets/circular_action_button.dart';
 import 'image_detail_screen.dart';
 
 // ── カップル間の通常チャット（AIチャットとは別）───────
@@ -331,15 +332,15 @@ class _ChatScreenState extends State<ChatScreen> {
               border: Border(top: BorderSide(color: AppColors.hairline)),
             ),
             child: Row(children: [
-              GestureDetector(
+              CircularActionButton(
                 onTap: _sendingImage ? null : _sendImage,
-                child: Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(color: AppColors.navySurface, borderRadius: BorderRadius.circular(18)),
-                  child: _sendingImage
-                      ? Padding(padding: const EdgeInsets.all(9), child: CircularProgressIndicator(strokeWidth: 2, color: appAccentSoft(context)))
-                      : const Icon(Icons.camera_alt_outlined, size: 16, color: AppColors.textSecond),
-                ),
+                semanticLabel: '画像を送信',
+                size: 36,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                decoration: BoxDecoration(color: AppColors.navySurface, borderRadius: BorderRadius.circular(18)),
+                icon: _sendingImage
+                    ? Padding(padding: const EdgeInsets.all(9), child: CircularProgressIndicator(strokeWidth: 2, color: appAccentSoft(context)))
+                    : const Icon(Icons.camera_alt_outlined, size: 16, color: AppColors.textSecond),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -354,13 +355,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
+              CircularActionButton(
                 onTap: _send,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
-                  child: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
-                ),
+                semanticLabel: '送信',
+                decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
+                icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
               ),
             ]),
           ),
