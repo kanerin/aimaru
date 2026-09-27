@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/todo_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/circular_action_button.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import 'event_form_screen.dart';
 
@@ -166,13 +167,11 @@ class _TodosScreenState extends State<TodosScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
+              CircularActionButton(
                 onTap: _add,
-                child: Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
-                  child: const Icon(Icons.add, color: Colors.white, size: 20),
-                ),
+                semanticLabel: 'やりたいことを追加',
+                decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
+                icon: const Icon(Icons.add, color: Colors.white, size: 20),
               ),
             ]),
           ),

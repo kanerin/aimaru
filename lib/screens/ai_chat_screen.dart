@@ -11,6 +11,7 @@ import '../../services/notification_settings_service.dart';
 import '../../services/shopping_list_service.dart';
 import '../../utils/app_theme.dart';
 import '../../utils/recurring_events.dart';
+import '../../widgets/circular_action_button.dart';
 
 class AiChatScreen extends StatefulWidget {
   final String coupleId;
@@ -521,29 +522,26 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
             ),
             child: Row(
               children: [
-                Tooltip(
-                  message: '画像から予定を読み取る',
-                  child: GestureDetector(
-                    onTap: (_pickingImage || _thinking) ? null : _sendImage,
-                    child: Container(
-                      width: 40, height: 40,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.navySurface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.hairline),
-                      ),
-                      child: _pickingImage
-                          ? const Padding(
-                              padding: EdgeInsets.all(11),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(
-                              Icons.add_photo_alternate_outlined,
-                              color: AppColors.textSecond, size: 20,
-                            ),
-                    ),
+                CircularActionButton(
+                  onTap: (_pickingImage || _thinking) ? null : _sendImage,
+                  semanticLabel: '画像から予定を読み取る',
+                  tooltip: '画像から予定を読み取る',
+                  margin: const EdgeInsets.only(right: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(
+                    color: AppColors.navySurface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.hairline),
                   ),
+                  icon: _pickingImage
+                      ? const Padding(
+                          padding: EdgeInsets.all(11),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          color: AppColors.textSecond, size: 20,
+                        ),
                 ),
                 Expanded(
                   child: TextField(
@@ -557,16 +555,15 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
                   ),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
+                CircularActionButton(
                   onTap: _thinking ? null : () => _send(_controller.text),
-                  child: Container(
-                    width: 40, height: 40,
-                    decoration: BoxDecoration(
-                      color: appAccent(context),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
+                  semanticLabel: '送信',
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(
+                    color: appAccent(context),
+                    borderRadius: BorderRadius.circular(20),
                   ),
+                  icon: const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
                 ),
               ],
             ),
