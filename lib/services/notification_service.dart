@@ -22,15 +22,79 @@ String routeForNotificationData(Map<String, dynamic> data) {
   }
 }
 
+// アプリを開いている最中に届いた通知の表示。フォアグラウンドではFCMが
+// システムの通知を出さないため、このSnackBarが利用者にとっての「通知」になる。
+// ふたりの質問の通知には「回答する」ボタンを付け、通知をタップしたときと
+// 同じ質問画面へ飛べるようにする（以前は文言を出すだけで、押しても何も
+// 起きなかった）。タイトルも本文も無ければ何も出さない（null）。
+SnackBar? buildForegroundNotificationSnackBar(
+  RemoteMessage message, {
+  required void Function(String route) onOpen,
+}) {
+  final title = message.notification?.title;
+  final body  = message.notification?.body;
+  final text  = [title, body].where((s) => s != null && s.isNotEmpty).join(' - ');
+  if (text.isEmpty) return null;
+
+  final route = routeForNotificationData(message.data);
+  final action = route == '/home/questions'
+      ? SnackBarAction(label: '回答する', onPressed: () => onOpen(route))
+      : null;
+
+  return SnackBar(
+    content: Text(text),
+    action: action,
+    behavior: SnackBarBehavior.floating,
+    // actionがあるとSnackBarは既定で閉じなくなり、下のタブを覆い続けるため、
+    // 押す時間だけ少し長めに残して自動で閉じる。
+    persist: false,
+    duration: Duration(seconds: action == null ? 4 : 6),
+  );
+}
+
+// FCMのうち、通知の受信とタップの受け取りに使う部分。firebase_messagingは
+// プラットフォームチャネル越しの呼び出しで単体テストから実行できないため、
+// テストからは差し替えられるようにしてある。
+abstract class NotificationMessages {
+  Stream<RemoteMessage> get onMessage;
+  Stream<RemoteMessage> get onMessageOpenedApp;
+  Future<RemoteMessage?> getInitialMessage();
+}
+
+class _FirebaseNotificationMessages implements NotificationMessages {
+  const _FirebaseNotificationMessages();
+
+  @override
+  Stream<RemoteMessage> get onMessage => FirebaseMessaging.onMessage;
+
+  @override
+  Stream<RemoteMessage> get onMessageOpenedApp => FirebaseMessaging.onMessageOpenedApp;
+
+  @override
+  Future<RemoteMessage?> getInitialMessage() => FirebaseMessaging.instance.getInitialMessage();
+}
+
 // ── FCMのトークン保存・フォアグラウンド通知表示・タップ遷移を担当 ──
 class NotificationService {
-  static final NotificationService _instance = NotificationService._();
+  static final NotificationService _instance =
+      NotificationService._(const _FirebaseNotificationMessages(), null);
   factory NotificationService() => _instance;
-  NotificationService._();
+  NotificationService._(this._messages, this._registerDeviceOverride);
 
-  final _messaging = FirebaseMessaging.instance;
-  final _db        = FirebaseFirestore.instance;
-  final _auth      = FirebaseAuth.instance;
+  // テストからFCM・Firestoreに触れずに初期化を検証するための生成口。
+  // registerDeviceは通知許可の要求とFCMトークンの保存（本番は_registerDevice）の代わり。
+  @visibleForTesting
+  NotificationService.forTest({
+    required NotificationMessages messages,
+    required Future<void> Function() registerDevice,
+  }) : this._(messages, registerDevice);
+
+  final NotificationMessages _messages;
+  final Future<void> Function()? _registerDeviceOverride;
+
+  FirebaseMessaging get _messaging => FirebaseMessaging.instance;
+  FirebaseFirestore get _db        => FirebaseFirestore.instance;
+  FirebaseAuth get _auth           => FirebaseAuth.instance;
 
   GlobalKey<ScaffoldMessengerState>? _scaffoldMessengerKey;
   GoRouter? _router;
@@ -42,6 +106,26 @@ class NotificationService {
     _scaffoldMessengerKey = scaffoldMessengerKey;
     _router = router;
 
+    // 通知タップの受け口は、通知許可の要求やトークン保存より先に用意する。
+    // 以前はそれらの後ろで登録していたため、トークン取得やFirestoreへの
+    // 書き込みが失敗するとinitごと中断して、通知をタップしても何も起きなく
+    // なっていた。成功する場合も書き込みが終わるまでタップが拾われず
+    // （onMessageOpenedAppはbroadcastなので、購読前のタップは捨てられる）、
+    // 通知から起動したときの質問画面への遷移も遅れていた。
+    _messages.onMessage.listen(_onForegroundMessage);
+    _messages.onMessageOpenedApp.listen(_onMessageTap);
+    try {
+      final initialMessage = await _messages.getInitialMessage();
+      if (initialMessage != null) _onMessageTap(initialMessage);
+    } catch (e, st) {
+      debugPrint('[通知からの起動の取得に失敗] $e\n$st');
+    }
+
+    await (_registerDeviceOverride ?? _registerDevice)();
+  }
+
+  // 通知許可の要求とFCMトークンの保存。失敗してもタップの遷移には影響しない。
+  Future<void> _registerDevice() async {
     await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
     // ログイン済みならすぐに、未ログインなら認証状態が変わるたびにトークンを保存
@@ -50,12 +134,6 @@ class NotificationService {
       if (user != null) _saveTokenIfLoggedIn();
     });
     _messaging.onTokenRefresh.listen(_saveToken);
-
-    FirebaseMessaging.onMessage.listen(_onForegroundMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(_onMessageTap);
-
-    final initialMessage = await _messaging.getInitialMessage();
-    if (initialMessage != null) _onMessageTap(initialMessage);
   }
 
   Future<void> _saveTokenIfLoggedIn() async {
@@ -73,18 +151,12 @@ class NotificationService {
   }
 
   void _onForegroundMessage(RemoteMessage message) {
-    final title = message.notification?.title;
-    final body  = message.notification?.body;
-    final text  = [title, body].where((s) => s != null && s.isNotEmpty).join(' - ');
-    if (text.isEmpty) return;
-
-    _scaffoldMessengerKey?.currentState?.showSnackBar(
-      SnackBar(
-        content: Text(text),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 4),
-      ),
+    final snackBar = buildForegroundNotificationSnackBar(
+      message,
+      onOpen: (route) => _router?.go(route),
     );
+    if (snackBar == null) return;
+    _scaffoldMessengerKey?.currentState?.showSnackBar(snackBar);
   }
 
   void _onMessageTap(RemoteMessage message) {
