@@ -414,16 +414,26 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Positioned(
-            right: 6, bottom: 6,
-            child: GestureDetector(
-              onTap: () => _saveImageToDevice(m.imageUrl!),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  shape: BoxShape.circle,
+            right: 0, bottom: 0,
+            // 見た目の円は小さいままタップ領域だけ44pxに広げ、読み上げラベルも付ける。
+            child: Tooltip(
+              message: '画像を端末に保存',
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _saveImageToDevice(m.imageUrl!),
+                child: SizedBox(
+                  width: 44, height: 44,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.download_rounded, size: 14, color: Colors.white),
+                    ),
+                  ),
                 ),
-                child: const Icon(Icons.download_rounded, size: 14, color: Colors.white),
               ),
             ),
           ),
