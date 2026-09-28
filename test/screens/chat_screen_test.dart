@@ -184,4 +184,25 @@ void main() {
 
     await controller.close();
   });
+
+  testWidgets('画像メッセージの保存ボタンは読み上げラベルを持ち、44px四方のタップ領域がある', (tester) async {
+    final message = ChatMessage(
+      id: 'img-1',
+      coupleId: coupleId,
+      text: '',
+      imageUrl: 'https://example.com/a.png',
+      senderId: partnerUid,
+      timestamp: DateTime(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    final tooltip = find.byTooltip('画像を端末に保存');
+    expect(tooltip, findsOneWidget);
+    final size = tester.getSize(find.descendant(of: tooltip, matching: find.byType(SizedBox)).first);
+    expect(size.width, greaterThanOrEqualTo(44));
+    expect(size.height, greaterThanOrEqualTo(44));
+  });
 }
