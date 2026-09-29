@@ -64,6 +64,28 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
+  testWidgets('サジェストチップはボタンとして扱われ、タップするとその文言が送信される', (tester) async {
+    String? sent;
+
+    await tester.pumpWidget(wrap(
+      sendMessageOverride: (message, history, {required eventsContext}) async {
+        sent = message;
+        return const GeminiReply.text('了解しました');
+      },
+    ));
+
+    final chip = find.widgetWithText(ActionChip, '今週末デートしたい');
+    expect(chip, findsOneWidget);
+
+    await tester.tap(chip);
+    await tester.pump();
+    await tester.pump();
+
+    expect(sent, '今週末デートしたい');
+
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
   testWidgets('応答が届いたあとは次のメッセージを送信できる', (tester) async {
     var callCount = 0;
 
