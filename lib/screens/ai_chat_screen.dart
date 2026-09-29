@@ -501,13 +501,13 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: _suggestions.map((s) => Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: GestureDetector(
-                    onTap: () => _send(s),
-                    child: Chip(
-                      label: Text(s, style: const TextStyle(fontSize: 12)),
-                      backgroundColor: AppColors.navySurface,
-                      side: const BorderSide(color: AppColors.hairline),
-                    ),
+                  // GestureDetector+Chipだとタップの波紋が出ず、スクリーンリーダーにも
+                  // ボタンとして伝わらないため、ActionChipを使う。
+                  child: ActionChip(
+                    onPressed: () => _send(s),
+                    label: Text(s, style: const TextStyle(fontSize: 12)),
+                    backgroundColor: AppColors.navySurface,
+                    side: const BorderSide(color: AppColors.hairline),
                   ),
                 )).toList(),
               ),
