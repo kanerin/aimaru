@@ -69,6 +69,11 @@
 	<!-- チャット・予定の画像を端末に保存するために必要（gal）。無いと保存操作でクラッシュする -->
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>画像を端末の写真ライブラリに保存するために使用します</string>
+	<!-- FCMのバックグラウンド受信（main.dartのonBackgroundMessage）に必要。無いとアプリが閉じている間のプッシュ通知がiOSで届かない -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -358,6 +358,15 @@ Info.plistのみの変更で検証可能なDartロジックが無いため専用
 （`flutter analyze`・`flutter test`（614件）で既存機能に影響が無いことのみ確認、
 課題13フェーズ1・PR #117と同じ方針）。
 
+2026-09-30、課題13のフェーズ3として、`ios/Runner/Info.plist`に`UIBackgroundModes`
+（`remote-notification`）を追加した（reduce-debt枠、本PR）。`main.dart`は
+`FirebaseMessaging.onBackgroundMessage`を登録しているが、iOSはこのバックグラウンドモードが
+無いとアプリが閉じている間のプッシュ（予定・トーク・質問リマインダー）を配送しない。
+Info.plistのみの変更でDartロジックは無いため専用テストは無い（フェーズ1・2と同じ方針。
+`flutter analyze`・`flutter test`（599件）で既存機能に影響が無いことのみ確認）。
+なお、実際の配送にはPush Notifications capability（entitlements）・APNs認証鍵が別途必要で、
+これらはApple Developer登録が前提の人間専用作業として残っている。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
