@@ -316,7 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
                   )),
                   SizedBox(height: 10),
-                  _AccentColorPicker(),
+                  AccentColorPicker(),
                 ],
               ),
             ),
@@ -680,35 +680,49 @@ class _NavigationRow extends StatelessWidget {
   );
 }
 
-class _AccentColorPicker extends StatelessWidget {
-  const _AccentColorPicker();
+// テーマ色の選択。色だけの丸ボタンはスクリーンリーダーに何も伝わらないため、
+// 色名・選択状態をSemanticsで読み上げ、タップ領域も48pxを確保する。
+class AccentColorPicker extends StatelessWidget {
+  const AccentColorPicker({super.key});
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: ThemeController.instance,
     builder: (context, _) => Wrap(
-      spacing: 14,
-      runSpacing: 10,
+      spacing: 6,
+      runSpacing: 2,
       children: AppColors.accentPresets.entries.map((entry) {
         final selected = ThemeController.instance.accentName == entry.key;
-        return GestureDetector(
+        return Semantics(
+          button: true,
+          selected: selected,
+          label: 'テーマ色 ${entry.key}',
+          excludeSemantics: true,
           onTap: () => ThemeController.instance.setAccentName(entry.key),
-          child: Column(
-            children: [
-              Container(
-                width: 32, height: 32,
-                decoration: BoxDecoration(
-                  color: entry.value,
-                  shape: BoxShape.circle,
-                  border: selected ? Border.all(color: AppColors.textPrimary, width: 2) : null,
-                ),
-                child: selected
-                    ? const Icon(Icons.check, size: 16, color: Colors.white)
-                    : null,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => ThemeController.instance.setAccentName(entry.key),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 32, height: 32,
+                    decoration: BoxDecoration(
+                      color: entry.value,
+                      shape: BoxShape.circle,
+                      border: selected ? Border.all(color: AppColors.textPrimary, width: 2) : null,
+                    ),
+                    child: selected
+                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        : null,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(entry.key, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(entry.key, style: const TextStyle(fontSize: 9, color: AppColors.textMuted)),
-            ],
+            ),
           ),
         );
       }).toList(),
