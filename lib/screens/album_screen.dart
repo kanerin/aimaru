@@ -180,19 +180,33 @@ class _AlbumScreenState extends State<AlbumScreen> {
             ),
           ),
         ),
+        // 見た目は28pxの丸ボタンのまま、タップ領域だけ48pxに広げる
+        // （サムネイルの角で小さな×を押し損ねやすかったため）。
         Positioned(
-          top: 2, right: 2,
-          child: Material(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: const CircleBorder(),
-            child: IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(4),
-              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-              iconSize: 16,
-              tooltip: '写真を削除',
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => _confirmDelete(photo),
+          top: 0, right: 0,
+          child: Tooltip(
+            message: '写真を削除',
+            child: Semantics(
+              button: true,
+              label: '写真を削除',
+              excludeSemantics: true,
+              child: InkResponse(
+                onTap: () => _confirmDelete(photo),
+                radius: 24,
+                child: SizedBox(
+                  width: 48, height: 48,
+                  child: Center(
+                    child: Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 16),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

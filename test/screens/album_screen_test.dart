@@ -194,6 +194,23 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('削除ボタンのタップ領域は48px以上で、読み上げラベルが付く', (tester) async {
+    final handle = tester.ensureSemantics();
+    final controller = StreamController<List<AlbumPhoto>>();
+    await tester.pumpWidget(wrap(controller.stream));
+    controller.add([samplePhoto]);
+    await tester.pump();
+
+    final size = tester.getSize(find.ancestor(
+      of: find.byIcon(Icons.close),
+      matching: find.byType(InkResponse),
+    ));
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
+    expect(find.bySemanticsLabel('写真を削除'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('常時表示の削除ボタンをタップして削除を確定するとStorageとAlbumServiceの両方から削除する', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = AlbumService(firestore: db, uid: 'u1');
