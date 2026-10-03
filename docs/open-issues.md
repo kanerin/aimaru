@@ -367,6 +367,13 @@ Info.plistのみの変更でDartロジックは無いため専用テストは無
 なお、実際の配送にはPush Notifications capability（entitlements）・APNs認証鍵が別途必要で、
 これらはApple Developer登録が前提の人間専用作業として残っている。
 
+2026-10-03、課題13のフェーズ4として、設定画面の「データをエクスポート」の共有シートに
+`sharePositionOrigin`を渡すようにした（reduce-debt枠、本PR）。`TARGETED_DEVICE_FAMILY = "1,2"`
+でiPadも対象のため、iPadではこの矩形が無いと`SharePlus.instance.share`が例外になり
+エクスポートが「失敗しました」と出るだけで使えなかった。矩形の算出は`lib/utils/share_origin.dart`の
+`shareOriginOf`に切り出し（サイズ0・未レイアウトならnull）、`test/utils/share_origin_test.dart`で
+確認した。`flutter analyze`・`flutter test`（603件）通過。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
