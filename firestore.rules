@@ -117,6 +117,21 @@ service cloud.firestore {
           && request.auth.uid == request.resource.data.uid;
       }
 
+      // その日の「ふたりの質問」（ドキュメントID = dateKey 'yyyy-MM-dd'）。
+      // 2人が同じ質問を見られるよう、先に開いた側が1日1件だけ作る
+      // （QuestionService.ensureDailyQuestion）。作った後に質問が差し替わると
+      // 2人で別の質問に答えることになるため、更新・削除は許可しない。
+      match /dailyQuestions/{dateKey} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.question is string
+          && request.resource.data.question.size() > 0
+          && request.resource.data.question.size() <= 200;
+      }
+
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。
       // メンバーなら誰でも読めるが、書き込みは自分の分のみ。
       match /googleCalendarCache/{uid} {

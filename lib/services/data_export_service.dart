@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/models.dart';
+import '../utils/daily_question_picker.dart';
 
 // ── データエクスポート ────────────────────────────────
 // カップルで共有しているデータ（予定・思い出＝写真付きの予定・チャット・
@@ -99,6 +100,8 @@ class DataExportService {
     'id': a.id,
     'dateKey': a.dateKey,
     'uid': a.uid,
+    // 質問を保存していなかった頃の回答は、日付から当時の質問を復元する。
+    'question': a.question ?? questionForDateKey(a.dateKey),
     'text': a.text,
     'createdAt': a.createdAt.toIso8601String(),
   };

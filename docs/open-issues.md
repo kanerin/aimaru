@@ -36,9 +36,9 @@ test/screens/todos_screen_test.dart               8   やりたいことリス�
 test/utils/chat_date_divider_test.dart            5   トーク画面の日付区切り線を出すかどうかの判定
 test/services/google_calendar_cache_service_test.dart 6 Google予定のprivate指定とキャッシュへの反映
 test/screens/trash_screen_test.dart               4   ゴミ箱画面のロード・エラー・表示状態
-test/utils/daily_question_picker_test.dart        5   デイリー質問の決定的な選択・日付キーからの質問復元
-test/services/question_service_test.dart          8   デイリー質問への回答のCRUD・過去分を含む直近の取得
-test/screens/questions_screen_test.dart           9   ふたりの質問画面のロード・エラー・回答状態・過去分の履歴表示
+test/utils/daily_question_picker_test.dart        15   デイリー質問の候補選択（未出題の質問を選ぶ）・日付キーからの質問復元
+test/services/question_service_test.dart          18   今日の質問の共有（2人で同じ質問・出題済みを出さない）・回答のCRUD・過去分を含む直近の取得
+test/screens/questions_screen_test.dart           15   ふたりの質問画面のロード・エラー・今日の質問の読み込み・回答状態・過去分の履歴表示
 test/widgets/pairing_preview_cards_test.dart      2   ペア未成立時の機能プレビューカードの表示・スクロール
 test/services/anniversary_service_test.dart       3   複数記念日のCRUD
 test/screens/anniversary_hub_screen_test.dart      6   記念日タブ（次に会う日・記念日・記念日リスト）のロード・エラー・並び順・空表示
@@ -57,7 +57,7 @@ functions/scripts/feature_request_routing.test.mjs 15 機能要望のIssue起票
 functions/src/dissolve_couple.integration.test.ts 8   カップル解消時のFirestore再帰削除・Storage削除・メンバー確認
 test/services/bug_report_service_test.dart       15   バグ報告送信サービス（入力検証・応答解釈・エラー分類・自分の報告一覧watchMyReports）
 test/screens/bug_report_screen_test.dart         10   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示・送った報告一覧の表示/エラー）
-rules_test/firestore.test.js                     79   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消・googleEventVisibility自分のみ読み書き含む）
+rules_test/firestore.test.js                     114   Firestoreルールのメンバー境界（todos・questionAnswers・dailyQuestions・dailyQuestions・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消・googleEventVisibility自分のみ読み書き含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
 ```
 
@@ -264,6 +264,17 @@ Pairyの移行先として比較されるSumOne・Twinestが持つ質問カー�
 2人とも回答するまでは相手の回答を伏せることで、相手の回答に引っ張られない素直な回答を引き出す。
 回答は`request.resource.data.uid`で本人の分のみ書き込みを許可し、更新・削除は許可していない
 （相手の回答を見た後に自分の回答を書き換える抜け道を防ぐため）。
+
+その後、質問の持ち方を「日付から端末ごとに計算する」から「カップルごとにFirestoreへ保存して
+共有する」（`couples/{coupleId}/dailyQuestions/{dateKey}`、`QuestionService.ensureDailyQuestion`）へ
+変えた。端末ごとに計算する方式では、質問の表を変えた版と変える前の版のアプリが混ざると同じ日でも
+2人で別の質問になり、表を一巡すると回答済みの質問がまた出ていた（利用者からのバグ報告）。
+今は先に開いた側が、そのカップルにまだ出していない質問から1つ選んでトランザクションで保存し、
+相手はそれを読む。作成後の更新・削除は`firestore.rules`で許可していない。回答にも質問文を
+一緒に保存し、履歴はそれを表示する（保存前の回答だけ日付から復元する）。**質問の表
+（`daily_question_picker.dart`）を今後変えても、保存済みの日の質問は変わらない。** ただし
+この対応より前の版のアプリは保存された質問を読まないので、2人ともアプリを更新するまでは
+ずれが残りうる（第一候補を従来の日付計算と同じにして、できるだけ揃うようにしてある）。
 
 課題8（`sendReminders` の `collectionGroup` 全件走査）はフェーズ1に着手した（本PR）。
 まず `release-stg.yml` に `firebase deploy --only firestore:indexes` のステップを追加し
