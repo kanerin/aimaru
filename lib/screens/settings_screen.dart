@@ -15,6 +15,7 @@ import '../services/notification_settings_service.dart';
 import '../services/settings_service.dart';
 import '../services/theme_controller.dart';
 import '../utils/app_theme.dart';
+import '../utils/share_origin.dart';
 import '../widgets/app_lock_settings_card.dart';
 import '../widgets/days_off_card.dart';
 import 'album_screen.dart';
@@ -148,6 +149,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await SharePlus.instance.share(ShareParams(
           files: [XFile(file.path)],
           text: 'AIMARUのデータをエクスポートしました',
+          // iPadは出現位置の矩形が無いと共有シートが開かない
+          sharePositionOrigin: shareOriginOf(context),
         ));
       }
     } catch (_) {
