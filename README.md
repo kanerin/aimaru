@@ -194,7 +194,7 @@ flutter test integration_test --dart-define=USE_FIREBASE_EMULATOR=true -d <devic
 | テストファイル | 内容 |
 |---|---|
 | `app_test.dart` | 未ログインで起動 → ログイン画面に到達する |
-| `home_navigation_test.dart` | ログイン済みで起動 → ホーム5タブ。タブを往復してもAIチャットの入力が消えない |
+| `home_navigation_test.dart` | ログイン済みで起動 → ホーム4タブ。チャットタブを左右スワイプしてAIチャットへ移り、タブを往復しても入力が消えない |
 | `event_crud_test.dart` | 予定を追加 → カレンダーとFirestoreの両方に反映 → 詳細画面から削除するとゴミ箱行きになる |
 | `layout_test.dart` | 画面サイズ・文字サイズを変えてレイアウト崩れ（はみ出し・重なり）を自動検出 |
 

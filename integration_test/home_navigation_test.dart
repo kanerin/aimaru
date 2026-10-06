@@ -1,6 +1,7 @@
 // 結合テスト: ログイン済み・ペアリング済みの状態でアプリ本体を起動し、
-// ホーム（5タブ）まで到達することと、タブを切り替えても各タブの状態が
-// 失われないことを確認する。
+// ホーム（4タブ）まで到達することと、タブを切り替えても各タブの状態が
+// 失われないことを確認する。AIチャットはチャットタブの中で左右スワイプして
+// 開く2枚目のページ（chat_pager_screen.dart）。
 //
 // 「タブを移動するとAIチャットの会話が消える」不具合の回帰テストを兼ねる。
 // main.dartのIndexedStackをpages[_index]に戻すとこのテストが落ちる。
@@ -35,17 +36,19 @@ void main() {
     // ── ホーム（BottomNav）まで到達する ──
     await pumpUntil(
       tester,
-      () => find.text('やりたい').evaluate().isNotEmpty,
+      () => find.text('質問').evaluate().isNotEmpty,
       timeout: const Duration(seconds: 40),
       reason: 'ホーム画面（下部ナビ）に到達しない',
     );
 
-    for (final label in <String>['カレンダー', 'AI', 'チャット', '記念日', 'やりたい']) {
+    for (final label in <String>['カレンダー', 'チャット', '記念日', '質問']) {
       expect(find.text(label), findsWidgets, reason: '$label タブが無い');
     }
 
-    // ── AIタブへ移動して入力する ──
-    await tester.tap(find.text('AI'));
+    // ── チャットタブを開き、左へスワイプしてAIチャットで入力する ──
+    await tester.tap(find.text('チャット'));
+    await settle(tester);
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
     await settle(tester);
 
     const draft = 'タブを移動しても消えないこと';
@@ -55,9 +58,9 @@ void main() {
     await settle(tester);
 
     // ── 別タブへ移動して戻る ──
-    await tester.tap(find.text('チャット'));
+    await tester.tap(find.text('記念日'));
     await settle(tester);
-    await tester.tap(find.text('AI'));
+    await tester.tap(find.text('チャット'));
     await settle(tester);
 
     // IndexedStackで全画面をマウントしたまま保持しているので入力は残るはず。

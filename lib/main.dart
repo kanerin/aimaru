@@ -14,11 +14,9 @@ import 'screens/app_lock_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/pairing_screen.dart';
 import 'screens/questions_route_screen.dart';
-import 'screens/ai_chat_screen.dart';
 import 'screens/anniversary_hub_screen.dart';
 import 'screens/calendar_screen.dart';
-import 'screens/chat_screen.dart';
-import 'screens/todos_screen.dart';
+import 'screens/chat_pager_screen.dart';
 import 'services/app_lock_controller.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
@@ -212,6 +210,11 @@ class _HomeShellState extends State<_HomeShell> {
     setState(() => _coupleId = couple.id);
   }
 
+  static String _todayKey() {
+    final now = DateTime.now();
+    return '${now.year}-${now.month}-${now.day}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_coupleId == null) {
@@ -223,18 +226,17 @@ class _HomeShellState extends State<_HomeShell> {
     final pages = [
       // ① カレンダー
       CalendarScreen(coupleId: _coupleId!),
-      // ② AI チャット
-      AiChatScreen(coupleId: _coupleId!),
-      // ③ カップルチャット
-      ChatScreen(coupleId: _coupleId!, isActive: _index == 2),
-      // ④ 記念日
+      // ② チャット（左右スワイプでカップルチャット ⇄ AIチャット）
+      ChatPagerScreen(coupleId: _coupleId!, isActive: _index == 1),
+      // ③ 記念日
       AnniversaryHubScreen(coupleId: _coupleId!),
-      // ⑤ やりたいことリスト
-      TodosScreen(coupleId: _coupleId!),
+      // ④ ふたりの質問。日付が変わったら作り直して「今日の質問」を更新する
+      // （IndexedStackで保持しているので、作り直さないと前日の質問のまま残る）。
+      QuestionsRouteScreen(key: ValueKey(_todayKey())),
     ];
 
     return Scaffold(
-      // IndexedStackで5画面すべてをマウントしたまま保持する。
+      // IndexedStackで4画面すべてをマウントしたまま保持する。
       // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
       // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
       body: IndexedStack(index: _index, children: pages),
@@ -246,10 +248,9 @@ class _HomeShellState extends State<_HomeShell> {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(icon: Text('🗓', style: TextStyle(fontSize: 20)), label: 'カレンダー'),
-          NavigationDestination(icon: Text('✨', style: TextStyle(fontSize: 20)), label: 'AI'),
           NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
           NavigationDestination(icon: Text('💕', style: TextStyle(fontSize: 20)), label: '記念日'),
-          NavigationDestination(icon: Text('📝', style: TextStyle(fontSize: 20)), label: 'やりたい'),
+          NavigationDestination(icon: Text('💭', style: TextStyle(fontSize: 20)), label: '質問'),
         ],
       ),
     );
