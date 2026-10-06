@@ -125,20 +125,52 @@ class NotificationService {
   }
 
   // 通知許可の要求とFCMトークンの保存。失敗してもタップの遷移には影響しない。
-  Future<void> _registerDevice() async {
-    await _messaging.requestPermission(alert: true, badge: true, sound: true);
+  Future<void> _registerDevice() => registerDeviceWith(
+        requestPermission: () =>
+            _messaging.requestPermission(alert: true, badge: true, sound: true),
+        getToken: _messaging.getToken,
+        onTokenRefresh: _messaging.onTokenRefresh,
+        loggedIn: _auth.authStateChanges().map((user) => user != null),
+        saveToken: _saveToken,
+      );
 
-    // ログイン済みならすぐに、未ログインなら認証状態が変わるたびにトークンを保存
-    await _saveTokenIfLoggedIn();
-    _auth.authStateChanges().listen((user) {
-      if (user != null) _saveTokenIfLoggedIn();
+  // トークン保存の購読（トークン更新・ログイン検知）を、getTokenの失敗に巻き込まれずに張る。
+  // iOSはAPNsトークンが届くまでgetTokenが例外になることがあり、以前は
+  // その例外でこの関数ごと中断して購読が一つも張られず、後からAPNsトークンが
+  // 届いて`onTokenRefresh`が発火しても、ログインしても、トークンが保存されなかった。
+  // 各経路の失敗はdebugPrintに残し、他の経路は止めない。
+  // loggedIn（authStateChanges）は購読した時点の状態もすぐ流すため、ログイン済みの初回保存も兼ねる。
+  @visibleForTesting
+  Future<void> registerDeviceWith({
+    required Future<void> Function() requestPermission,
+    required Future<String?> Function() getToken,
+    required Stream<String> onTokenRefresh,
+    required Stream<bool> loggedIn,
+    required Future<void> Function(String token) saveToken,
+  }) async {
+    onTokenRefresh.listen((token) async {
+      try {
+        await saveToken(token);
+      } catch (e, st) {
+        debugPrint('[FCMトークン更新の保存に失敗] $e\n$st');
+      }
     });
-    _messaging.onTokenRefresh.listen(_saveToken);
-  }
 
-  Future<void> _saveTokenIfLoggedIn() async {
-    final token = await _messaging.getToken();
-    if (token != null) await _saveToken(token);
+    try {
+      await requestPermission();
+    } catch (e, st) {
+      debugPrint('[通知許可の要求に失敗] $e\n$st');
+    }
+
+    loggedIn.listen((isLoggedIn) async {
+      if (!isLoggedIn) return;
+      try {
+        final token = await getToken();
+        if (token != null) await saveToken(token);
+      } catch (e, st) {
+        debugPrint('[FCMトークンの保存に失敗] $e\n$st');
+      }
+    });
   }
 
   Future<void> _saveToken(String token) async {

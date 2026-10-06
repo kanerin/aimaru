@@ -374,6 +374,14 @@ Info.plistのみの変更でDartロジックは無いため専用テストは無
 `shareOriginOf`に切り出し（サイズ0・未レイアウトならnull）、`test/utils/share_origin_test.dart`で
 確認した。`flutter analyze`・`flutter test`（603件）通過。
 
+2026-10-06、課題13のフェーズ5として、FCMトークン登録（`NotificationService._registerDevice`）を
+getTokenの失敗に強くした（reduce-debt枠、本PR）。iOSはAPNsトークンが届くまで`getToken`が
+例外になることがあり、以前はその例外で登録処理ごと中断して、ログイン検知（`authStateChanges`）も
+`onTokenRefresh`も購読されなかったため、後からAPNsトークンが届いてもトークンが保存されず
+通知が届かないままになり得た。購読を先に張り、各経路の失敗はdebugPrintに残して他を止めない
+`registerDeviceWith`に切り出し、`test/services/notification_service_test.dart`で確認した
+（`flutter analyze`・`flutter test`（612件）通過）。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
