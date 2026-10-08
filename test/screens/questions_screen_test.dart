@@ -107,14 +107,14 @@ void main() {
   });
 
   group('連続回答日数（ストリーク）', () {
-    testWidgets('連続していなければストリーク表示は出さない', (tester) async {
+    testWidgets('連続が途切れていても表示は消さず0日と出す', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
       await tester.pumpWidget(wrap(controller.stream));
 
       controller.add([buildAnswer(uid: uidA, text: '今日の回答')]);
       await tester.pump();
 
-      expect(find.textContaining('日連続'), findsNothing);
+      expect(find.text('🔥 0日連続'), findsOneWidget);
 
       await controller.close();
     });

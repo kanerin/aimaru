@@ -23,6 +23,7 @@ import 'services/deep_link_service.dart';
 import 'services/firebase_bootstrap.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
+import 'widgets/daily_refresh.dart';
 
 import 'firebase_options.dart';
 
@@ -210,11 +211,6 @@ class _HomeShellState extends State<_HomeShell> {
     setState(() => _coupleId = couple.id);
   }
 
-  static String _todayKey() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month}-${now.day}';
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_coupleId == null) {
@@ -230,9 +226,9 @@ class _HomeShellState extends State<_HomeShell> {
       ChatPagerScreen(coupleId: _coupleId!, isActive: _index == 1),
       // ③ 記念日
       AnniversaryHubScreen(coupleId: _coupleId!),
-      // ④ ふたりの質問。日付が変わったら作り直して「今日の質問」を更新する
-      // （IndexedStackで保持しているので、作り直さないと前日の質問のまま残る）。
-      QuestionsRouteScreen(key: ValueKey(_todayKey())),
+      // ④ ふたりの質問。IndexedStackで保持しているので、作り直さないと日付を
+      // またいでも前日の質問のまま残る。アプリ復帰時・0時に作り直す。
+      DailyRefresh(builder: (_) => const QuestionsRouteScreen()),
     ];
 
     return Scaffold(
