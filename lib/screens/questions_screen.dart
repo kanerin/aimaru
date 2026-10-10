@@ -27,6 +27,9 @@ class QuestionsScreen extends StatefulWidget {
   final String? currentUidOverride;
   // テストから「今日」を固定するための注入ポイント。
   final DateTime? nowOverride;
+  // テストからFirestoreに触れずに「今日の質問」を差し込むための注入ポイント。
+  // 未指定時はカップルで共有している質問をFirestoreから読む。
+  final Future<String> Function()? loadQuestionOverride;
 
   const QuestionsScreen({
     super.key,
@@ -36,6 +39,7 @@ class QuestionsScreen extends StatefulWidget {
     this.answersStreamOverride,
     this.currentUidOverride,
     this.nowOverride,
+    this.loadQuestionOverride,
   });
 
   @override
@@ -48,7 +52,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   late final DateTime _now = widget.nowOverride ?? DateTime.now();
   late final String _dateKey = DateFormat('yyyy-MM-dd').format(_now);
-  late final String _question = pickDailyQuestion(_now);
+
+  // 今日の質問。カップルで共有しているものを読み込むまではnull。
+  // 端末ごとに日付から計算すると、アプリの版が違う2人で別の質問になるため、
+  // 読み込めなかったときも手元で代わりの質問を出さずエラーにする。
+  String? _question;
+  bool _questionFailed = false;
 
   late final Stream<List<QuestionAnswer>> _answersStream =
       widget.answersStreamOverride ?? _service.watchRecentAnswers(widget.coupleId);
@@ -61,6 +70,24 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   bool _submitting = false;
 
   @override
+  void initState() {
+    super.initState();
+    _loadQuestion();
+  }
+
+  Future<void> _loadQuestion() async {
+    if (_questionFailed) setState(() => _questionFailed = false);
+    try {
+      final load = widget.loadQuestionOverride ??
+          () => _service.ensureDailyQuestion(widget.coupleId, _now);
+      final question = await load();
+      if (mounted) setState(() => _question = question);
+    } catch (_) {
+      if (mounted) setState(() => _questionFailed = true);
+    }
+  }
+
+  @override
   void dispose() {
     _answerController.dispose();
     super.dispose();
@@ -68,9 +95,10 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   Future<void> _submit() async {
     final text = _answerController.text.trim();
-    if (text.isEmpty || _submitting) return;
+    final question = _question;
+    if (text.isEmpty || _submitting || question == null) return;
     setState(() => _submitting = true);
-    await _service.submitAnswer(widget.coupleId, _dateKey, text);
+    await _service.submitAnswer(widget.coupleId, _dateKey, text, question: question);
     if (mounted) setState(() => _submitting = false);
   }
 
@@ -179,11 +207,32 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Text(_question, style: const TextStyle(
-          fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.5)),
+        _buildQuestionText(),
       ],
     ),
   );
+
+  Widget _buildQuestionText() {
+    final question = _question;
+    if (question != null) {
+      return Text(question, style: const TextStyle(
+        fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.5));
+    }
+    if (_questionFailed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('今日の質問を読み込めませんでした',
+            style: TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.5)),
+          TextButton(onPressed: _loadQuestion, child: const Text('もう一度読み込む')),
+        ],
+      );
+    }
+    return SizedBox(
+      width: 20, height: 20,
+      child: CircularProgressIndicator(strokeWidth: 2, color: appAccent(context)),
+    );
+  }
 
   Widget _buildAnswerInput() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -196,7 +245,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       ),
       const SizedBox(height: 12),
       ElevatedButton(
-        onPressed: _submitting ? null : _submit,
+        // 質問が決まる前に回答すると、何に答えたのかが分からなくなる。
+        onPressed: _submitting || _question == null ? null : _submit,
         child: const Text('回答する'),
       ),
     ],
@@ -236,11 +286,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     ]),
   );
 
-  // 過去1日分。その日の質問は日付から復元する（質問文はFirestoreに持たない）。
+  // 過去1日分。質問文は回答と一緒に保存してあるものを使い、保存していなかった
+  // 頃の回答だけ日付から復元する。
   // 「自分が回答するまで相手の回答は見えない」ルールは過去分にも同じく効かせる。
   // ここを緩めると、答えずに待って相手の回答だけ読む、が成立してしまう。
   Widget _buildHistoryCard(String dateKey, QuestionAnswer? mine, QuestionAnswer? partner) {
-    final question = questionForDateKey(dateKey);
+    final question = mine?.question ?? partner?.question ?? questionForDateKey(dateKey);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

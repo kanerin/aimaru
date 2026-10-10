@@ -701,6 +701,61 @@ describe("questionAnswers — メンバー境界・自分の回答のみ書き�
   });
 });
 
+describe("dailyQuestions — その日の質問は1度だけ作れて差し替えられない", () => {
+  const path = `couples/${COUPLE_ID}/dailyQuestions/2026-10-04`;
+
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+  });
+
+  it("メンバーはその日の質問を作成でき、2人とも読める", async () => {
+    await assertSucceeds(
+      asA().doc(path).set({ question: "次に2人で行ってみたい場所は？", dateKey: "2026-10-04", createdBy: USER_A }),
+    );
+    await assertSucceeds(asA().doc(path).get());
+    await assertSucceeds(asB().doc(path).get());
+    await assertSucceeds(asB().collection(`couples/${COUPLE_ID}/dailyQuestions`).get());
+  });
+
+  it("作成済みの質問は更新・削除できない（2人で別の質問にならないようにする）", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(path).set({ question: "次に2人で行ってみたい場所は？" });
+    });
+
+    await assertFails(asB().doc(path).set({ question: "差し替えた質問" }));
+    await assertFails(asA().doc(path).update({ question: "差し替えた質問" }));
+    await assertFails(asA().doc(path).delete());
+  });
+
+  it("質問文が無い・空・長すぎる場合は作成できない", async () => {
+    await assertFails(asA().doc(path).set({ dateKey: "2026-10-04" }));
+    await assertFails(asA().doc(path).set({ question: "" }));
+    await assertFails(asA().doc(path).set({ question: 123 }));
+    await assertFails(asA().doc(path).set({ question: "あ".repeat(201) }));
+  });
+
+  it("日付の形をしていないIDでは作成できない", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/dailyQuestions/today`).set({ question: "次に2人で行ってみたい場所は？" }),
+    );
+  });
+
+  it("メンバー以外・未認証は読み書きできない", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(path).set({ question: "次に2人で行ってみたい場所は？" });
+    });
+
+    await assertFails(asC().doc(path).get());
+    await assertFails(asAnon().doc(path).get());
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/dailyQuestions/2026-10-05`).set({ question: "割り込み" }),
+    );
+    await assertFails(
+      asAnon().doc(`couples/${COUPLE_ID}/dailyQuestions/2026-10-05`).set({ question: "割り込み" }),
+    );
+  });
+});
+
 describe("googleCalendarCache — 書き込みは自分の分だけ", () => {
   beforeEach(async () => {
     await seedCouple(testEnv);

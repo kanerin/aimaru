@@ -14,7 +14,13 @@ void main() {
   const uidB = 'user-b';
   final now = DateTime(2026, 8, 17);
 
-  Widget wrap(Stream<List<QuestionAnswer>> stream) => MaterialApp(
+  const todaysQuestion = 'カップルで共有している今日の質問';
+
+  Widget wrap(
+    Stream<List<QuestionAnswer>> stream, {
+    Future<String> Function()? loadQuestion,
+  }) =>
+      MaterialApp(
         home: QuestionsScreen(
           coupleId: 'couple-1',
           memberIds: const [uidA, uidB],
@@ -22,6 +28,7 @@ void main() {
           currentUidOverride: uidA,
           nowOverride: now,
           answersStreamOverride: stream,
+          loadQuestionOverride: loadQuestion ?? () async => todaysQuestion,
         ),
       );
 
@@ -29,6 +36,7 @@ void main() {
     required String uid,
     required String text,
     String dateKey = '2026-08-17',
+    String? question,
   }) =>
       QuestionAnswer(
         id: '${dateKey}_$uid',
@@ -36,6 +44,7 @@ void main() {
         dateKey: dateKey,
         uid: uid,
         text: text,
+        question: question,
         createdAt: now,
       );
 
@@ -68,11 +77,71 @@ void main() {
     controller.add([]);
     await tester.pump();
 
-    expect(find.text(pickDailyQuestion(now)), findsOneWidget);
+    expect(find.text(todaysQuestion), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('回答する'), findsOneWidget);
 
     await controller.close();
+  });
+
+  group('今日の質問の読み込み', () {
+    testWidgets('日付から計算した質問ではなく、カップルで共有している質問を表示する', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await tester.pumpWidget(wrap(controller.stream));
+
+      controller.add([]);
+      await tester.pump();
+
+      expect(find.text(todaysQuestion), findsOneWidget);
+      expect(find.text(pickDailyQuestion(now)), findsNothing);
+
+      await controller.close();
+    });
+
+    testWidgets('質問が決まるまでは回答ボタンを押せない', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      final question = Completer<String>();
+      await tester.pumpWidget(wrap(controller.stream, loadQuestion: () => question.future));
+
+      controller.add([]);
+      await tester.pump();
+
+      expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNull);
+
+      question.complete(todaysQuestion);
+      await tester.pump();
+
+      expect(find.text(todaysQuestion), findsOneWidget);
+      expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNotNull);
+
+      await controller.close();
+    });
+
+    testWidgets('読み込みに失敗したら別の質問で代用せずエラーを出し、再読み込みできる', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      var calls = 0;
+      await tester.pumpWidget(wrap(controller.stream, loadQuestion: () async {
+        calls++;
+        if (calls == 1) throw Exception('unavailable');
+        return todaysQuestion;
+      }));
+
+      controller.add([]);
+      await tester.pump();
+
+      expect(find.text('今日の質問を読み込めませんでした'), findsOneWidget);
+      expect(find.text(pickDailyQuestion(now)), findsNothing);
+      expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNull);
+
+      await tester.tap(find.text('もう一度読み込む'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(todaysQuestion), findsOneWidget);
+      expect(find.text('今日の質問を読み込めませんでした'), findsNothing);
+
+      await controller.close();
+    });
   });
 
   testWidgets('自分だけ回答済みならパートナーの回答は伏せて待機表示にする', (tester) async {
@@ -172,6 +241,22 @@ void main() {
       final yesterday = tester.getTopLeft(find.text('2026-08-16')).dy;
       final dayBefore = tester.getTopLeft(find.text('2026-08-15')).dy;
       expect(yesterday, lessThan(dayBefore));
+
+      await controller.close();
+    });
+
+    testWidgets('回答と一緒に保存された質問文があれば、日付から復元したものより優先する', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await tester.pumpWidget(wrap(controller.stream));
+
+      controller.add([
+        buildAnswer(uid: uidA, dateKey: '2026-08-16', text: '昨日のわたし', question: '昨日ふたりに出した質問'),
+        buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '昨日のあいて', question: '昨日ふたりに出した質問'),
+      ]);
+      await tester.pump();
+
+      expect(find.text('昨日ふたりに出した質問'), findsOneWidget);
+      expect(find.text(questionForDateKey('2026-08-16')!), findsNothing);
 
       await controller.close();
     });
