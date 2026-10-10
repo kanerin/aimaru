@@ -74,7 +74,11 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<!-- 独自の暗号化を使わない（HTTPS等のOS標準のみ）ことの申告。無いとTestFlight/App Storeへ
+		     ビルドを上げるたびに輸出コンプライアンスの手動回答を求められ、配布が止まる -->
+		<key>ITSAppUsesNonExemptEncryption</key>
+		<false/>
+		<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
