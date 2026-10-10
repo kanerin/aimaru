@@ -382,6 +382,12 @@ getTokenの失敗に強くした（reduce-debt枠、本PR）。iOSはAPNsトー�
 `registerDeviceWith`に切り出し、`test/services/notification_service_test.dart`で確認した
 （`flutter analyze`・`flutter test`（612件）通過）。
 
+2026-10-10、課題13のフェーズ6として、`ios/Runner/Info.plist`に`ITSAppUsesNonExemptEncryption=false`
+を追加した（reduce-debt枠、本PR）。独自の暗号化は使わずHTTPS等のOS標準のみのため免除対象。
+無いとTestFlight/App Storeへビルドを上げるたびに輸出コンプライアンスの手動回答を求められる。
+`test/ios/info_plist_test.dart`でこのキーと、フェーズ1〜3で足した必須キーが消えていないことを
+確認する（iOSビルドがCIに無いための代替）。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
