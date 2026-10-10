@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:aimaru/services/home_tab_requests.dart';
 import 'package:aimaru/services/notification_service.dart';
+import 'package:aimaru/widgets/home_tab_request_listener.dart';
 
 // FCMの代わりに、テストから通知の受信・タップ・通知からの起動を流し込む。
 class _FakeMessages implements NotificationMessages {
@@ -23,6 +25,27 @@ class _FakeMessages implements NotificationMessages {
   Future<RemoteMessage?> getInitialMessage() => initial();
 }
 
+// 本物のホーム（main.dartの_HomeShell）と同じく、HomeTabRequestListenerで
+// 頼まれたタブを開き、開いているタブを文字で出す。
+class _FakeHomeShell extends StatefulWidget {
+  final HomeTabRequests requests;
+  const _FakeHomeShell(this.requests);
+
+  @override
+  State<_FakeHomeShell> createState() => _FakeHomeShellState();
+}
+
+class _FakeHomeShellState extends State<_FakeHomeShell> {
+  HomeTab _tab = HomeTab.calendar;
+
+  @override
+  Widget build(BuildContext context) => HomeTabRequestListener(
+        requests: widget.requests,
+        onTab: (tab) => setState(() => _tab = tab),
+        child: Scaffold(body: Text('タブ: ${_tab.name}')),
+      );
+}
+
 const _questionMessage = RemoteMessage(
   data: {'type': 'question', 'coupleId': 'couple-1'},
   notification: RemoteNotification(
@@ -31,37 +54,37 @@ const _questionMessage = RemoteMessage(
   ),
 );
 
-// 通知タップ時の遷移先の振り分け。ふたりの質問の通知だけ質問画面へ飛び、
-// それ以外（予定・チャット・リマインダーなど）は従来どおりホームへ飛ぶ。
+// 通知タップ時に開くホームのタブの振り分け。ふたりの質問の通知だけ「質問」タブを
+// 開き、それ以外（予定・チャット・リマインダーなど）は従来どおりホームへ飛ぶだけ。
 void main() {
-  group('routeForNotificationData', () {
-    test('ふたりの質問の通知は質問画面へ', () {
+  group('homeTabForNotificationData', () {
+    test('ふたりの質問の通知は「質問」タブ', () {
       expect(
-        routeForNotificationData({'type': 'question', 'coupleId': 'couple-1'}),
-        '/home/questions',
+        homeTabForNotificationData({'type': 'question', 'coupleId': 'couple-1'}),
+        HomeTab.questions,
       );
     });
 
-    test('予定・チャット・リマインダー・記念日の通知はホームへ', () {
+    test('予定・チャット・リマインダー・記念日の通知はタブを指定しない', () {
       for (final type in ['new_event', 'new_chat_message', 'reminder', 'anniversary']) {
-        expect(routeForNotificationData({'type': type}), '/home', reason: type);
+        expect(homeTabForNotificationData({'type': type}), isNull, reason: type);
       }
     });
 
-    test('typeが無い・未知の通知もホームへ', () {
-      expect(routeForNotificationData({}), '/home');
-      expect(routeForNotificationData({'type': 'unknown'}), '/home');
+    test('typeが無い・未知の通知もタブを指定しない', () {
+      expect(homeTabForNotificationData({}), isNull);
+      expect(homeTabForNotificationData({'type': 'unknown'}), isNull);
     });
   });
 
   // アプリ表示中に届いた通知のSnackBar。ふたりの質問の通知だけ、
-  // 押すと質問画面へ飛ぶ「回答する」ボタンが付く。
+  // 押すと質問タブへ飛ぶ「回答する」ボタンが付く。
   group('buildForegroundNotificationSnackBar', () {
-    test('ふたりの質問の通知には質問画面へ飛ぶ「回答する」ボタンが付く', () {
-      String? opened;
+    test('ふたりの質問の通知には質問タブへ飛ぶ「回答する」ボタンが付く', () {
+      var opened = false;
       final snackBar = buildForegroundNotificationSnackBar(
         _questionMessage,
-        onOpen: (route) => opened = route,
+        onOpen: () => opened = true,
       )!;
 
       final action = snackBar.action!;
@@ -70,7 +93,7 @@ void main() {
       expect(snackBar.persist, isFalse);
 
       action.onPressed();
-      expect(opened, '/home/questions');
+      expect(opened, isTrue);
     });
 
     test('質問以外の通知は文言だけでボタンは付かない', () {
@@ -79,7 +102,7 @@ void main() {
           data: {'type': 'new_event'},
           notification: RemoteNotification(title: '予定が追加されました', body: '映画'),
         ),
-        onOpen: (_) => fail('呼ばれない'),
+        onOpen: () => fail('呼ばれない'),
       )!;
 
       expect(snackBar.action, isNull);
@@ -90,7 +113,7 @@ void main() {
       expect(
         buildForegroundNotificationSnackBar(
           const RemoteMessage(data: {'type': 'question'}),
-          onOpen: (_) {},
+          onOpen: () {},
         ),
         isNull,
       );
@@ -104,23 +127,18 @@ void main() {
     late _FakeMessages messages;
     late GoRouter router;
     late GlobalKey<ScaffoldMessengerState> messengerKey;
+    late HomeTabRequests homeTabs;
 
     setUp(() {
       messages = _FakeMessages();
       messengerKey = GlobalKey<ScaffoldMessengerState>();
+      homeTabs = HomeTabRequests();
       router = GoRouter(
-        initialLocation: '/home',
+        initialLocation: '/login',
         routes: [
-          GoRoute(
-            path: '/home',
-            builder: (_, __) => const Scaffold(body: Text('ホーム')),
-            routes: [
-              GoRoute(
-                path: 'questions',
-                builder: (_, __) => const Scaffold(body: Text('質問画面')),
-              ),
-            ],
-          ),
+          GoRoute(path: '/login', builder: (_, __) => const Scaffold(body: Text('ログイン'))),
+          GoRoute(path: '/home', builder: (_, __) => _FakeHomeShell(homeTabs)),
+          GoRoute(path: '/settings', builder: (_, __) => const Scaffold(body: Text('設定'))),
         ],
       );
     });
@@ -129,6 +147,7 @@ void main() {
       messages.foreground.close();
       messages.opened.close();
       router.dispose();
+      homeTabs.dispose();
     });
 
     Future<void> pumpApp(WidgetTester tester) async {
@@ -136,11 +155,12 @@ void main() {
         routerConfig: router,
         scaffoldMessengerKey: messengerKey,
       ));
+      router.go('/home');
       await tester.pumpAndSettle();
-      expect(find.text('ホーム'), findsOneWidget);
+      expect(find.text('タブ: calendar'), findsOneWidget);
     }
 
-    testWidgets('トークン保存が終わらなくても、通知から起動したら質問画面へ遷移する', (tester) async {
+    testWidgets('トークン保存が終わらなくても、通知から起動したら質問タブを開く', (tester) async {
       await pumpApp(tester);
       messages.initial = () async => _questionMessage;
 
@@ -148,19 +168,21 @@ void main() {
       unawaited(NotificationService.forTest(
         messages: messages,
         registerDevice: () => Completer<void>().future,
+        homeTabs: homeTabs,
       ).init(scaffoldMessengerKey: messengerKey, router: router));
       await tester.pumpAndSettle();
 
-      expect(find.text('質問画面'), findsOneWidget);
+      expect(find.text('タブ: questions'), findsOneWidget);
     });
 
-    testWidgets('トークン保存が失敗しても、通知をタップしたら質問画面へ遷移する', (tester) async {
+    testWidgets('トークン保存が失敗しても、通知をタップしたら質問タブを開く', (tester) async {
       await pumpApp(tester);
 
       await expectLater(
         NotificationService.forTest(
           messages: messages,
           registerDevice: () async => throw Exception('SERVICE_NOT_AVAILABLE'),
+          homeTabs: homeTabs,
         ).init(scaffoldMessengerKey: messengerKey, router: router),
         throwsException,
       );
@@ -168,43 +190,97 @@ void main() {
       messages.opened.add(_questionMessage);
       await tester.pumpAndSettle();
 
-      expect(find.text('質問画面'), findsOneWidget);
+      expect(find.text('タブ: questions'), findsOneWidget);
     });
 
-    testWidgets('通知からの起動の取得に失敗しても、以降のタップは質問画面へ遷移する', (tester) async {
+    testWidgets('通知からの起動の取得に失敗しても、以降のタップは質問タブを開く', (tester) async {
       await pumpApp(tester);
       messages.initial = () async => throw Exception('getInitialMessage');
 
       await NotificationService.forTest(
         messages: messages,
         registerDevice: () async {},
+        homeTabs: homeTabs,
       ).init(scaffoldMessengerKey: messengerKey, router: router);
       await tester.pumpAndSettle();
-      expect(find.text('ホーム'), findsOneWidget);
+      expect(find.text('タブ: calendar'), findsOneWidget);
 
       messages.opened.add(_questionMessage);
       await tester.pumpAndSettle();
 
-      expect(find.text('質問画面'), findsOneWidget);
+      expect(find.text('タブ: questions'), findsOneWidget);
     });
 
-    testWidgets('アプリ表示中に届いた質問の通知は「回答する」から質問画面へ遷移する', (tester) async {
+    testWidgets('アプリ表示中に届いた質問の通知は「回答する」から質問タブを開く', (tester) async {
       await pumpApp(tester);
       await NotificationService.forTest(
         messages: messages,
         registerDevice: () async {},
+        homeTabs: homeTabs,
       ).init(scaffoldMessengerKey: messengerKey, router: router);
 
       messages.foreground.add(_questionMessage);
       await tester.pumpAndSettle();
 
       expect(find.textContaining('今日の質問が届いています'), findsOneWidget);
-      expect(find.text('ホーム'), findsOneWidget);
+      expect(find.text('タブ: calendar'), findsOneWidget);
 
       await tester.tap(find.text('回答する'));
       await tester.pumpAndSettle();
 
-      expect(find.text('質問画面'), findsOneWidget);
+      expect(find.text('タブ: questions'), findsOneWidget);
+    });
+
+    testWidgets('ログイン確認中（ホーム表示前）に通知から起動しても、ホームが出たら質問タブを開く', (tester) async {
+      await tester.pumpWidget(MaterialApp.router(
+        routerConfig: router,
+        scaffoldMessengerKey: messengerKey,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('ログイン'), findsOneWidget);
+
+      messages.initial = () async => _questionMessage;
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+      await tester.pumpAndSettle();
+
+      expect(find.text('タブ: questions'), findsOneWidget);
+    });
+
+    testWidgets('ホームの上に別の画面を開いていても、質問の通知をタップしたら質問タブまで戻る', (tester) async {
+      await pumpApp(tester);
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+
+      router.push('/settings');
+      await tester.pumpAndSettle();
+      expect(find.text('設定'), findsOneWidget);
+
+      messages.opened.add(_questionMessage);
+      await tester.pumpAndSettle();
+
+      expect(find.text('設定'), findsNothing);
+      expect(find.text('タブ: questions'), findsOneWidget);
+    });
+
+    testWidgets('質問以外の通知をタップしてもタブは変わらない', (tester) async {
+      await pumpApp(tester);
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+
+      messages.opened.add(const RemoteMessage(data: {'type': 'new_chat_message'}));
+      await tester.pumpAndSettle();
+
+      expect(find.text('タブ: calendar'), findsOneWidget);
     });
   });
 
@@ -223,6 +299,7 @@ void main() {
       service = NotificationService.forTest(
         messages: _FakeMessages(),
         registerDevice: () async {},
+        homeTabs: HomeTabRequests(),
       );
     });
 
