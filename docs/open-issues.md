@@ -388,6 +388,15 @@ getTokenの失敗に強くした（reduce-debt枠、本PR）。iOSはAPNsトー�
 `test/ios/info_plist_test.dart`でこのキーと、フェーズ1〜3で足した必須キーが消えていないことを
 確認する（iOSビルドがCIに無いための代替）。
 
+2026-10-11、課題13のフェーズ7として、iOSの`IPHONEOS_DEPLOYMENT_TARGET`を13.0から15.0へ
+引き上げた（reduce-debt枠、本PR）。`firebase_core`/`firebase_auth`/`cloud_firestore`/
+`firebase_messaging`のpodspecはいずれも`s.ios.deployment_target = '15.0'`を要求しており、
+13.0のままだと`pod install`が「required a higher minimum deployment target」で失敗し、
+iOSビルド自体が通らなかった。`test/ios/info_plist_test.dart`に、pbxprojの全
+デプロイメントターゲットが15.0以上であることを確認するテストを追加した
+（`flutter analyze`・`flutter test`（619件）通過。iOSビルドはCIに無いため実機/macOSでの
+`pod install`は未確認）。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
