@@ -34,4 +34,19 @@ void main() {
     expect(plist, contains('<string>aimaru</string>'));
     expect(plist, contains('<string>remote-notification</string>'));
   });
+
+  test('デプロイメントターゲットがFirebaseプラグインの要求(iOS 15.0)以上', () {
+    // firebase_core / firebase_messaging / cloud_firestore / firebase_auth の
+    // podspecは iOS 15.0 以上を要求する。下回るとpod installが失敗する。
+    final pbxproj =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    final targets = RegExp(r'IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+);')
+        .allMatches(pbxproj)
+        .map((m) => double.parse(m.group(1)!))
+        .toList();
+    expect(targets, isNotEmpty);
+    for (final t in targets) {
+      expect(t, greaterThanOrEqualTo(15.0));
+    }
+  });
 }
