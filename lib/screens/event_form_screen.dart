@@ -9,6 +9,7 @@ import '../services/settings_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/event_datetime_fields.dart';
 import '../widgets/section_label.dart';
+import '../widgets/thumb_remove_button.dart';
 
 // ── 予定の新規作成・編集フォーム（共用）───────────────
 class EventFormScreen extends StatefulWidget {
@@ -350,15 +351,8 @@ class _ImageThumb extends StatelessWidget {
             : Image.file(file!, width: 72, height: 72, fit: BoxFit.cover),
       ),
       Positioned(
-        top: -6, right: -6,
-        child: GestureDetector(
-          onTap: onRemove,
-          child: Container(
-            width: 20, height: 20,
-            decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
-            child: const Icon(Icons.close, size: 12, color: Colors.white),
-          ),
-        ),
+        top: 0, right: 0,
+        child: ThumbRemoveButton(onTap: onRemove),
       ),
     ],
   );
