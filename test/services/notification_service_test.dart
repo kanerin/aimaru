@@ -207,4 +207,97 @@ void main() {
       expect(find.text('質問画面'), findsOneWidget);
     });
   });
+
+  // iOSはAPNsトークンが届くまでgetTokenが例外になることがある。以前はその例外で
+  // 登録処理ごと中断し、onTokenRefreshもログイン検知も購読されなかった。
+  group('NotificationService.registerDeviceWith', () {
+    late StreamController<String> refresh;
+    late StreamController<bool> loggedIn;
+    late List<String> saved;
+    late NotificationService service;
+
+    setUp(() {
+      refresh = StreamController<String>.broadcast();
+      loggedIn = StreamController<bool>.broadcast();
+      saved = [];
+      service = NotificationService.forTest(
+        messages: _FakeMessages(),
+        registerDevice: () async {},
+      );
+    });
+
+    tearDown(() {
+      refresh.close();
+      loggedIn.close();
+    });
+
+    Future<void> register({
+      Future<void> Function()? requestPermission,
+      required Future<String?> Function() getToken,
+      Future<void> Function(String)? saveToken,
+    }) =>
+        service.registerDeviceWith(
+          requestPermission: requestPermission ?? () async {},
+          getToken: getToken,
+          onTokenRefresh: refresh.stream,
+          loggedIn: loggedIn.stream,
+          saveToken: saveToken ?? (t) async => saved.add(t),
+        );
+
+    test('ログインしたらトークンを保存し、ログアウト状態では保存しない', () async {
+      await register(getToken: () async => 'token-1');
+
+      loggedIn.add(false);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, isEmpty);
+
+      loggedIn.add(true);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, ['token-1']);
+    });
+
+    test('getTokenが失敗しても例外は漏れず、後のonTokenRefreshでトークンが保存される', () async {
+      await register(getToken: () async => throw Exception('apns-token-not-set'));
+
+      loggedIn.add(true);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, isEmpty);
+
+      refresh.add('token-from-refresh');
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, ['token-from-refresh']);
+    });
+
+    test('通知許可の要求が失敗しても、ログイン検知とトークン更新は購読される', () async {
+      await register(
+        requestPermission: () async => throw Exception('denied'),
+        getToken: () async => 'token-2',
+      );
+
+      loggedIn.add(true);
+      refresh.add('token-3');
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, containsAll(['token-2', 'token-3']));
+    });
+
+    test('保存（Firestore書き込み）が失敗しても例外は漏れず、次のトークン更新は保存される', () async {
+      var fail = true;
+      await register(
+        getToken: () async => 'token-4',
+        saveToken: (t) async {
+          if (fail) throw Exception('PERMISSION_DENIED');
+          saved.add(t);
+        },
+      );
+
+      loggedIn.add(true);
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, isEmpty);
+
+      fail = false;
+      refresh.add('token-5');
+      await Future<void>.delayed(Duration.zero);
+      expect(saved, ['token-5']);
+    });
+  });
 }

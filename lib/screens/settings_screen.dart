@@ -22,8 +22,8 @@ import 'album_screen.dart';
 import 'bug_report_screen.dart';
 import 'calendar_feed_screen.dart';
 import 'ics_import_screen.dart';
-import 'questions_screen.dart';
 import 'shopping_list_screen.dart';
+import 'todos_screen.dart';
 import 'trash_screen.dart';
 import 'wishlist_screen.dart';
 
@@ -489,16 +489,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const AppLockSettingsCard(),
 
           const SizedBox(height: 28),
-          const _SectionLabel('お互いを知る'),
+          // 「ふたりの質問」はホームの下部ナビ（質問タブ）へ移したので、ここには置かない。
+          // 代わりに下部ナビから外したやりたいことリストの入口をここに置く。
+          const _SectionLabel('ふたりで'),
           _NavigationRow(
-            title: 'ふたりの質問',
-            subtitle: '毎日1つの質問に2人で回答します。2人とも答えるまで相手の回答は見えません。過去の質問と回答も振り返れます',
+            title: 'やりたいことリスト',
+            subtitle: '日付がまだ決まっていない「今度やりたいこと」を2人で持ち寄れます',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => QuestionsScreen(
-                coupleId: widget.coupleId,
-                memberIds: _couple?.memberIds ?? const [],
-                partnerName: _partnerName ?? 'パートナー',
-              )),
+              MaterialPageRoute(builder: (_) => TodosScreen(coupleId: widget.coupleId)),
             ),
           ),
           const SizedBox(height: 10),

@@ -168,9 +168,14 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text('今日の質問', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            if (streak > 0)
-              Text('🔥 $streak日連続',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: appAccent(context))),
+            // 0日でも消さずに出しておく。途切れたときに表示ごと消えると、
+            // 連続記録の機能そのものが無くなったように見えるため。
+            Text('🔥 $streak日連続',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: streak > 0 ? appAccent(context) : AppColors.textMuted,
+              )),
           ],
         ),
         const SizedBox(height: 8),
