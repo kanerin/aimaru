@@ -3,10 +3,9 @@ import '../services/couple_service.dart';
 import '../utils/app_theme.dart';
 import 'questions_screen.dart';
 
-// 「ふたりの質問」の通知をタップしたときに、ペア情報を読み込んでから
-// QuestionsScreenを開くための入口。QuestionsScreenはcoupleId・memberIds・
-// partnerNameを必要とするが、通知から開くときは設定画面のように手元に
-// ペア情報が無いため、ここで取得する（`/home/questions`ルートから使う）。
+// ホームの「質問」タブで、ペア情報を読み込んでからQuestionsScreenを開くための入口。
+// QuestionsScreenはcoupleId・memberIds・partnerNameを必要とするが、タブには
+// 設定画面のように手元にペア情報が無いため、ここで取得する。
 class QuestionsRouteScreen extends StatefulWidget {
   // テストからFirestoreに触れずにペア情報を差し込むための注入ポイント。
   // 未指定時は本番のCoupleServiceから取得する。
