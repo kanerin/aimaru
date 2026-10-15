@@ -21,9 +21,11 @@ import 'services/app_lock_controller.dart';
 import 'services/couple_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/firebase_bootstrap.dart';
+import 'services/home_tab_requests.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
 import 'widgets/daily_refresh.dart';
+import 'widgets/home_tab_request_listener.dart';
 
 import 'firebase_options.dart';
 
@@ -93,17 +95,9 @@ final _router = GoRouter(
   routes: [
     GoRoute(path: '/login',   builder: (_, __) => const LoginScreen()),
     GoRoute(path: '/pairing', builder: (_, __) => const PairingScreen()),
-    GoRoute(
-      path: '/home',
-      builder: (_, __) => const _HomeShell(),
-      routes: [
-        // ふたりの質問の通知タップの遷移先（NotificationService）。
-        GoRoute(
-          path: 'questions',
-          builder: (_, __) => const QuestionsRouteScreen(),
-        ),
-      ],
-    ),
+    // ふたりの質問の通知タップは`/home`へ飛び、HomeTabRequestsで「質問」タブを開く
+    // （NotificationService）。
+    GoRoute(path: '/home', builder: (_, __) => const _HomeShell()),
   ],
 );
 
@@ -231,23 +225,28 @@ class _HomeShellState extends State<_HomeShell> {
       DailyRefresh(builder: (_) => const QuestionsRouteScreen()),
     ];
 
-    return Scaffold(
-      // IndexedStackで4画面すべてをマウントしたまま保持する。
-      // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
-      // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
-      body: IndexedStack(index: _index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        backgroundColor: AppColors.navyCard,
-        indicatorColor: appAccent(context).withValues(alpha: 0.2),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(icon: Text('🗓', style: TextStyle(fontSize: 20)), label: 'カレンダー'),
-          NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
-          NavigationDestination(icon: Text('💕', style: TextStyle(fontSize: 20)), label: '記念日'),
-          NavigationDestination(icon: Text('💭', style: TextStyle(fontSize: 20)), label: '質問'),
-        ],
+    // 通知タップなどで頼まれたタブ（ふたりの質問の通知なら「質問」）を開く。
+    return HomeTabRequestListener(
+      requests: HomeTabRequests.instance,
+      onTab: (tab) => setState(() => _index = tab.index),
+      child: Scaffold(
+        // IndexedStackで4画面すべてをマウントしたまま保持する。
+        // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
+        // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
+        body: IndexedStack(index: _index, children: pages),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          backgroundColor: AppColors.navyCard,
+          indicatorColor: appAccent(context).withValues(alpha: 0.2),
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          destinations: const [
+            NavigationDestination(icon: Text('🗓', style: TextStyle(fontSize: 20)), label: 'カレンダー'),
+            NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
+            NavigationDestination(icon: Text('💕', style: TextStyle(fontSize: 20)), label: '記念日'),
+            NavigationDestination(icon: Text('💭', style: TextStyle(fontSize: 20)), label: '質問'),
+          ],
+        ),
       ),
     );
   }

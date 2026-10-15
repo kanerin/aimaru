@@ -4,41 +4,46 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'home_tab_requests.dart';
+
 // バックグラウンド/終了時にFCMメッセージを受信したときのトップレベルハンドラ。
 // 通知ペイロード付きメッセージはOSが自動でシステムトレイに表示するため、
 // ここでは特別な処理は不要（アプリのisolateが別なのでトップレベル関数が必須）。
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
-// 通知タップ時の遷移先。ペイロードの`type`が"question"（ふたりの質問の
+// 通知タップ時に開くホームのタブ。ペイロードの`type`が"question"（ふたりの質問の
 // 未回答リマインダー、functions/src/index.tsのsendDailyQuestionReminder）なら
-// 質問画面へ、それ以外は従来どおりホーム（カレンダー）へ飛ばす。
-// `/home/questions`は`/home`の子ルートなので、戻るとホームに戻れる。
-String routeForNotificationData(Map<String, dynamic> data) {
+// 「質問」タブ、それ以外は開いていたタブのまま（null）。予定・チャットなどは
+// 従来どおりホームへ飛ばすだけ。
+// 以前は`/home/questions`という別画面をホームの上に積んでいたが、下部ナビに
+// 「質問」タブができてからは同じ画面が二重にある状態になっていた。
+// 通知から起動したときはログイン確認（`/login`→`/home`のリダイレクト）や
+// ペア情報の読み込みと重なるため、タブの切り替えはHomeTabRequestsに保留し、
+// ホームが表示された時点で反映させる。
+HomeTab? homeTabForNotificationData(Map<String, dynamic> data) {
   switch (data['type']) {
     case 'question':
-      return '/home/questions';
+      return HomeTab.questions;
     default:
-      return '/home';
+      return null;
   }
 }
 
 // アプリを開いている最中に届いた通知の表示。フォアグラウンドではFCMが
 // システムの通知を出さないため、このSnackBarが利用者にとっての「通知」になる。
 // ふたりの質問の通知には「回答する」ボタンを付け、通知をタップしたときと
-// 同じ質問画面へ飛べるようにする（以前は文言を出すだけで、押しても何も
-// 起きなかった）。タイトルも本文も無ければ何も出さない（null）。
+// 同じ質問タブへ飛べるようにする。タイトルも本文も無ければ何も出さない（null）。
 SnackBar? buildForegroundNotificationSnackBar(
   RemoteMessage message, {
-  required void Function(String route) onOpen,
+  required VoidCallback onOpen,
 }) {
   final title = message.notification?.title;
   final body  = message.notification?.body;
   final text  = [title, body].where((s) => s != null && s.isNotEmpty).join(' - ');
   if (text.isEmpty) return null;
 
-  final route = routeForNotificationData(message.data);
-  final action = route == '/home/questions'
-      ? SnackBarAction(label: '回答する', onPressed: () => onOpen(route))
+  final action = homeTabForNotificationData(message.data) == HomeTab.questions
+      ? SnackBarAction(label: '回答する', onPressed: onOpen)
       : null;
 
   return SnackBar(
@@ -77,9 +82,9 @@ class _FirebaseNotificationMessages implements NotificationMessages {
 // ── FCMのトークン保存・フォアグラウンド通知表示・タップ遷移を担当 ──
 class NotificationService {
   static final NotificationService _instance =
-      NotificationService._(const _FirebaseNotificationMessages(), null);
+      NotificationService._(const _FirebaseNotificationMessages(), null, HomeTabRequests.instance);
   factory NotificationService() => _instance;
-  NotificationService._(this._messages, this._registerDeviceOverride);
+  NotificationService._(this._messages, this._registerDeviceOverride, this._homeTabs);
 
   // テストからFCM・Firestoreに触れずに初期化を検証するための生成口。
   // registerDeviceは通知許可の要求とFCMトークンの保存（本番は_registerDevice）の代わり。
@@ -87,10 +92,12 @@ class NotificationService {
   NotificationService.forTest({
     required NotificationMessages messages,
     required Future<void> Function() registerDevice,
-  }) : this._(messages, registerDevice);
+    required HomeTabRequests homeTabs,
+  }) : this._(messages, registerDevice, homeTabs);
 
   final NotificationMessages _messages;
   final Future<void> Function()? _registerDeviceOverride;
+  final HomeTabRequests _homeTabs;
 
   FirebaseMessaging get _messaging => FirebaseMessaging.instance;
   FirebaseFirestore get _db        => FirebaseFirestore.instance;
@@ -185,14 +192,20 @@ class NotificationService {
   void _onForegroundMessage(RemoteMessage message) {
     final snackBar = buildForegroundNotificationSnackBar(
       message,
-      onOpen: (route) => _router?.go(route),
+      onOpen: () => _openFromNotification(message),
     );
     if (snackBar == null) return;
     _scaffoldMessengerKey?.currentState?.showSnackBar(snackBar);
   }
 
-  void _onMessageTap(RemoteMessage message) {
-    // 予定詳細への直接遷移は今後の拡張。質問以外はまずカレンダー画面へ。
-    _router?.go(routeForNotificationData(message.data));
+  void _onMessageTap(RemoteMessage message) => _openFromNotification(message);
+
+  // 予定詳細への直接遷移は今後の拡張。質問の通知は「質問」タブ、それ以外は
+  // ホーム（開いていたタブ）へ。タブの依頼は先に出しておき、ホームが
+  // まだ表示されていなくても表示された時点で反映されるようにする。
+  void _openFromNotification(RemoteMessage message) {
+    final tab = homeTabForNotificationData(message.data);
+    if (tab != null) _homeTabs.request(tab);
+    _router?.go('/home');
   }
 }
