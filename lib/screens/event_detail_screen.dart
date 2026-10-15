@@ -7,6 +7,7 @@ import '../services/event_service.dart';
 import '../services/event_comment_service.dart';
 import '../services/google_calendar_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/circular_action_button.dart';
 import 'event_form_screen.dart';
 
 class EventDetailScreen extends StatefulWidget {
@@ -358,16 +359,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        GestureDetector(
+        CircularActionButton(
           onTap: _sendingComment ? null : _sendComment,
-          child: Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
-            child: _sendingComment
-                ? const Padding(padding: EdgeInsets.all(10),
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
-          ),
+          semanticLabel: 'コメントを送信',
+          decoration: BoxDecoration(color: appAccent(context), shape: BoxShape.circle),
+          icon: _sendingComment
+              ? const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.arrow_upward, color: Colors.white, size: 18),
         ),
       ]),
     );

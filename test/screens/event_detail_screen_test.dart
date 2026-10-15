@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/event_detail_screen.dart';
 import 'package:aimaru/services/event_comment_service.dart';
+import 'package:aimaru/widgets/circular_action_button.dart';
 
 // 予定の詳細画面のコメント欄が、ストリームエラーで無限ローディングのまま
 // 固まらないことを確かめる。test/screens/todos_screen_test.dartと同じパターン
@@ -156,6 +157,25 @@ void main() {
     expect(snap.docs.first.data()['senderId'], 'user-me');
 
     await controller.close();
+  });
+
+  testWidgets('送信ボタンはボタンとして読み上げられ、タップ時にリップルを出せる', (tester) async {
+    final handle = tester.ensureSemantics();
+    final controller = StreamController<List<EventComment>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('コメントを送信')),
+      matchesSemantics(
+          label: 'コメントを送信', isButton: true, hasEnabledState: true, isEnabled: true),
+    );
+    expect(find.descendant(
+      of: find.byType(CircularActionButton),
+      matching: find.byType(InkWell),
+    ), findsOneWidget);
+
+    await controller.close();
+    handle.dispose();
   });
 
   testWidgets('送信すると入力欄が空になる', (tester) async {
