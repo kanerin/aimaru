@@ -8,6 +8,7 @@ import '../services/event_comment_service.dart';
 import '../services/google_calendar_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/circular_action_button.dart';
+import '../widgets/image_load_error.dart';
 import 'event_form_screen.dart';
 
 class EventDetailScreen extends StatefulWidget {
@@ -161,6 +162,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         imageUrl: e.imageUrls[i],
                         fit: BoxFit.cover,
                         placeholder: (_, __) => Container(color: AppColors.navySurface),
+                        errorWidget: (_, __, ___) => const ImageLoadError(height: null),
                       ),
                     ),
                   ),

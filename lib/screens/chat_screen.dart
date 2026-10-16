@@ -15,6 +15,7 @@ import '../utils/app_theme.dart';
 import '../utils/chat_date_divider.dart';
 import '../utils/chat_read_status.dart';
 import '../widgets/circular_action_button.dart';
+import '../widgets/image_load_error.dart';
 import 'image_detail_screen.dart';
 
 // ── カップル間の通常チャット（AIチャットとは別）───────
@@ -410,6 +411,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
                 memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
                 placeholder: (_, __) => Container(width: 180, height: 140, color: AppColors.navySurface),
+                errorWidget: (_, __, ___) => const ImageLoadError(width: 180),
               ),
             ),
           ),
