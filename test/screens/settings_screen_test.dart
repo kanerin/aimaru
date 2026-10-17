@@ -36,4 +36,28 @@ void main() {
     await tester.pump();
     expect(ThemeController.instance.accentName, 'ピンク');
   });
+
+  testWidgets('遷移行はタップに反応し、ボタンとして読み上げられる', (tester) async {
+    final handle = tester.ensureSemantics();
+    var taps = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SettingsNavigationRow(title: '共有アルバム', subtitle: '写真を置いておけます', onTap: () => taps++),
+      ),
+    ));
+
+    expect(
+      find.descendant(of: find.byType(SettingsNavigationRow), matching: find.byType(InkWell)),
+      findsOneWidget,
+    );
+    final node = tester.getSemantics(find.byType(InkWell));
+    expect(node.label, contains('共有アルバム'));
+    expect(node.label, contains('写真を置いておけます'));
+    expect(node.flagsCollection.isButton, isTrue);
+
+    await tester.tap(find.text('共有アルバム'));
+    await tester.pump();
+    expect(taps, 1);
+    handle.dispose();
+  });
 }
