@@ -374,7 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
             const SizedBox(height: 12),
-            _NavigationRow(
+            SettingsNavigationRow(
               title: '他のカレンダーから予定をインポート',
               subtitle: 'TimeTreeやGoogleカレンダーなどのiCal(.ics)形式のURL・テキストから予定を取り込みます',
               onTap: () => Navigator.of(context).push(
@@ -382,7 +382,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            _NavigationRow(
+            SettingsNavigationRow(
               title: '外部カレンダーで見る',
               subtitle: 'AIMARUの予定を、GoogleカレンダーやAppleカレンダーからも読み取り専用で購読できます',
               onTap: () => Navigator.of(context).push(
@@ -492,7 +492,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // 「ふたりの質問」はホームの下部ナビ（質問タブ）へ移したので、ここには置かない。
           // 代わりに下部ナビから外したやりたいことリストの入口をここに置く。
           const _SectionLabel('ふたりで'),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: 'やりたいことリスト',
             subtitle: '日付がまだ決まっていない「今度やりたいこと」を2人で持ち寄れます',
             onTap: () => Navigator.of(context).push(
@@ -500,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: '共有アルバム',
             subtitle: '予定に紐づかない写真を2人で気軽に置いておけます',
             onTap: () => Navigator.of(context).push(
@@ -510,7 +510,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           const _SectionLabel('暮らし'),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: '買い物リスト',
             subtitle: '日用品や食材の買い出しを2人で共有できます',
             onTap: () => Navigator.of(context).push(
@@ -518,7 +518,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: 'ほしいものリスト',
             subtitle: 'プレゼントに欲しいものを書いておけます。相手が「用意する」を押しても、あなたには表示されません',
             onTap: () => Navigator.of(context).push(
@@ -532,7 +532,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           const _SectionLabel('データ管理'),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: 'ゴミ箱',
             subtitle: '削除した予定を30日間保管します。誤って消してしまっても復元できます',
             onTap: () => Navigator.of(context).push(
@@ -541,7 +541,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           if (_couple != null) ...[
             const SizedBox(height: 10),
-            _NavigationRow(
+            SettingsNavigationRow(
               title: _exporting ? 'エクスポート中…' : 'データをエクスポート',
               subtitle: '予定・思い出・チャットなどをJSONファイルとして書き出せます',
               onTap: _exportData,
@@ -550,7 +550,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 28),
           const _SectionLabel('フィードバック'),
-          _NavigationRow(
+          SettingsNavigationRow(
             title: 'バグ報告・機能要望',
             subtitle: 'バグを見つけたときや、こんな機能が欲しいときに送れます',
             onTap: () => Navigator.of(context).push(
@@ -645,38 +645,47 @@ class _SettingsSwitch extends StatelessWidget {
   );
 }
 
-class _NavigationRow extends StatelessWidget {
+// 設定画面の遷移行。以前は素のGestureDetectorで、タップしても何の反応も無く、
+// スクリーンリーダーにもボタンとして伝わらなかったため、InkWellでタップの波紋と
+// ボタンのセマンティクスを付ける。
+class SettingsNavigationRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
 
-  const _NavigationRow({required this.title, required this.subtitle, required this.onTap});
+  const SettingsNavigationRow({super.key, required this.title, required this.subtitle, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.navySurface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.hairline),
-      ),
-      child: Row(children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(
-                fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
-              )),
-              const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.5)),
-            ],
-          ),
+  Widget build(BuildContext context) => Material(
+    color: AppColors.navySurface,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: AppColors.hairline),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(
+                    fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.textPrimary,
+                  )),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.5)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textMuted),
+          ]),
         ),
-        const Icon(Icons.chevron_right, color: AppColors.textMuted),
-      ]),
+      ),
     ),
   );
 }
