@@ -35,6 +35,27 @@ void main() {
     expect(plist, contains('<string>remote-notification</string>'));
   });
 
+  test('プライバシーマニフェストがあり、Runnerのリソースとして登録されている', () {
+    // 2024年以降、App Storeへの提出にはPrivacyInfo.xcprivacyが求められる。
+    final manifest = File('ios/Runner/PrivacyInfo.xcprivacy');
+    expect(manifest.existsSync(), isTrue);
+    final body = manifest.readAsStringSync();
+    expect(RegExp(r'<key>NSPrivacyTracking</key>\s*<false/>').hasMatch(body),
+        isTrue);
+    // shared_preferences(UserDefaults)の利用理由の申告
+    expect(body, contains('NSPrivacyAccessedAPICategoryUserDefaults'));
+    expect(body, contains('CA92.1'));
+
+    // ファイルがあるだけではバンドルに入らないので、pbxprojの
+    // Resourcesビルドフェーズに入っていることも確認する。
+    final pbxproj =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    expect(pbxproj,
+        contains('PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile'));
+    expect(RegExp(r'PrivacyInfo\.xcprivacy in Resources \*/,').hasMatch(pbxproj),
+        isTrue);
+  });
+
   test('デプロイメントターゲットがFirebaseプラグインの要求(iOS 15.0)以上', () {
     // firebase_core / firebase_messaging / cloud_firestore / firebase_auth の
     // podspecは iOS 15.0 以上を要求する。下回るとpod installが失敗する。
