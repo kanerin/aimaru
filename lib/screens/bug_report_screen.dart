@@ -156,16 +156,32 @@ class _BugReportScreenState extends State<BugReportScreen> {
                 onRemove: _submitting ? null : () => setState(() => _images.remove(file)),
               )),
               if (_images.length < kBugReportMaxImages)
-                GestureDetector(
+                // 読み上げラベルとタップの波紋を付ける（以前は無音・無反応の
+                // GestureDetectorで、スクリーンリーダーからは何のボタンか不明だった）。
+                Semantics(
+                  button: true,
+                  enabled: !_submitting,
+                  label: '画像を追加',
+                  excludeSemantics: true,
                   onTap: _submitting ? null : _pickImages,
-                  child: Container(
-                    width: 72, height: 72,
-                    decoration: BoxDecoration(
+                  child: Tooltip(
+                    message: '画像を追加',
+                    child: Material(
                       color: AppColors.navySurface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.hairline),
+                      child: InkWell(
+                        onTap: _submitting ? null : _pickImages,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 72, height: 72,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.hairline),
+                          ),
+                          child: const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted),
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted),
                   ),
                 ),
             ],
