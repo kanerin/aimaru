@@ -397,6 +397,15 @@ iOSビルド自体が通らなかった。`test/ios/info_plist_test.dart`に、p
 （`flutter analyze`・`flutter test`（619件）通過。iOSビルドはCIに無いため実機/macOSでの
 `pod install`は未確認）。
 
+2026-10-18、課題13のフェーズ8として、`ios/Runner/PrivacyInfo.xcprivacy`（プライバシーマニフェスト）を
+追加した（reduce-debt枠、本PR）。Appleは2024年以降、App Store Connectへのアップロード時に
+マニフェストの無いアプリ（とそのRequired Reason APIの利用）を警告・拒否する。トラッキング無し、
+`shared_preferences`（UserDefaults、理由コード`CA92.1`）の利用のみを申告し、`project.pbxproj`の
+Resourcesフェーズにも登録した（ファイルだけではバンドルに入らない）。収集データの種類
+（メール・ユーザーID等）の申告はApp Store Connect側の「Appのプライバシー」で行う人間作業。
+`test/ios/info_plist_test.dart`にマニフェストの存在・内容・pbxproj登録を確認するテストを追加した。
+pbxprojは手編集のためmacOS/Xcodeでの読み込み確認は未実施。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
