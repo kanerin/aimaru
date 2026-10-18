@@ -200,6 +200,31 @@ void main() {
       expect(find.byIcon(Icons.add_photo_alternate_outlined), findsOneWidget);
     });
 
+    testWidgets('追加ボタンは読み上げラベル付きのボタンで、タップの波紋を持つ', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(wrap(dummyService()));
+
+      expect(find.bySemanticsLabel('画像を追加'), findsOneWidget);
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('画像を追加')),
+        matchesSemantics(
+          label: '画像を追加',
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        find.ancestor(
+          of: find.byIcon(Icons.add_photo_alternate_outlined),
+          matching: find.byType(InkWell),
+        ),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
     testWidgets('上限（5件）まで選んでいると追加ボタンが消える', (tester) async {
       final images = List.generate(5, (i) => File('fake/$i.jpg'));
       await tester.pumpWidget(wrap(dummyService(), initialImages: images));
