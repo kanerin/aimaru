@@ -43,6 +43,7 @@ import {
   validateReportText,
 } from "./bug_report_logic";
 import { buildChatNotificationBody } from "./chat_notification_logic";
+import { cleanupLeftoverSoloCouples, deleteCoupleData } from "./couple_cleanup";
 import { prepareDailyQuestion } from "./daily_question_generation";
 import {
   QuestionReminderMember,
@@ -824,28 +825,27 @@ export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
     throw new HttpsError("permission-denied", "このカップルのメンバーではありません");
   }
 
-  // Storageの写真はFirestoreと別の保管先なので、個別に消す必要がある。
-  // 写真が1枚も無いカップルでも空振りするだけでエラーにはならない。
-  await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/`, force: true });
-
-  // inviteCodes/{code} は couples のサブコレクションではなく別の
-  // トップレベルコレクションなので、recursiveDeleteの対象に入らない。
-  // 消し忘れると、解消済みのcoupleIdを指すミラーだけが孤立して残り、
-  // そのコードで参加しようとした人が「couplesドキュメントが無いのに
-  // 更新しようとして失敗する」という分かりにくいエラーになる。
-  // couples本体を消す前にinviteCodeを読み、対応するミラーも合わせて消す。
-  const coupleSnapForInviteCode = await db.collection("couples").doc(coupleId).get();
-  const inviteCode = coupleSnapForInviteCode.data()?.inviteCode as string | undefined;
-  if (inviteCode) {
-    await db.collection("inviteCodes").doc(inviteCode).delete();
-  }
-
-  // couples/{coupleId} とその配下（events/chats/todos/
-  // questionAnswers/googleCalendarCache）をまとめて削除する。
-  await db.recursiveDelete(db.collection("couples").doc(coupleId));
+  // Storageの写真・招待コードのミラー・サブコレクションまでまとめて消す
+  // （couple_cleanup.ts）。
+  await deleteCoupleData(db, getStorage().bucket(), coupleId);
 
   return { success: true };
 });
+
+// ── 残った「自分だけのカップル」の片付け ─────────────────────
+// ペアリング画面は開いた時点で自分の招待コード（自分だけのカップル）を
+// 作るため、相手のコードで参加した側にはそれが残っていた。自分だけが
+// 2つのカップルに入っていると、カップルごとに動く処理（ふたりの質問の
+// リマインダーなど）がその人にだけ二重に効く。アプリは参加時に片付ける
+// ようにしたが、それ以前に残ったもの・古いアプリから参加したもの・
+// 片付けに失敗したものをここで拾う（couple_cleanup.ts）。
+export const cleanupLeftoverCouples = onSchedule(
+  { schedule: "30 4 * * *", timeZone: "Asia/Tokyo" },
+  async () => {
+    const bucket = getStorage().bucket();
+    await cleanupLeftoverSoloCouples(db, (coupleId) => deleteCoupleData(db, bucket, coupleId));
+  },
+);
 
 // ── 外部カレンダー連携（iCalendar購読フィード）────────────────────
 // TimeTreeは「設定 → カレンダー情報 → iCal URLをコピー」で、Googleカレンダーや

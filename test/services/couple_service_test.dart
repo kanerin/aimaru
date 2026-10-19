@@ -147,7 +147,77 @@ void main() {
     });
   });
 
+  group('参加前に自分の招待コードを作っていた場合', () {
+    // ペアリング画面は開いた時点で自分の招待コード（自分だけのカップル）を
+    // 作るので、相手のコードで参加する側には必ずこれがある。
+    test('参加できたら、自分だけのカップルを片付ける', () async {
+      final mine = await seedCouple(code: 'MINE22', memberIds: [meUid]);
+      final partners = await seedCouple(code: 'A3K9PZ', memberIds: [partnerUid]);
+      final dissolved = <String>[];
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (id) async => dissolved.add(id),
+      );
+
+      final couple = await service.joinWithCode('A3K9PZ');
+
+      expect(couple!.id, partners);
+      expect(dissolved, [mine]);
+    });
+
+    test('片付けに失敗しても参加は成立する', () async {
+      await seedCouple(code: 'MINE22', memberIds: [meUid]);
+      await seedCouple(code: 'A3K9PZ', memberIds: [partnerUid]);
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (_) async => throw Exception('network error'),
+      );
+
+      final couple = await service.joinWithCode('A3K9PZ');
+
+      expect(couple!.memberIds, containsAll([partnerUid, meUid]));
+    });
+
+    test('参加できなかったら、自分の招待コードは残す', () async {
+      await seedCouple(code: 'MINE22', memberIds: [meUid]);
+      final dissolved = <String>[];
+      final service = CoupleService(
+        firestore: db,
+        uid: meUid,
+        dissolveCoupleInvoke: (id) async => dissolved.add(id),
+      );
+
+      final couple = await service.joinWithCode('ZZZZZZ');
+
+      expect(couple, isNull);
+      expect(dissolved, isEmpty);
+    });
+  });
+
   group('ペアの参照', () {
+    test('自分だけのカップルが残っていても、相手のいるペアを返す', () async {
+      // ドキュメントIDの順でどちらが先に来ても、相手のいる方を選ぶこと
+      for (final soloFirst in [true, false]) {
+        db = FakeFirebaseFirestore();
+        Map<String, dynamic> coupleData(List<String> memberIds) => {
+              'memberIds': memberIds,
+              'inviteCode': 'A3K9PZ',
+              'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+            };
+        await db.collection('couples').doc('a-solo').set(coupleData([meUid]));
+        await db.collection('couples').doc(soloFirst ? 'b-pair' : '0-pair').set(coupleData([partnerUid, meUid]));
+
+        final service = serviceFor(meUid);
+        final couple = await service.getMyCouple();
+        final watched = await service.watchMyCouple().first;
+
+        expect(couple!.memberIds, hasLength(2), reason: 'soloFirst=$soloFirst');
+        expect(watched!.memberIds, hasLength(2), reason: 'soloFirst=$soloFirst');
+      }
+    });
+
     test('自分が属するペアだけを返す', () async {
       await seedCouple(code: 'AAAAAA', memberIds: [partnerUid, otherUid]);
       final mine = await seedCouple(code: 'BBBBBB', memberIds: [meUid]);
