@@ -99,6 +99,7 @@ class DataExportService {
     'id': a.id,
     'dateKey': a.dateKey,
     'uid': a.uid,
+    if (a.question != null) 'question': a.question,
     'text': a.text,
     'createdAt': a.createdAt.toIso8601String(),
   };

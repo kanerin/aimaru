@@ -32,6 +32,42 @@ void main() {
       expect(doc.data()!['dateKey'], dateKey);
       expect(doc.data()!['text'], '水族館に行きたい');
     });
+
+    test('質問文を渡すと回答と一緒に残り、読み出せる', () async {
+      await service.submitAnswer(coupleId, dateKey, '札幌', question: '2人で行きたい雪国の街は？');
+
+      final answers = await service.watchAnswers(coupleId, dateKey).first;
+      expect(answers.single.question, '2人で行きたい雪国の街は？');
+    });
+
+    test('質問文を渡さなければ保存しない（古い回答と同じ形）', () async {
+      await service.submitAnswer(coupleId, dateKey, '水族館に行きたい');
+
+      final doc = await answersRef().doc('${dateKey}_$meUid').get();
+      expect(doc.data()!.containsKey('question'), isFalse);
+    });
+  });
+
+  group('今日の質問文の取得', () {
+    test('サーバーが用意した質問があれば、その文を返す', () async {
+      await db.collection('dailyQuestions').doc(dateKey).set({
+        'dateKey': dateKey,
+        'text': '2人で行きたい雪国の街は？',
+        'source': 'gemini',
+      });
+
+      expect(await service.fetchDailyQuestion(dateKey), '2人で行きたい雪国の街は？');
+    });
+
+    test('その日の質問がまだ無ければnull', () async {
+      expect(await service.fetchDailyQuestion(dateKey), isNull);
+    });
+
+    test('質問文が空ならnull（手書きの質問に切り替えさせる）', () async {
+      await db.collection('dailyQuestions').doc(dateKey).set({'text': ''});
+
+      expect(await service.fetchDailyQuestion(dateKey), isNull);
+    });
   });
 
   group('その日の回答一覧の取得', () {

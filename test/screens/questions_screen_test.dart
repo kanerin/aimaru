@@ -14,7 +14,13 @@ void main() {
   const uidB = 'user-b';
   final now = DateTime(2026, 8, 17);
 
-  Widget wrap(Stream<List<QuestionAnswer>> stream) => MaterialApp(
+  // dailyQuestionは今日の質問としてサーバーが用意したもの。既定では
+  // 「用意されていない日」（null）にして、手書きの質問が出るようにする。
+  Widget wrap(
+    Stream<List<QuestionAnswer>> stream, {
+    Future<String?>? dailyQuestion,
+  }) =>
+      MaterialApp(
         home: QuestionsScreen(
           coupleId: 'couple-1',
           memberIds: const [uidA, uidB],
@@ -22,13 +28,25 @@ void main() {
           currentUidOverride: uidA,
           nowOverride: now,
           answersStreamOverride: stream,
+          dailyQuestionFutureOverride: dailyQuestion ?? Future.value(null),
         ),
       );
+
+  // 今日の質問の取得（Future）が済んで、回答のストリームを待つところまで進める。
+  Future<void> pumpScreen(
+    WidgetTester tester,
+    Stream<List<QuestionAnswer>> stream, {
+    Future<String?>? dailyQuestion,
+  }) async {
+    await tester.pumpWidget(wrap(stream, dailyQuestion: dailyQuestion));
+    await tester.pump();
+  }
 
   QuestionAnswer buildAnswer({
     required String uid,
     required String text,
     String dateKey = '2026-08-17',
+    String? question,
   }) =>
       QuestionAnswer(
         id: '${dateKey}_$uid',
@@ -37,11 +55,12 @@ void main() {
         uid: uid,
         text: text,
         createdAt: now,
+        question: question,
       );
 
   testWidgets('データが来る前はローディング表示', (tester) async {
     final controller = StreamController<List<QuestionAnswer>>();
-    await tester.pumpWidget(wrap(controller.stream));
+    await pumpScreen(tester, controller.stream);
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -50,7 +69,7 @@ void main() {
 
   testWidgets('ストリームがエラーになったら無限ローディングではなくエラー表示にする', (tester) async {
     final controller = StreamController<List<QuestionAnswer>>();
-    await tester.pumpWidget(wrap(controller.stream));
+    await pumpScreen(tester, controller.stream);
 
     controller.addError(Exception('PERMISSION_DENIED'));
     await tester.pump();
@@ -63,7 +82,7 @@ void main() {
 
   testWidgets('誰も回答していなければ質問と入力欄を表示する', (tester) async {
     final controller = StreamController<List<QuestionAnswer>>();
-    await tester.pumpWidget(wrap(controller.stream));
+    await pumpScreen(tester, controller.stream);
 
     controller.add([]);
     await tester.pump();
@@ -75,9 +94,50 @@ void main() {
     await controller.close();
   });
 
+  group('今日の質問', () {
+    testWidgets('質問の取得中はローディング表示', (tester) async {
+      final question = Completer<String?>();
+      await tester.pumpWidget(wrap(const Stream.empty(), dailyQuestion: question.future));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+
+      question.complete('2人で行きたい雪国の街は？');
+      await tester.pump();
+    });
+
+    testWidgets('サーバーが用意した質問があれば、手書きの質問ではなくそれを出す', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await pumpScreen(tester, controller.stream,
+          dailyQuestion: Future.value('2人で行きたい雪国の街は？'));
+
+      controller.add([]);
+      await tester.pump();
+
+      expect(find.text('2人で行きたい雪国の街は？'), findsOneWidget);
+      expect(find.text(pickDailyQuestion(now)), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+
+      await controller.close();
+    });
+
+    testWidgets('質問を読めなかったら、相手と違う質問に答えないようエラー表示にする', (tester) async {
+      final question = Completer<String?>();
+      await tester.pumpWidget(wrap(const Stream.empty(), dailyQuestion: question.future));
+
+      question.completeError(Exception('unavailable'));
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('読み込みに失敗'), findsOneWidget);
+      expect(find.text(pickDailyQuestion(now)), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+    });
+  });
+
   testWidgets('自分だけ回答済みならパートナーの回答は伏せて待機表示にする', (tester) async {
     final controller = StreamController<List<QuestionAnswer>>();
-    await tester.pumpWidget(wrap(controller.stream));
+    await pumpScreen(tester, controller.stream);
 
     controller.add([buildAnswer(uid: uidA, text: '水族館に行きたい')]);
     await tester.pump();
@@ -91,7 +151,7 @@ void main() {
 
   testWidgets('両者回答済みなら両方の回答を表示する', (tester) async {
     final controller = StreamController<List<QuestionAnswer>>();
-    await tester.pumpWidget(wrap(controller.stream));
+    await pumpScreen(tester, controller.stream);
 
     controller.add([
       buildAnswer(uid: uidA, text: '水族館に行きたい'),
@@ -109,7 +169,7 @@ void main() {
   group('連続回答日数（ストリーク）', () {
     testWidgets('連続が途切れていても表示は消さず0日と出す', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([buildAnswer(uid: uidA, text: '今日の回答')]);
       await tester.pump();
@@ -121,7 +181,7 @@ void main() {
 
     testWidgets('今日を含めて2人とも連続で回答していればストリークを表示する', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([
         buildAnswer(uid: uidA, dateKey: '2026-08-17', text: '今日のわたし'),
@@ -140,7 +200,7 @@ void main() {
   group('これまでの質問（過去分の閲覧）', () {
     testWidgets('過去分が無ければ履歴の見出しを出さない', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([buildAnswer(uid: uidA, text: '今日の回答')]);
       await tester.pump();
@@ -152,7 +212,7 @@ void main() {
 
     testWidgets('過去の日付の質問と2人の回答を新しい順に表示する', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([
         buildAnswer(uid: uidA, dateKey: '2026-08-15', text: '一昨日のわたし'),
@@ -176,9 +236,38 @@ void main() {
       await controller.close();
     });
 
+    testWidgets('過去の質問は、回答と一緒に残した質問文を出す', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await pumpScreen(tester, controller.stream);
+
+      controller.add([
+        buildAnswer(uid: uidA, dateKey: '2026-08-16', text: '昨日のわたし', question: '昨日の質問は？'),
+      ]);
+      await tester.pump();
+
+      expect(find.text('昨日の質問は？'), findsOneWidget);
+      expect(find.text(questionForDateKey('2026-08-16')!), findsNothing);
+
+      await controller.close();
+    });
+
+    testWidgets('自分が回答していない日も、相手の回答に残った質問文を出す', (tester) async {
+      final controller = StreamController<List<QuestionAnswer>>();
+      await pumpScreen(tester, controller.stream);
+
+      controller.add([
+        buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '相手の回答', question: '昨日の質問は？'),
+      ]);
+      await tester.pump();
+
+      expect(find.text('昨日の質問は？'), findsOneWidget);
+
+      await controller.close();
+    });
+
     testWidgets('過去分でも自分が回答していない日は相手の回答を伏せる', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([
         buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '見えてはいけない回答'),
@@ -193,7 +282,7 @@ void main() {
 
     testWidgets('今日の分は履歴側に重複して出さない', (tester) async {
       final controller = StreamController<List<QuestionAnswer>>();
-      await tester.pumpWidget(wrap(controller.stream));
+      await pumpScreen(tester, controller.stream);
 
       controller.add([
         buildAnswer(uid: uidA, text: '今日の回答'),

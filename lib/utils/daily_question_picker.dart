@@ -3,6 +3,14 @@
 // 移行先として比較されるSumOne/Twinestが持つ「質問カード」に近い体験。
 // 新しいFirestoreクエリやCloud Functionsを増やさず、日付から決定的に
 // 質問を1つ選ぶだけの純粋関数にしてある（サーバー側の抽選状態を持たない）。
+//
+// 今の「今日の質問」は、前の晩にサーバーがGeminiで作って
+// dailyQuestions/{dateKey}に置いたもの（functions/src/daily_question_generation.ts）。
+// ここは、(1)その用意が止まっていた日の代わりの質問と、(2)質問文を回答に
+// 残すようになる前の、過去の回答の質問の復元にだけ使う。過去の日付の質問が
+// 変わらないよう、既存の質問の並べ替え・削除はしないこと。
+// サーバー側はこのリストを写した LEGACY_QUESTIONS（functions/src/question_bank.ts）
+// と被らない質問を作る。
 
 const List<String> dailyQuestions = [
   '最近「ありがたいな」と思ったことは？',

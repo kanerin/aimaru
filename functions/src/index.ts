@@ -43,6 +43,7 @@ import {
   validateReportText,
 } from "./bug_report_logic";
 import { buildChatNotificationBody } from "./chat_notification_logic";
+import { prepareDailyQuestion } from "./daily_question_generation";
 import {
   QuestionReminderMember,
   resolveQuestionReminderTargets,
@@ -614,6 +615,27 @@ export const askGemini = onCall<AskGeminiRequest>(
     }
 
     return { text: result.text };
+  },
+);
+
+// ── ふたりの質問: 翌日の質問をGeminiで用意する ────────────────
+// 手書きの90問を日付で回していた頃は3か月で同じ質問に戻っていた。
+// 前の晩に翌日の質問を1つ作り、これまでの質問と被らないものだけを
+// dailyQuestions/{dateKey} に保存する（daily_question_generation.ts参照）。
+// 既にその日の分があれば何もしないので、21〜23時に毎時走らせて、
+// 一時的な障害で1回失敗しても次の回で拾えるようにしてある。
+export const prepareTomorrowQuestion = onSchedule(
+  { schedule: "0 21-23 * * *", timeZone: "Asia/Tokyo", secrets: [geminiApiKey] },
+  async () => {
+    const apiKey = geminiApiKey.value();
+    if (!apiKey) {
+      logger.error("prepareTomorrowQuestion: GEMINI_API_KEYシークレットが空です。手書きの予備の質問で代用します");
+    }
+    await prepareDailyQuestion(
+      db,
+      Date.now(),
+      apiKey ? (contents) => callGeminiApi(contents, apiKey) : null,
+    );
   },
 );
 

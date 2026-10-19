@@ -184,6 +184,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ふたりの質問の、日付ごとの質問文（ドキュメントID = 'yyyy-MM-dd'）。
+    // prepareTomorrowQuestion（Cloud Functions、Admin SDK）が前の晩に作る。
+    // 全カップル共通の質問なので、ログインしていれば日付を指定して読める。
+    // 書き換えられると相手と違う質問に答えることになるため、書き込みは
+    // クライアントに一切許可しない。
+    match /dailyQuestions/{dateKey} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow write: if false;
+    }
+
     match /users/{userId} {
       allow read: if request.auth != null;
       allow delete: if request.auth.uid == userId;

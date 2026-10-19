@@ -16,6 +16,11 @@ import '../widgets/section_label.dart';
 //
 // 今日の分だけでなく、過去の質問と回答も同じ画面から振り返れる
 // （直近をまとめて1本のストリームで読む）。
+//
+// 今日の質問は、前の晩にサーバーがGeminiで作ったもの（dailyQuestions/{dateKey}）
+// を出す。手書きの質問を日付で回していた頃は3か月で同じ質問に戻っていた。
+// サーバー側の用意が止まっていた日だけ、手書きの質問（daily_question_picker.dart）
+// から出す。
 class QuestionsScreen extends StatefulWidget {
   final String coupleId;
   final List<String> memberIds;
@@ -23,6 +28,9 @@ class QuestionsScreen extends StatefulWidget {
   // テストからエラー/データを直接流し込むための注入ポイント。
   // 未指定時は本番のFirestoreストリームを使う。
   final Stream<List<QuestionAnswer>>? answersStreamOverride;
+  // テストから今日の質問文（サーバーが用意したもの。無ければnull）を
+  // 直接流し込むための注入ポイント。未指定時は本番のFirestoreから読む。
+  final Future<String?>? dailyQuestionFutureOverride;
   // テストからFirebase Authに触れずに「自分」を差し込むための注入ポイント。
   final String? currentUidOverride;
   // テストから「今日」を固定するための注入ポイント。
@@ -34,6 +42,7 @@ class QuestionsScreen extends StatefulWidget {
     required this.memberIds,
     required this.partnerName,
     this.answersStreamOverride,
+    this.dailyQuestionFutureOverride,
     this.currentUidOverride,
     this.nowOverride,
   });
@@ -48,7 +57,8 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   late final DateTime _now = widget.nowOverride ?? DateTime.now();
   late final String _dateKey = DateFormat('yyyy-MM-dd').format(_now);
-  late final String _question = pickDailyQuestion(_now);
+  late final Future<String?> _dailyQuestionFuture =
+      widget.dailyQuestionFutureOverride ?? _service.fetchDailyQuestion(_dateKey);
 
   late final Stream<List<QuestionAnswer>> _answersStream =
       widget.answersStreamOverride ?? _service.watchRecentAnswers(widget.coupleId);
@@ -66,95 +76,110 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit(String question) async {
     final text = _answerController.text.trim();
     if (text.isEmpty || _submitting) return;
     setState(() => _submitting = true);
-    await _service.submitAnswer(widget.coupleId, _dateKey, text);
+    await _service.submitAnswer(widget.coupleId, _dateKey, text, question: question);
     if (mounted) setState(() => _submitting = false);
   }
+
+  static const _loadErrorMessage = Center(
+    child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
+      textAlign: TextAlign.center,
+      style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
+  );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.navy,
       appBar: AppBar(title: const Text('ふたりの質問')),
-      body: StreamBuilder<List<QuestionAnswer>>(
-        stream: _answersStream,
-        builder: (context, snap) {
-          // hasDataだけを見ていると、権限エラー等でストリームがエラーに
-          // 落ちたときに無限ローディングのまま固まる。
-          if (snap.hasError) {
-            return const Center(
-              child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-            );
-          }
-          if (!snap.hasData) {
+      body: FutureBuilder<String?>(
+        future: _dailyQuestionFuture,
+        builder: (context, questionSnap) {
+          // 読めなかったときに手書きの質問へ切り替えると、相手と違う質問に
+          // 答えてしまうので、エラーとして止める（無い日だけ切り替える）。
+          if (questionSnap.hasError) return _loadErrorMessage;
+          if (questionSnap.connectionState != ConnectionState.done) {
             return Center(child: CircularProgressIndicator(color: appAccent(context)));
           }
-
-          final answers = snap.data!;
-          QuestionAnswer? answerOf(String uid, String dateKey) {
-            for (final a in answers) {
-              if (a.uid == uid && a.dateKey == dateKey) return a;
-            }
-            return null;
-          }
-
-          final myAnswer = answerOf(_uid, _dateKey);
-          final partnerUid = _partnerUid;
-          final partnerAnswer = partnerUid.isEmpty ? null : answerOf(partnerUid, _dateKey);
-          final streak = computeQuestionStreak(answers, widget.memberIds, _now);
-
-          // 過去の日付（今日を除く）を新しい順に。ストリームはFirestore側でも
-          // 新しい順に並んでいるが、テストからの注入では順序を保証できないため
-          // ここでも並べ替える。
-          final historyDates = answers
-              .map((a) => a.dateKey)
-              .where((d) => d != _dateKey)
-              .toSet()
-              .toList()
-            ..sort((a, b) => b.compareTo(a));
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildQuestionCard(streak),
-                const SizedBox(height: 20),
-                if (myAnswer == null)
-                  _buildAnswerInput()
-                else ...[
-                  _buildAnswerTile('あなた', myAnswer.text),
-                  const SizedBox(height: 12),
-                  partnerAnswer != null
-                      ? _buildAnswerTile(widget.partnerName, partnerAnswer.text)
-                      : _buildWaitingTile(),
-                ],
-                if (historyDates.isNotEmpty) ...[
-                  const SizedBox(height: 28),
-                  const SectionLabel('これまでの質問'),
-                  for (final date in historyDates) ...[
-                    _buildHistoryCard(
-                      date,
-                      answerOf(_uid, date),
-                      partnerUid.isEmpty ? null : answerOf(partnerUid, date),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                ],
-              ],
-            ),
-          );
+          return _buildBody(questionSnap.data ?? pickDailyQuestion(_now));
         },
       ),
     );
   }
 
-  Widget _buildQuestionCard(int streak) => Container(
+  Widget _buildBody(String question) {
+    return StreamBuilder<List<QuestionAnswer>>(
+      stream: _answersStream,
+      builder: (context, snap) {
+        // hasDataだけを見ていると、権限エラー等でストリームがエラーに
+        // 落ちたときに無限ローディングのまま固まる。
+        if (snap.hasError) return _loadErrorMessage;
+        if (!snap.hasData) {
+          return Center(child: CircularProgressIndicator(color: appAccent(context)));
+        }
+
+        final answers = snap.data!;
+        QuestionAnswer? answerOf(String uid, String dateKey) {
+          for (final a in answers) {
+            if (a.uid == uid && a.dateKey == dateKey) return a;
+          }
+          return null;
+        }
+
+        final myAnswer = answerOf(_uid, _dateKey);
+        final partnerUid = _partnerUid;
+        final partnerAnswer = partnerUid.isEmpty ? null : answerOf(partnerUid, _dateKey);
+        final streak = computeQuestionStreak(answers, widget.memberIds, _now);
+
+        // 過去の日付（今日を除く）を新しい順に。ストリームはFirestore側でも
+        // 新しい順に並んでいるが、テストからの注入では順序を保証できないため
+        // ここでも並べ替える。
+        final historyDates = answers
+            .map((a) => a.dateKey)
+            .where((d) => d != _dateKey)
+            .toSet()
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildQuestionCard(question, streak),
+              const SizedBox(height: 20),
+              if (myAnswer == null)
+                _buildAnswerInput(question)
+              else ...[
+                _buildAnswerTile('あなた', myAnswer.text),
+                const SizedBox(height: 12),
+                partnerAnswer != null
+                    ? _buildAnswerTile(widget.partnerName, partnerAnswer.text)
+                    : _buildWaitingTile(),
+              ],
+              if (historyDates.isNotEmpty) ...[
+                const SizedBox(height: 28),
+                const SectionLabel('これまでの質問'),
+                for (final date in historyDates) ...[
+                  _buildHistoryCard(
+                    date,
+                    answerOf(_uid, date),
+                    partnerUid.isEmpty ? null : answerOf(partnerUid, date),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuestionCard(String question, int streak) => Container(
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: AppColors.navySurface,
@@ -179,13 +204,13 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        Text(_question, style: const TextStyle(
+        Text(question, style: const TextStyle(
           fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.5)),
       ],
     ),
   );
 
-  Widget _buildAnswerInput() => Column(
+  Widget _buildAnswerInput(String question) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       TextField(
@@ -196,7 +221,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
       ),
       const SizedBox(height: 12),
       ElevatedButton(
-        onPressed: _submitting ? null : _submit,
+        onPressed: _submitting ? null : () => _submit(question),
         child: const Text('回答する'),
       ),
     ],
@@ -236,11 +261,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     ]),
   );
 
-  // 過去1日分。その日の質問は日付から復元する（質問文はFirestoreに持たない）。
+  // 過去1日分。その日の質問は回答と一緒に残した質問文を出し、それが無い
+  // 古い回答（手書きの質問を日付で選んでいた頃）は日付から復元する。
   // 「自分が回答するまで相手の回答は見えない」ルールは過去分にも同じく効かせる。
   // ここを緩めると、答えずに待って相手の回答だけ読む、が成立してしまう。
   Widget _buildHistoryCard(String dateKey, QuestionAnswer? mine, QuestionAnswer? partner) {
-    final question = questionForDateKey(dateKey);
+    final question = mine?.question ?? partner?.question ?? questionForDateKey(dateKey);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
