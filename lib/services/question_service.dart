@@ -17,8 +17,24 @@ class QuestionService {
   CollectionReference _answersRef(String coupleId) =>
       _db.collection('couples').doc(coupleId).collection('questionAnswers');
 
+  // ── その日の質問文を取得する ─────────────────────────
+  // 前の晩にCloud Functions（prepareTomorrowQuestion）がGeminiで作って
+  // dailyQuestions/{dateKey}に置く。まだ無い（生成が止まっていた）日はnullを
+  // 返し、画面側で手書きの質問（daily_question_picker.dart）に切り替える。
+  Future<String?> fetchDailyQuestion(String dateKey) async {
+    final doc = await _db.collection('dailyQuestions').doc(dateKey).get();
+    final text = doc.data()?['text'];
+    return text is String && text.isNotEmpty ? text : null;
+  }
+
   // ── 今日の質問に回答する（1人1日1件、doc idで上書きを防ぐ）───
-  Future<void> submitAnswer(String coupleId, String dateKey, String text) async {
+  // 質問文も一緒に残し、過去の質問を振り返るときに使う。
+  Future<void> submitAnswer(
+    String coupleId,
+    String dateKey,
+    String text, {
+    String? question,
+  }) async {
     final ref = _answersRef(coupleId).doc('${dateKey}_$_uid');
     final answer = QuestionAnswer(
       id:        ref.id,
@@ -27,6 +43,7 @@ class QuestionService {
       uid:       _uid,
       text:      text,
       createdAt: DateTime.now(),
+      question:  question,
     );
     await ref.set(answer.toMap());
   }

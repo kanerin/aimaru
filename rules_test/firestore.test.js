@@ -701,6 +701,37 @@ describe("questionAnswers — メンバー境界・自分の回答のみ書き�
   });
 });
 
+describe("dailyQuestions — ログインしていれば読めるが、書き込みは誰もできない", () => {
+  beforeEach(async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("dailyQuestions/2026-10-20").set({
+        dateKey: "2026-10-20",
+        text: "好きな季節の果物は？",
+        source: "gemini",
+      });
+    });
+  });
+
+  it("ログインしていれば日付を指定して読める（カップル外でも）", async () => {
+    await assertSucceeds(asA().doc("dailyQuestions/2026-10-20").get());
+    await assertSucceeds(asC().doc("dailyQuestions/2026-10-20").get());
+  });
+
+  it("未認証は読めない", async () => {
+    await assertFails(asAnon().doc("dailyQuestions/2026-10-20").get());
+  });
+
+  it("一覧は取得できない", async () => {
+    await assertFails(asA().collection("dailyQuestions").get());
+  });
+
+  it("作成・書き換え・削除はできない", async () => {
+    await assertFails(asA().doc("dailyQuestions/2026-10-21").set({ text: "勝手な質問は？" }));
+    await assertFails(asA().doc("dailyQuestions/2026-10-20").update({ text: "書き換え" }));
+    await assertFails(asA().doc("dailyQuestions/2026-10-20").delete());
+  });
+});
+
 describe("googleCalendarCache — 書き込みは自分の分だけ", () => {
   beforeEach(async () => {
     await seedCouple(testEnv);

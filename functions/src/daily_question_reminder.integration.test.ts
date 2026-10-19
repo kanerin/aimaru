@@ -26,13 +26,11 @@ let db: FirebaseFirestore.Firestore;
 async function runDailyQuestionReminderPass(nowMs: number) {
   const dateKey = tokyoDateKey(nowMs);
   const couplesSnap = await db.collection("couples").get();
-  const sent: Array<{ coupleId: string; uid: string }> = [];
+  const members: Array<{ uid: string; answered: boolean; notifyOnDailyQuestion: boolean }> = [];
 
   for (const coupleDoc of couplesSnap.docs) {
     const memberIds: string[] = coupleDoc.data()?.memberIds ?? [];
-    if (memberIds.length === 0) continue;
-
-    const members = await Promise.all(
+    const coupleMembers = await Promise.all(
       memberIds.map(async (uid) => {
         const [userSnap, answerSnap] = await Promise.all([
           db.collection("users").doc(uid).get(),
@@ -51,12 +49,10 @@ async function runDailyQuestionReminderPass(nowMs: number) {
         };
       }),
     );
-
-    const toRemind = resolveQuestionReminderTargets(members);
-    for (const uid of toRemind) sent.push({ coupleId: coupleDoc.id, uid });
+    members.push(...coupleMembers);
   }
 
-  return sent;
+  return resolveQuestionReminderTargets(members);
 }
 
 describe("デイリー質問リマインダーのFirestore経路", { skip: EMULATOR ? false : "エミュレータ未起動" }, () => {
@@ -87,13 +83,23 @@ describe("デイリー質問リマインダーのFirestore経路", { skip: EMULA
     }
   }
 
-  async function seedAnswer(dateKey: string, uid: string) {
+  async function seedAnswer(dateKey: string, uid: string, coupleId = COUPLE_ID) {
     await db
       .collection("couples")
-      .doc(COUPLE_ID)
+      .doc(coupleId)
       .collection("questionAnswers")
       .doc(`${dateKey}_${uid}`)
-      .set({ coupleId: COUPLE_ID, dateKey, uid, text: "回答", createdAt: new Date() });
+      .set({ coupleId, dateKey, uid, text: "回答", createdAt: new Date() });
+  }
+
+  // 自分の招待コードを作った後に相手のコードで参加すると、作った側の
+  // 1人だけのカップルが残る（couple_service.dartのjoinWithCodeは既存の
+  // カップルを確認しない）。
+  async function seedLeftoverSoloCouple(uid: string) {
+    await db.collection("couples").doc("couple-leftover").set({
+      memberIds: [uid],
+      inviteCode: "Z9Y8X7",
+    });
   }
 
   it("誰も回答していなければ両方に通知する", async () => {
@@ -102,7 +108,7 @@ describe("デイリー質問リマインダーのFirestore経路", { skip: EMULA
 
     const sent = await runDailyQuestionReminderPass(nowMs);
 
-    assert.deepEqual(new Set(sent.map((s) => s.uid)), new Set([USER_A, USER_B]));
+    assert.deepEqual(new Set(sent), new Set([USER_A, USER_B]));
   });
 
   it("回答済みのメンバーには送らない", async () => {
@@ -112,7 +118,7 @@ describe("デイリー質問リマインダーのFirestore経路", { skip: EMULA
 
     const sent = await runDailyQuestionReminderPass(nowMs);
 
-    assert.deepEqual(sent.map((s) => s.uid), [USER_B]);
+    assert.deepEqual(sent, [USER_B]);
   });
 
   it("両方回答済みなら誰にも送らない", async () => {
@@ -136,7 +142,28 @@ describe("デイリー質問リマインダーのFirestore経路", { skip: EMULA
 
     const sent = await runDailyQuestionReminderPass(nowMs);
 
-    assert.deepEqual(sent.map((s) => s.uid), [USER_B]);
+    assert.deepEqual(sent, [USER_B]);
+  });
+
+  it("1人だけのカップルが残っている人にも、未回答なら1通だけ送る", async () => {
+    const nowMs = new Date(2026, 7, 12, 20, 0).getTime();
+    await seedCouple({ [USER_A]: {}, [USER_B]: {} });
+    await seedLeftoverSoloCouple(USER_A);
+
+    const sent = await runDailyQuestionReminderPass(nowMs);
+
+    assert.deepEqual([...sent].sort(), [USER_A, USER_B]);
+  });
+
+  it("1人だけのカップルが残っていても、ペアのカップルで回答済みなら送らない", async () => {
+    const nowMs = new Date(2026, 7, 12, 20, 0).getTime();
+    await seedCouple({ [USER_A]: {}, [USER_B]: {} });
+    await seedLeftoverSoloCouple(USER_A);
+    await seedAnswer(tokyoDateKey(nowMs), USER_A);
+
+    const sent = await runDailyQuestionReminderPass(nowMs);
+
+    assert.deepEqual(sent, [USER_B]);
   });
 
   it("昨日の回答は今日の判定に影響しない", async () => {
@@ -146,6 +173,6 @@ describe("デイリー質問リマインダーのFirestore経路", { skip: EMULA
 
     const sent = await runDailyQuestionReminderPass(nowMs);
 
-    assert.deepEqual(sent.map((s) => s.uid), [USER_A]);
+    assert.deepEqual(sent, [USER_A]);
   });
 });

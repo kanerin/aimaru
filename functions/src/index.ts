@@ -43,7 +43,13 @@ import {
   validateReportText,
 } from "./bug_report_logic";
 import { buildChatNotificationBody } from "./chat_notification_logic";
-import { resolveQuestionReminderTargets, tokyoDateKey } from "./question_reminder_logic";
+import { cleanupLeftoverSoloCouples, deleteCoupleData } from "./couple_cleanup";
+import { prepareDailyQuestion } from "./daily_question_generation";
+import {
+  QuestionReminderMember,
+  resolveQuestionReminderTargets,
+  tokyoDateKey,
+} from "./question_reminder_logic";
 
 initializeApp();
 const db = getFirestore();
@@ -453,11 +459,13 @@ async function processDailyQuestionReminder(nowMs: number): Promise<void> {
   const dateKey = tokyoDateKey(nowMs);
   const couplesSnap = await db.collection("couples").get();
 
+  // 同じ人が複数のカップルに入っていることがあるため、カップルごとに
+  // 送らず、全カップルぶんを集めてから1人1通に絞る
+  // （resolveQuestionReminderTargets参照）。
+  const members: Array<QuestionReminderMember & { coupleId: string; fcmToken?: string }> = [];
   for (const coupleDoc of couplesSnap.docs) {
     const memberIds: string[] = coupleDoc.data()?.memberIds ?? [];
-    if (memberIds.length === 0) continue;
-
-    const members = await Promise.all(
+    const coupleMembers = await Promise.all(
       memberIds.map(async (uid) => {
         const [userSnap, answerSnap] = await Promise.all([
           db.collection("users").doc(uid).get(),
@@ -471,23 +479,25 @@ async function processDailyQuestionReminder(nowMs: number): Promise<void> {
         const user = userSnap.data() as UserDoc | undefined;
         return {
           uid,
+          coupleId: coupleDoc.id,
           fcmToken: user?.fcmToken,
           answered: answerSnap.exists,
           notifyOnDailyQuestion: !!user && user.notifyOnDailyQuestion !== false,
         };
       }),
     );
+    members.push(...coupleMembers);
+  }
 
-    const toRemind = resolveQuestionReminderTargets(members);
-    for (const uid of toRemind) {
-      const member = members.find((m) => m.uid === uid)!;
-      await sendFcm(
-        member.fcmToken,
-        "今日の質問が届いています",
-        "「ふたりの質問」にまだ答えていません。今日の質問に答えてみましょう。",
-        { type: "question", coupleId: coupleDoc.id },
-      );
-    }
+  const toRemind = resolveQuestionReminderTargets(members);
+  for (const uid of toRemind) {
+    const member = members.find((m) => m.uid === uid)!;
+    await sendFcm(
+      member.fcmToken,
+      "今日の質問が届いています",
+      "「ふたりの質問」にまだ答えていません。今日の質問に答えてみましょう。",
+      { type: "question", coupleId: member.coupleId },
+    );
   }
 }
 
@@ -606,6 +616,27 @@ export const askGemini = onCall<AskGeminiRequest>(
     }
 
     return { text: result.text };
+  },
+);
+
+// ── ふたりの質問: 翌日の質問をGeminiで用意する ────────────────
+// 手書きの90問を日付で回していた頃は3か月で同じ質問に戻っていた。
+// 前の晩に翌日の質問を1つ作り、これまでの質問と被らないものだけを
+// dailyQuestions/{dateKey} に保存する（daily_question_generation.ts参照）。
+// 既にその日の分があれば何もしないので、21〜23時に毎時走らせて、
+// 一時的な障害で1回失敗しても次の回で拾えるようにしてある。
+export const prepareTomorrowQuestion = onSchedule(
+  { schedule: "0 21-23 * * *", timeZone: "Asia/Tokyo", secrets: [geminiApiKey] },
+  async () => {
+    const apiKey = geminiApiKey.value();
+    if (!apiKey) {
+      logger.error("prepareTomorrowQuestion: GEMINI_API_KEYシークレットが空です。手書きの予備の質問で代用します");
+    }
+    await prepareDailyQuestion(
+      db,
+      Date.now(),
+      apiKey ? (contents) => callGeminiApi(contents, apiKey) : null,
+    );
   },
 );
 
@@ -794,28 +825,27 @@ export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
     throw new HttpsError("permission-denied", "このカップルのメンバーではありません");
   }
 
-  // Storageの写真はFirestoreと別の保管先なので、個別に消す必要がある。
-  // 写真が1枚も無いカップルでも空振りするだけでエラーにはならない。
-  await getStorage().bucket().deleteFiles({ prefix: `couples/${coupleId}/`, force: true });
-
-  // inviteCodes/{code} は couples のサブコレクションではなく別の
-  // トップレベルコレクションなので、recursiveDeleteの対象に入らない。
-  // 消し忘れると、解消済みのcoupleIdを指すミラーだけが孤立して残り、
-  // そのコードで参加しようとした人が「couplesドキュメントが無いのに
-  // 更新しようとして失敗する」という分かりにくいエラーになる。
-  // couples本体を消す前にinviteCodeを読み、対応するミラーも合わせて消す。
-  const coupleSnapForInviteCode = await db.collection("couples").doc(coupleId).get();
-  const inviteCode = coupleSnapForInviteCode.data()?.inviteCode as string | undefined;
-  if (inviteCode) {
-    await db.collection("inviteCodes").doc(inviteCode).delete();
-  }
-
-  // couples/{coupleId} とその配下（events/chats/todos/
-  // questionAnswers/googleCalendarCache）をまとめて削除する。
-  await db.recursiveDelete(db.collection("couples").doc(coupleId));
+  // Storageの写真・招待コードのミラー・サブコレクションまでまとめて消す
+  // （couple_cleanup.ts）。
+  await deleteCoupleData(db, getStorage().bucket(), coupleId);
 
   return { success: true };
 });
+
+// ── 残った「自分だけのカップル」の片付け ─────────────────────
+// ペアリング画面は開いた時点で自分の招待コード（自分だけのカップル）を
+// 作るため、相手のコードで参加した側にはそれが残っていた。自分だけが
+// 2つのカップルに入っていると、カップルごとに動く処理（ふたりの質問の
+// リマインダーなど）がその人にだけ二重に効く。アプリは参加時に片付ける
+// ようにしたが、それ以前に残ったもの・古いアプリから参加したもの・
+// 片付けに失敗したものをここで拾う（couple_cleanup.ts）。
+export const cleanupLeftoverCouples = onSchedule(
+  { schedule: "30 4 * * *", timeZone: "Asia/Tokyo" },
+  async () => {
+    const bucket = getStorage().bucket();
+    await cleanupLeftoverSoloCouples(db, (coupleId) => deleteCoupleData(db, bucket, coupleId));
+  },
+);
 
 // ── 外部カレンダー連携（iCalendar購読フィード）────────────────────
 // TimeTreeは「設定 → カレンダー情報 → iCal URLをコピー」で、Googleカレンダーや

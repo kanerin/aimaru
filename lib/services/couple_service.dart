@@ -31,24 +31,29 @@ class CoupleService {
   }
 
   // ── 自分がペアに属しているか確認 ─────────────────
-  Future<CoupleModel?> getMyCouple() async {
-    final snap = await _db
-        .collection('couples')
-        .where('memberIds', arrayContains: _uid)
-        .limit(1)
-        .get();
+  // ペアリング画面は開いた時点で自分の招待コード（自分だけのカップル）を
+  // 作るため、以前は相手のコードで参加した側に、自分だけのカップルが
+  // 残っていた。limit(1)だとドキュメントID順でどちらが返るか決まらず、
+  // 残った方を掴むとペアが成立していないように見える。参加時に片付ける
+  // ようにした（joinWithCode）が、それ以前に残ったものや片付けに失敗した
+  // もの（サーバー側のcleanupLeftoverCouplesが後で消す）もあるので、
+  // メンバーが多い方を選ぶ。
+  Query<Map<String, dynamic>> _myCouplesQuery() =>
+      _db.collection('couples').where('memberIds', arrayContains: _uid);
 
-    if (snap.docs.isEmpty) return null;
-    return CoupleModel.fromDoc(snap.docs.first);
+  static CoupleModel? _pickCouple(List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) return null;
+    final couples = docs.map(CoupleModel.fromDoc).toList();
+    return couples.reduce((a, b) => b.memberIds.length > a.memberIds.length ? b : a);
+  }
+
+  Future<CoupleModel?> getMyCouple() async {
+    final snap = await _myCouplesQuery().get();
+    return _pickCouple(snap.docs);
   }
 
   Stream<CoupleModel?> watchMyCouple() {
-    return _db
-        .collection('couples')
-        .where('memberIds', arrayContains: _uid)
-        .limit(1)
-        .snapshots()
-        .map((snap) => snap.docs.isEmpty ? null : CoupleModel.fromDoc(snap.docs.first));
+    return _myCouplesQuery().snapshots().map((snap) => _pickCouple(snap.docs));
   }
 
   // ── 招待コードを生成してペアを作る ───────────────
@@ -102,6 +107,18 @@ class CoupleService {
 
     final coupleId = codeDoc.data()!['coupleId'] as String;
 
+    // ペアリング画面を開いた時点で作られた、自分だけのカップル（自分の
+    // 招待コード）。参加した後に残しておくと、自分だけが2つのカップルに
+    // 入った状態になり、ふたりの質問のリマインダーが2通届く・回答済みでも
+    // 届く、アプリが残った方を掴んでペアが無いように見える、が起きていた。
+    final before = await getMyCouple();
+    final leftover = before != null &&
+            before.id != coupleId &&
+            before.memberIds.length == 1 &&
+            before.memberIds.single == _uid
+        ? before
+        : null;
+
     // couples本体とinviteCodesのミラーへ同時に自分を追加する
     // （どちらか一方だけ反映される状態を避けるためbatchでまとめる）
     final batch = _db.batch();
@@ -112,6 +129,19 @@ class CoupleService {
       'memberIds': FieldValue.arrayUnion([_uid]),
     });
     await batch.commit();
+
+    // 参加できた後で片付ける（先に消すと、参加に失敗したときに自分の
+    // コードまで失う）。ミラーやサブコレクションも含めて消すため、ペアの
+    // 解消と同じdissolveCoupleを使う。
+    if (leftover != null) {
+      try {
+        await _dissolveCoupleInvoke(leftover.id);
+      } catch (_) {
+        // 参加自体は成立しているので止めない。残ったものはサーバー側の
+        // 定期処理（cleanupLeftoverCouples）が拾い、それまでもアプリは
+        // メンバーが多い方を選ぶ（_pickCouple）。
+      }
+    }
 
     final doc = await _db.collection('couples').doc(coupleId).get();
     return CoupleModel.fromDoc(doc);
