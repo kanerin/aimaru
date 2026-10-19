@@ -34,9 +34,22 @@ export interface QuestionReminderMember {
   notifyOnDailyQuestion: boolean;
 }
 
-/** 今日まだ回答しておらず、通知が有効なメンバーだけを絞り込む。 */
+/**
+ * 今日まだ回答しておらず、通知が有効なメンバーだけを、1人1回に絞り込む。
+ *
+ * members には全カップルぶんのメンバーを並べて渡す。同じuidが複数の
+ * カップルに入っていることがある（ペアリング画面で自分の招待コードを
+ * 作ってから相手のコードで参加すると、作った側の1人だけのカップルが
+ * 残る）。カップルごとに判定していた頃は、そういう人にだけ通知が2通届き、
+ * しかもアプリが見ていない方のカップルでは回答が永久に無いので、回答
+ * 済みの日にも通知が届いていた。どれか1つのカップルで回答していれば
+ * 回答済みとみなし、通知は1人1通にする。
+ */
 export function resolveQuestionReminderTargets(members: QuestionReminderMember[]): string[] {
-  return members
-    .filter((member) => !member.answered && member.notifyOnDailyQuestion)
-    .map((member) => member.uid);
+  const answeredUids = new Set(members.filter((m) => m.answered).map((m) => m.uid));
+  const targets = new Set<string>();
+  for (const member of members) {
+    if (!answeredUids.has(member.uid) && member.notifyOnDailyQuestion) targets.add(member.uid);
+  }
+  return [...targets];
 }

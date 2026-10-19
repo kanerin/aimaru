@@ -52,6 +52,24 @@ describe("resolveQuestionReminderTargets", () => {
     assert.deepEqual(targets, ["b"]);
   });
 
+  it("複数のカップルに入っている人にも1回だけ返す", () => {
+    const targets = resolveQuestionReminderTargets([
+      { uid: "a", answered: false, notifyOnDailyQuestion: true },
+      { uid: "b", answered: false, notifyOnDailyQuestion: true },
+      { uid: "a", answered: false, notifyOnDailyQuestion: true },
+    ]);
+    assert.deepEqual(targets, ["a", "b"]);
+  });
+
+  it("どれか1つのカップルで回答済みなら、他のカップルで未回答でも除外する", () => {
+    const targets = resolveQuestionReminderTargets([
+      { uid: "a", answered: false, notifyOnDailyQuestion: true },
+      { uid: "a", answered: true, notifyOnDailyQuestion: true },
+      { uid: "b", answered: false, notifyOnDailyQuestion: true },
+    ]);
+    assert.deepEqual(targets, ["b"]);
+  });
+
   it("全員が回答済み、または通知無効なら空配列になる", () => {
     const targets = resolveQuestionReminderTargets([
       { uid: "a", answered: true, notifyOnDailyQuestion: true },
