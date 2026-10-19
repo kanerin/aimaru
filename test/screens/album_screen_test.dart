@@ -211,6 +211,21 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('写真タイルに読み上げラベルとタップの波紋(InkWell)が付く', (tester) async {
+    final handle = tester.ensureSemantics();
+    final controller = StreamController<List<AlbumPhoto>>();
+    await tester.pumpWidget(wrap(controller.stream));
+    controller.add([samplePhoto]);
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('写真を開く'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(ClipRRect), matching: find.byType(InkWell)),
+      findsOneWidget,
+    );
+    handle.dispose();
+  });
+
   testWidgets('常時表示の削除ボタンをタップして削除を確定するとStorageとAlbumServiceの両方から削除する', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = AlbumService(firestore: db, uid: 'u1');
