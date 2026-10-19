@@ -159,24 +159,38 @@ class _AlbumScreenState extends State<AlbumScreen> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        GestureDetector(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: photo.imageUrl)),
-          ),
-          // 長押しは従来からの近道として残すが、削除できること自体が
-          // 気づかれない操作だったため、下の丸い×ボタンを常に見える
-          // 削除の入口として追加する。
-          onLongPress: () => _confirmDelete(photo),
+        // 画像だけのタイルはスクリーンリーダーに何も読まれず、タップの
+        // 手応えも無かったため、ラベルと波紋を付ける。
+        Semantics(
+          button: true,
+          label: '写真を開く',
           child: ClipRRect(
             borderRadius: BorderRadius.circular(10),
-            child: CachedNetworkImage(
-              imageUrl: photo.imageUrl,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => Container(color: AppColors.navySurface),
-              errorWidget: (_, __, ___) => Container(
-                color: AppColors.navySurface,
-                child: const Icon(Icons.broken_image_outlined, color: AppColors.textMuted),
-              ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CachedNetworkImage(
+                  imageUrl: photo.imageUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(color: AppColors.navySurface),
+                  errorWidget: (_, __, ___) => Container(
+                    color: AppColors.navySurface,
+                    child: const Icon(Icons.broken_image_outlined, color: AppColors.textMuted),
+                  ),
+                ),
+                Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ImageDetailScreen(imageUrl: photo.imageUrl)),
+                    ),
+                    // 長押しは従来からの近道として残すが、削除できること自体が
+                    // 気づかれない操作だったため、下の丸い×ボタンを常に見える
+                    // 削除の入口として追加する。
+                    onLongPress: () => _confirmDelete(photo),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
