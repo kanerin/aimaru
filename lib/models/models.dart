@@ -547,8 +547,8 @@ class GCalEventSummary {
 }
 
 // ── QuestionAnswer（デイリー質問への回答）───────────────
-// TimeTreeには無い「お互いを知る」体験。日付ごとに固定の質問
-// （lib/utils/daily_question_picker.dart）を出し、2人とも回答するまでは
+// TimeTreeには無い「お互いを知る」体験。カップルごとに1日1つの質問
+// （QuestionService.ensureDailyQuestion）を出し、2人とも回答するまでは
 // 相手の回答を伏せる（lib/screens/questions_screen.dart側の判定）ことで、
 // 相手の回答に引っ張られない素直な回答を引き出す。
 // idは'${dateKey}_$uid'（1人1日1件、上書き不可）。
@@ -558,6 +558,8 @@ class QuestionAnswer {
   final String dateKey; // 'yyyy-MM-dd'
   final String uid;
   final String text;
+  // 回答した質問文。質問を保存していなかった頃の回答には無い（null）。
+  final String? question;
   final DateTime createdAt;
 
   QuestionAnswer({
@@ -566,6 +568,7 @@ class QuestionAnswer {
     required this.dateKey,
     required this.uid,
     required this.text,
+    this.question,
     required this.createdAt,
   });
 
@@ -577,6 +580,7 @@ class QuestionAnswer {
       dateKey:   d['dateKey'] ?? '',
       uid:       d['uid'] ?? '',
       text:      d['text'] ?? '',
+      question:  d['question'] as String?,
       createdAt: (d['createdAt'] as Timestamp).toDate(),
     );
   }
@@ -586,6 +590,7 @@ class QuestionAnswer {
     'dateKey':   dateKey,
     'uid':       uid,
     'text':      text,
+    if (question != null) 'question': question,
     'createdAt': Timestamp.fromDate(createdAt),
   };
 }

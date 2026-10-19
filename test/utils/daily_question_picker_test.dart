@@ -57,6 +57,64 @@ void main() {
     });
   });
 
+  group('allDailyQuestions', () {
+    test('同じ質問が重複して入っていない（重複すると回答済みの質問がまた出る）', () {
+      expect(allDailyQuestions.toSet().length, allDailyQuestions.length);
+    });
+
+    test('半年以上、毎日ちがう質問を出せるだけの数がある', () {
+      expect(allDailyQuestions.length, greaterThanOrEqualTo(200));
+    });
+
+    test('日付から決まる質問はすべて含まれている', () {
+      for (var d = 0; d < 800; d++) {
+        final question = pickDailyQuestion(DateTime(2026, 1, 1).add(Duration(days: d)));
+        expect(allDailyQuestions, contains(question));
+      }
+    });
+  });
+
+  group('pickUnaskedQuestion', () {
+    final date = DateTime(2026, 10, 4);
+
+    test('まだ何も出していなければ、日付から決まる質問を返す（古い版の相手と揃う）', () {
+      expect(pickUnaskedQuestion(date, {}), pickDailyQuestion(date));
+    });
+
+    test('日付から決まる質問が出題済みなら、別の未出題の質問を返す', () {
+      final preferred = pickDailyQuestion(date);
+
+      final picked = pickUnaskedQuestion(date, {preferred: '2026-09-01'});
+
+      expect(picked, isNot(preferred));
+    });
+
+    test('出題済みの質問は、未出題のものが残っている限り選ばない', () {
+      final askedOn = <String, String>{};
+      var day = DateTime(2026, 10, 4);
+      // 表にある全問を、1日1問ずつ出し切るまで選び続ける。
+      final total = allDailyQuestions.length;
+
+      for (var i = 0; i < total; i++) {
+        final picked = pickUnaskedQuestion(day, askedOn);
+        expect(askedOn.containsKey(picked), isFalse, reason: '${i + 1}日目に出題済みの質問が出た');
+        askedOn[picked] = day.toIso8601String().substring(0, 10);
+        day = day.add(const Duration(days: 1));
+      }
+
+      expect(askedOn.length, total);
+    });
+
+    test('全問を出し切った後は、いちばん長く出していない質問に戻る', () {
+      final all = allDailyQuestions;
+      final askedOn = {for (final q in all) q: '2026-06-15'};
+      final oldest = all.firstWhere((q) => q != pickDailyQuestion(date));
+      askedOn[oldest] = '2026-01-01';
+
+      expect(pickUnaskedQuestion(date, askedOn), oldest);
+    });
+  });
+
   group('questionForDateKey', () {
     test("'yyyy-MM-dd'のキーからその日の質問を復元できる", () {
       expect(questionForDateKey('2026-08-17'), pickDailyQuestion(DateTime(2026, 8, 17)));

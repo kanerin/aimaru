@@ -811,7 +811,7 @@ export const dissolveCouple = onCall<DissolveCoupleRequest>(async (request) => {
   }
 
   // couples/{coupleId} とその配下（events/chats/todos/
-  // questionAnswers/googleCalendarCache）をまとめて削除する。
+  // questionAnswers/dailyQuestions/googleCalendarCache）をまとめて削除する。
   await db.recursiveDelete(db.collection("couples").doc(coupleId));
 
   return { success: true };
