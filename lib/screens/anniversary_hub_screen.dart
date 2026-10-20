@@ -127,7 +127,10 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
     final date = await _pickAnniversaryDate(_now);
     if (date == null || !mounted) return;
 
-    await _anniversaryService.addAnniversary(widget.coupleId, title, date);
+    await _runWrite(
+      () => _anniversaryService.addAnniversary(widget.coupleId, title, date),
+      '追加に失敗しました。もう一度お試しください',
+    );
   }
 
   Future<void> _editAnniversary(AnniversaryItem item) async {
@@ -137,7 +140,10 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
     final date = await _pickAnniversaryDate(item.date);
     if (date == null || !mounted) return;
 
-    await _anniversaryService.updateAnniversary(item, title: title, date: date);
+    await _runWrite(
+      () => _anniversaryService.updateAnniversary(item, title: title, date: date),
+      '更新に失敗しました。もう一度お試しください',
+    );
   }
 
   Future<void> _deleteAnniversary(AnniversaryItem item) async {
@@ -149,7 +155,24 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
     );
     if (!confirmed) return;
 
-    await _anniversaryService.deleteAnniversary(item);
+    await _runWrite(
+      () => _anniversaryService.deleteAnniversary(item),
+      '削除に失敗しました。もう一度お試しください',
+    );
+  }
+
+  // 通信や権限のエラーで書き込みに失敗したとき、拾い手のない例外にして
+  // 利用者に何も見せないのではなく、他のリスト画面と同じくSnackBarで知らせる。
+  Future<void> _runWrite(Future<void> Function() action, String failureMessage) async {
+    try {
+      await action();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(failureMessage)),
+        );
+      }
+    }
   }
 
   @override

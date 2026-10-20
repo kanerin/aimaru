@@ -221,6 +221,39 @@ void main() {
       expect(find.text('🎉 結婚記念日'), findsOneWidget);
     });
 
+    testWidgets('書き込みに失敗したらSnackBarで知らせる（編集・削除）', (tester) async {
+      await seed();
+      await tester.pumpWidget(MaterialApp(
+        home: AnniversaryHubScreen(
+          coupleId: 'couple-1',
+          anniversaryServiceOverride: _FailingAnniversaryService(firestore),
+          anniversariesStreamOverride: service.watchAnniversaries('couple-1'),
+          initialCoupleOverride: couple,
+          nowOverride: () => DateTime(2026, 8, 19),
+          pickDateOverride: (_, __) async => DateTime(2021, 9, 1),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('記念日を削除'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('削除'));
+      await tester.pumpAndSettle();
+      expect(find.text('削除に失敗しました。もう一度お試しください'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      // 先のSnackBarが消えるのを待つ（残っていると次のSnackBarはキューで待たされる）
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('記念日を編集'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '結婚記念日');
+      await tester.tap(find.text('次へ'));
+      await tester.pumpAndSettle();
+      expect(find.text('更新に失敗しました。もう一度お試しください'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('編集をキャンセルすると何も変わらない', (tester) async {
       final item = await seed();
       await tester.pumpWidget(wrapWithService(
@@ -254,4 +287,25 @@ void main() {
       expect(tileWidth, cardWidth);
     });
   });
+}
+
+// 書き込みだけが必ず失敗するサービス（通信・権限エラーの再現用）。
+class _FailingAnniversaryService extends AnniversaryService {
+  _FailingAnniversaryService(FirebaseFirestore firestore)
+      : super(firestore: firestore, uid: 'u1');
+
+  @override
+  Future<AnniversaryItem> addAnniversary(String coupleId, String title, DateTime date) =>
+      Future.error(Exception('denied'));
+
+  @override
+  Future<void> updateAnniversary(
+    AnniversaryItem item, {
+    required String title,
+    required DateTime date,
+  }) =>
+      Future.error(Exception('denied'));
+
+  @override
+  Future<void> deleteAnniversary(AnniversaryItem item) => Future.error(Exception('denied'));
 }
