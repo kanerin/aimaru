@@ -406,6 +406,15 @@ Resourcesフェーズにも登録した（ファイルだけではバンドル�
 `test/ios/info_plist_test.dart`にマニフェストの存在・内容・pbxproj登録を確認するテストを追加した。
 pbxprojは手編集のためmacOS/Xcodeでの読み込み確認は未実施。
 
+2026-10-20、課題13のフェーズ9として、`ios/Runner/Runner.entitlements`（`aps-environment`）を追加し、
+Runnerターゲットの全ビルド構成（Debug/Release/Profile）の`CODE_SIGN_ENTITLEMENTS`から参照した
+（reduce-debt枠、本PR）。フェーズ3の`UIBackgroundModes`だけではiOSはAPNsトークンを発行せず、
+Push Notifications capability（このentitlements）が無いとFCMのiOS通知は届かない。値は`development`で、
+App Store/TestFlight向けのarchive時はXcodeの自動署名が`production`に解決する。
+`test/ios/info_plist_test.dart`にファイルの存在・3構成での参照を確認するテストを追加した
+（`flutter analyze`・`flutter test`（654件）通過。pbxprojは手編集のためmacOS/Xcodeでの読み込みは未確認）。
+Appleのデベロッパーポータル側でのPush Notifications capability有効化とAPNs認証鍵の作成は引き続き人間作業。
+
 **次回以降に残る範囲**: 上記のCIジョブ追加（ワークフロー権限が必要）、
 Apple Developer登録、APNs認証鍵の作成、FirebaseへのiOSアプリ登録
 （bundle ID決定を含む）、`firebase_options.dart`へのiOSケース追加、
