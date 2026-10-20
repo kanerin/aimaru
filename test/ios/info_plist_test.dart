@@ -56,6 +56,24 @@ void main() {
         isTrue);
   });
 
+  test('プッシュ通知のentitlements(aps-environment)があり、全ビルド構成で参照されている', () {
+    // aps-environmentが無いとiOSはAPNsトークンを発行せず、FCM通知が届かない。
+    final entitlements = File('ios/Runner/Runner.entitlements');
+    expect(entitlements.existsSync(), isTrue);
+    expect(entitlements.readAsStringSync(), contains('<key>aps-environment</key>'));
+
+    final pbxproj =
+        File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+    // Runnerターゲットの Debug / Release / Profile の3構成
+    expect(
+      'CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'
+          .allMatches(pbxproj)
+          .length,
+      3,
+    );
+    expect(pbxproj, contains('path = Runner.entitlements;'));
+  });
+
   test('デプロイメントターゲットがFirebaseプラグインの要求(iOS 15.0)以上', () {
     // firebase_core / firebase_messaging / cloud_firestore / firebase_auth の
     // podspecは iOS 15.0 以上を要求する。下回るとpod installが失敗する。
