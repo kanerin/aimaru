@@ -187,6 +187,9 @@ class _HomeShell extends StatefulWidget {
 class _HomeShellState extends State<_HomeShell> {
   int _index = 0;
   String? _coupleId;
+  // チャットタブで2人のトーク（1枚目）を開くよう頼んだ回数。増えるたびに
+  // ChatPagerScreenが1枚目へ切り替える。
+  int _showChatRequest = 0;
 
   @override
   void initState() {
@@ -217,7 +220,11 @@ class _HomeShellState extends State<_HomeShell> {
       // ① カレンダー
       CalendarScreen(coupleId: _coupleId!),
       // ② チャット（左右スワイプでカップルチャット ⇄ AIチャット）
-      ChatPagerScreen(coupleId: _coupleId!, isActive: _index == 1),
+      ChatPagerScreen(
+        coupleId: _coupleId!,
+        isActive: _index == 1,
+        showChatRequest: _showChatRequest,
+      ),
       // ③ 記念日
       AnniversaryHubScreen(coupleId: _coupleId!),
       // ④ ふたりの質問。IndexedStackで保持しているので、作り直さないと日付を
@@ -225,10 +232,15 @@ class _HomeShellState extends State<_HomeShell> {
       DailyRefresh(builder: (_) => const QuestionsRouteScreen()),
     ];
 
-    // 通知タップなどで頼まれたタブ（ふたりの質問の通知なら「質問」）を開く。
+    // 通知タップなどで頼まれたタブ（ふたりの質問の通知なら「質問」、トークの
+    // 通知なら「チャット」）を開く。チャットタブはAIチャット側を開いたままに
+    // なっていることがあるので、2人のトークに戻すよう頼む。
     return HomeTabRequestListener(
       requests: HomeTabRequests.instance,
-      onTab: (tab) => setState(() => _index = tab.index),
+      onTab: (tab) => setState(() {
+        _index = tab.index;
+        if (tab == HomeTab.chat) _showChatRequest++;
+      }),
       child: Scaffold(
         // IndexedStackで4画面すべてをマウントしたまま保持する。
         // pages[_index]のように切り替えるとタブを離れた画面は破棄され、

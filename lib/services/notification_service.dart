@@ -11,10 +11,12 @@ import 'home_tab_requests.dart';
 // ここでは特別な処理は不要（アプリのisolateが別なのでトップレベル関数が必須）。
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 
-// 通知タップ時に開くホームのタブ。ペイロードの`type`が"question"（ふたりの質問の
-// 未回答リマインダー、functions/src/index.tsのsendDailyQuestionReminder）なら
-// 「質問」タブ、それ以外は開いていたタブのまま（null）。予定・チャットなどは
-// 従来どおりホームへ飛ばすだけ。
+// 通知タップ時に開くホームのタブ。ペイロードの`type`（functions/src/index.ts）が
+// "question"（ふたりの質問の未回答リマインダー、sendDailyQuestionReminder）なら
+// 「質問」タブ、"new_chat_message"（パートナーからのトーク、onChatMessageCreated）
+// なら「チャット」タブ、それ以外は開いていたタブのまま（null）。予定などは
+// 従来どおりホームへ飛ばすだけ。チャットタブを開いたときは、AIチャット側を
+// 開いていても2人のトークに戻す（main.dartの_HomeShell→ChatPagerScreen）。
 // 以前は`/home/questions`という別画面をホームの上に積んでいたが、下部ナビに
 // 「質問」タブができてからは同じ画面が二重にある状態になっていた。
 // 通知から起動したときはログイン確認（`/login`→`/home`のリダイレクト）や
@@ -24,6 +26,8 @@ HomeTab? homeTabForNotificationData(Map<String, dynamic> data) {
   switch (data['type']) {
     case 'question':
       return HomeTab.questions;
+    case 'new_chat_message':
+      return HomeTab.chat;
     default:
       return null;
   }
@@ -31,8 +35,9 @@ HomeTab? homeTabForNotificationData(Map<String, dynamic> data) {
 
 // アプリを開いている最中に届いた通知の表示。フォアグラウンドではFCMが
 // システムの通知を出さないため、このSnackBarが利用者にとっての「通知」になる。
-// ふたりの質問の通知には「回答する」ボタンを付け、通知をタップしたときと
-// 同じ質問タブへ飛べるようにする。タイトルも本文も無ければ何も出さない（null）。
+// ふたりの質問の通知には「回答する」、トークの通知には「開く」ボタンを付け、
+// 通知をタップしたときと同じタブへ飛べるようにする。タイトルも本文も無ければ
+// 何も出さない（null）。
 SnackBar? buildForegroundNotificationSnackBar(
   RemoteMessage message, {
   required VoidCallback onOpen,
@@ -42,9 +47,12 @@ SnackBar? buildForegroundNotificationSnackBar(
   final text  = [title, body].where((s) => s != null && s.isNotEmpty).join(' - ');
   if (text.isEmpty) return null;
 
-  final action = homeTabForNotificationData(message.data) == HomeTab.questions
-      ? SnackBarAction(label: '回答する', onPressed: onOpen)
-      : null;
+  final actionLabel = switch (homeTabForNotificationData(message.data)) {
+    HomeTab.questions => '回答する',
+    HomeTab.chat => '開く',
+    _ => null,
+  };
+  final action = actionLabel == null ? null : SnackBarAction(label: actionLabel, onPressed: onOpen);
 
   return SnackBar(
     content: Text(text),
@@ -200,8 +208,8 @@ class NotificationService {
 
   void _onMessageTap(RemoteMessage message) => _openFromNotification(message);
 
-  // 予定詳細への直接遷移は今後の拡張。質問の通知は「質問」タブ、それ以外は
-  // ホーム（開いていたタブ）へ。タブの依頼は先に出しておき、ホームが
+  // 予定詳細への直接遷移は今後の拡張。質問の通知は「質問」タブ、トークの通知は
+  // 「チャット」タブ、それ以外はホーム（開いていたタブ）へ。タブの依頼は先に出しておき、ホームが
   // まだ表示されていなくても表示された時点で反映されるようにする。
   void _openFromNotification(RemoteMessage message) {
     final tab = homeTabForNotificationData(message.data);

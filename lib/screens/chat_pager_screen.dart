@@ -12,6 +12,10 @@ class ChatPagerScreen extends StatefulWidget {
   // ホーム画面のIndexedStackで「チャット」タブが表示中かどうか。
   // ChatScreenの既読更新は、このタブが表示中かつ1枚目を見ているときだけ行う。
   final bool isActive;
+  // この値が変わるたびに2人のトーク（1枚目）へ切り替える。トークの通知を
+  // タップしたとき、AIチャット側を開いたままでも相手のメッセージが見える
+  // ようにするため（main.dartの_HomeShellが通知のたびに増やす）。
+  final int showChatRequest;
   // テストからFirebaseに触れずに各ページを差し込むための注入ポイント。
   // 引数はそのページが表示中かどうか。未指定時は本番の画面を使う。
   final Widget Function(bool isActive)? chatPageOverride;
@@ -21,6 +25,7 @@ class ChatPagerScreen extends StatefulWidget {
     super.key,
     required this.coupleId,
     required this.isActive,
+    this.showChatRequest = 0,
     this.chatPageOverride,
     this.aiChatPageOverride,
   });
@@ -36,6 +41,18 @@ class _ChatPagerScreenState extends State<ChatPagerScreen> {
 
   final _pageController = PageController();
   int _page = _chatPage;
+
+  @override
+  void didUpdateWidget(ChatPagerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showChatRequest != oldWidget.showChatRequest &&
+        _page != _chatPage &&
+        _pageController.hasClients) {
+      FocusScope.of(context).unfocus();
+      // 通知から開いたときは、アニメーションせずにすぐトークを見せる。
+      _pageController.jumpToPage(_chatPage);
+    }
+  }
 
   @override
   void dispose() {
