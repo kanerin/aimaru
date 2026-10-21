@@ -76,4 +76,65 @@ void main() {
 
     await controller.close();
   });
+
+  Widget wrapWith({
+    Future<void> Function(AimaruEvent)? restore,
+    Future<void> Function(AimaruEvent)? permanentlyDelete,
+  }) =>
+      MaterialApp(
+        home: TrashScreen(
+          coupleId: 'couple-1',
+          eventsStreamOverride: Stream.value([buildEvent(title: '削除された旅行')]),
+          restoreOverride: restore,
+          permanentlyDeleteOverride: permanentlyDelete,
+        ),
+      );
+
+  testWidgets('元に戻すと完了を知らせる', (tester) async {
+    AimaruEvent? restored;
+    await tester.pumpWidget(wrapWith(restore: (e) async => restored = e));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.restore));
+    await tester.pump();
+
+    expect(restored?.title, '削除された旅行');
+    expect(find.textContaining('元に戻しました'), findsOneWidget);
+  });
+
+  testWidgets('元に戻すのに失敗したらSnackBarで知らせる', (tester) async {
+    await tester.pumpWidget(wrapWith(restore: (e) async => throw Exception('network')));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.restore));
+    await tester.pump();
+
+    expect(find.textContaining('元に戻せませんでした'), findsOneWidget);
+  });
+
+  testWidgets('完全削除に失敗したらSnackBarで知らせる', (tester) async {
+    await tester.pumpWidget(
+        wrapWith(permanentlyDelete: (e) async => throw Exception('PERMISSION_DENIED')));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_forever));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('完全に削除する'));
+    await tester.pump();
+
+    expect(find.textContaining('削除できませんでした'), findsOneWidget);
+  });
+
+  testWidgets('完全削除の確認でキャンセルしたら削除しない', (tester) async {
+    var called = false;
+    await tester.pumpWidget(wrapWith(permanentlyDelete: (e) async => called = true));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_forever));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+
+    expect(called, isFalse);
+  });
 }

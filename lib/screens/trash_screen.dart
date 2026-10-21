@@ -13,7 +13,15 @@ class TrashScreen extends StatefulWidget {
   // テストからエラー/データを直接流し込むための注入ポイント。
   // 未指定時は本番のFirestoreストリームを使う。
   final Stream<List<AimaruEvent>>? eventsStreamOverride;
-  const TrashScreen({super.key, required this.coupleId, this.eventsStreamOverride});
+  final Future<void> Function(AimaruEvent event)? restoreOverride;
+  final Future<void> Function(AimaruEvent event)? permanentlyDeleteOverride;
+  const TrashScreen({
+    super.key,
+    required this.coupleId,
+    this.eventsStreamOverride,
+    this.restoreOverride,
+    this.permanentlyDeleteOverride,
+  });
 
   @override
   State<TrashScreen> createState() => _TrashScreenState();
@@ -26,7 +34,21 @@ class _TrashScreenState extends State<TrashScreen> {
   late final Stream<List<AimaruEvent>> _eventsStream =
       widget.eventsStreamOverride ?? _eventService.watchDeletedEvents(widget.coupleId);
 
-  Future<void> _restore(AimaruEvent event) => _eventService.restoreEvent(event);
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // 失敗しても何も出ないと、押したのに一覧に残り続けるだけで原因が分からない。
+  // 成功時も一覧から消えるだけなので結果を知らせる。
+  Future<void> _restore(AimaruEvent event) async {
+    try {
+      await (widget.restoreOverride ?? _eventService.restoreEvent)(event);
+      _showSnack('「${event.title}」を元に戻しました');
+    } catch (e) {
+      _showSnack('元に戻せませんでした。もう一度お試しください');
+    }
+  }
 
   Future<void> _permanentlyDelete(AimaruEvent event) async {
     final confirmed = await showDialog<bool>(
@@ -46,7 +68,11 @@ class _TrashScreenState extends State<TrashScreen> {
       ),
     );
     if (confirmed != true) return;
-    await _eventService.permanentlyDeleteEvent(event);
+    try {
+      await (widget.permanentlyDeleteOverride ?? _eventService.permanentlyDeleteEvent)(event);
+    } catch (e) {
+      _showSnack('削除できませんでした。もう一度お試しください');
+    }
   }
 
   @override
