@@ -54,8 +54,14 @@ const _questionMessage = RemoteMessage(
   ),
 );
 
-// 通知タップ時に開くホームのタブの振り分け。ふたりの質問の通知だけ「質問」タブを
-// 開き、それ以外（予定・チャット・リマインダーなど）は従来どおりホームへ飛ぶだけ。
+const _chatMessage = RemoteMessage(
+  data: {'type': 'new_chat_message', 'coupleId': 'couple-1', 'messageId': 'm1'},
+  notification: RemoteNotification(title: 'あいてさんからメッセージ', body: 'おつかれさま'),
+);
+
+// 通知タップ時に開くホームのタブの振り分け。ふたりの質問の通知は「質問」タブ、
+// トークの通知は「チャット」タブを開き、それ以外（予定・リマインダーなど）は
+// 従来どおりホームへ飛ぶだけ。
 void main() {
   group('homeTabForNotificationData', () {
     test('ふたりの質問の通知は「質問」タブ', () {
@@ -65,8 +71,12 @@ void main() {
       );
     });
 
-    test('予定・チャット・リマインダー・記念日の通知はタブを指定しない', () {
-      for (final type in ['new_event', 'new_chat_message', 'reminder', 'anniversary']) {
+    test('トークの通知は「チャット」タブ', () {
+      expect(homeTabForNotificationData(_chatMessage.data), HomeTab.chat);
+    });
+
+    test('予定・リマインダー・記念日の通知はタブを指定しない', () {
+      for (final type in ['new_event', 'reminder', 'anniversary']) {
         expect(homeTabForNotificationData({'type': type}), isNull, reason: type);
       }
     });
@@ -96,7 +106,23 @@ void main() {
       expect(opened, isTrue);
     });
 
-    test('質問以外の通知は文言だけでボタンは付かない', () {
+    test('トークの通知にはチャットタブへ飛ぶ「開く」ボタンが付く', () {
+      var opened = false;
+      final snackBar = buildForegroundNotificationSnackBar(
+        _chatMessage,
+        onOpen: () => opened = true,
+      )!;
+
+      final action = snackBar.action!;
+      expect(action.label, '開く');
+      expect(snackBar.persist, isFalse);
+      expect((snackBar.content as Text).data, 'あいてさんからメッセージ - おつかれさま');
+
+      action.onPressed();
+      expect(opened, isTrue);
+    });
+
+    test('質問・トーク以外の通知は文言だけでボタンは付かない', () {
       final snackBar = buildForegroundNotificationSnackBar(
         const RemoteMessage(
           data: {'type': 'new_event'},
@@ -269,7 +295,7 @@ void main() {
       expect(find.text('タブ: questions'), findsOneWidget);
     });
 
-    testWidgets('質問以外の通知をタップしてもタブは変わらない', (tester) async {
+    testWidgets('トークの通知をタップしたらチャットタブを開く', (tester) async {
       await pumpApp(tester);
       await NotificationService.forTest(
         messages: messages,
@@ -277,7 +303,34 @@ void main() {
         homeTabs: homeTabs,
       ).init(scaffoldMessengerKey: messengerKey, router: router);
 
-      messages.opened.add(const RemoteMessage(data: {'type': 'new_chat_message'}));
+      messages.opened.add(_chatMessage);
+      await tester.pumpAndSettle();
+
+      expect(find.text('タブ: chat'), findsOneWidget);
+    });
+
+    testWidgets('トークの通知から起動しても、ホームが出たらチャットタブを開く', (tester) async {
+      messages.initial = () async => _chatMessage;
+      await pumpApp(tester);
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+      await tester.pumpAndSettle();
+
+      expect(find.text('タブ: chat'), findsOneWidget);
+    });
+
+    testWidgets('質問・トーク以外の通知をタップしてもタブは変わらない', (tester) async {
+      await pumpApp(tester);
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+
+      messages.opened.add(const RemoteMessage(data: {'type': 'new_event'}));
       await tester.pumpAndSettle();
 
       expect(find.text('タブ: calendar'), findsOneWidget);

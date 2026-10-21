@@ -95,6 +95,50 @@ void main() {
         reason: 'スワイプで離れるとAIチャットの画面が破棄され、入力内容が消えている');
   });
 
+  testWidgets('トークの通知から開くよう頼まれたら、AIチャット表示中でも2人のトークに戻る', (tester) async {
+    Widget pager(int showChatRequest) => MaterialApp(
+          home: ChatPagerScreen(
+            coupleId: 'c1',
+            isActive: true,
+            showChatRequest: showChatRequest,
+            chatPageOverride: (_) => fakePage('カップルチャット', 'メッセージを入力...'),
+            aiChatPageOverride: (_) => fakePage('AIMARU AI', '予定を追加...'),
+          ),
+        );
+    await tester.pumpWidget(pager(0));
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('AIMARU AI'), findsOneWidget);
+
+    await tester.pumpWidget(pager(1));
+    await tester.pumpAndSettle();
+
+    expect(find.text('カップルチャット'), findsOneWidget);
+    expect(find.text('AIMARU AI'), findsNothing);
+  });
+
+  testWidgets('頼まれた回数が変わらなければ、開いているページはそのまま', (tester) async {
+    Widget pager(bool isActive) => MaterialApp(
+          home: ChatPagerScreen(
+            coupleId: 'c1',
+            isActive: isActive,
+            showChatRequest: 1,
+            chatPageOverride: (_) => fakePage('カップルチャット', 'メッセージを入力...'),
+            aiChatPageOverride: (_) => fakePage('AIMARU AI', '予定を追加...'),
+          ),
+        );
+    await tester.pumpWidget(pager(true));
+    await tester.fling(find.byType(PageView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+
+    // 別のタブへ移って戻ってきた（isActiveだけが変わった）
+    await tester.pumpWidget(pager(false));
+    await tester.pumpWidget(pager(true));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AIMARU AI'), findsOneWidget);
+  });
+
   testWidgets('チャットタブ自体が非表示のときはどのページもisActiveにならない', (tester) async {
     final (chatActive, _) = await pumpPager(tester, isActive: false);
     expect(chatActive.last, isFalse);
