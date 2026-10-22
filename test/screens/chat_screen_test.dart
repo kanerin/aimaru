@@ -185,6 +185,28 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('送信に失敗したら入力した文章を入力欄へ戻してSnackBarで知らせる', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(
+        coupleId: coupleId,
+        isActive: true,
+        chatServiceOverride: _FailingSendChatService(db),
+        coupleServiceOverride: meCoupleService,
+        currentUidOverride: meUid,
+        messagesStreamOverride: Stream.value(<ChatMessage>[]).asBroadcastStream(),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'おはよう');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('メッセージを送信できませんでした'), findsOneWidget);
+    expect(find.text('おはよう'), findsOneWidget);
+  });
+
   testWidgets('画像メッセージの保存ボタンは読み上げラベルを持ち、44px四方のタップ領域がある', (tester) async {
     final message = ChatMessage(
       id: 'img-1',
@@ -205,4 +227,13 @@ void main() {
     expect(size.width, greaterThanOrEqualTo(44));
     expect(size.height, greaterThanOrEqualTo(44));
   });
+}
+
+class _FailingSendChatService extends ChatService {
+  _FailingSendChatService(FirebaseFirestore db) : super(firestore: db, uid: 'me');
+
+  @override
+  Future<void> sendMessage(String coupleId, {String? text, String? imageUrl}) async {
+    throw Exception('permission-denied');
+  }
 }

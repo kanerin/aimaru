@@ -123,8 +123,24 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     _controller.clear();
-    await _chatService.sendMessage(widget.coupleId, text: text);
+    try {
+      await _chatService.sendMessage(widget.coupleId, text: text);
+    } catch (_) {
+      // 送れなかった文章を消したままにすると書き直しになるので、入力欄へ戻す。
+      // ただし送信中に新しく打ち始めていたら、そちらを優先して上書きしない。
+      if (mounted && _controller.text.isEmpty) {
+        _controller.text = text;
+        _controller.selection = TextSelection.collapsed(offset: text.length);
+      }
+      _showSnack('メッセージを送信できませんでした');
+      return;
+    }
     _scrollToBottom();
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _sendImage() async {
@@ -141,6 +157,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final url = await _storageService.uploadChatImage(widget.coupleId, File(file.path));
       await _chatService.sendMessage(widget.coupleId, imageUrl: url);
       _scrollToBottom();
+    } catch (_) {
+      _showSnack('画像を送信できませんでした');
     } finally {
       if (mounted) setState(() => _sendingImage = false);
     }
