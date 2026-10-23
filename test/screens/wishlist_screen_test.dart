@@ -259,10 +259,58 @@ void main() {
 
     await controller.close();
   });
+
+  testWidgets('「用意する」に失敗したら例外を握りつぶさずエラーを表示する', (tester) async {
+    final controller = StreamController<List<WishlistItem>>();
+    await tester.pumpWidget(wrap(controller.stream, wishlistService: _ThrowingWishlistService()));
+
+    controller.add([partners]);
+    await tester.pump();
+
+    await tester.tap(find.textContaining('用意する'));
+    await tester.pump();
+
+    expect(find.text('予約に失敗しました。もう一度お試しください'), findsOneWidget);
+
+    await controller.close();
+  });
+
+  testWidgets('予約の取り消しに失敗したらエラーを表示する', (tester) async {
+    final itemsController = StreamController<List<WishlistItem>>();
+    final reservedController = StreamController<Set<String>>();
+    await tester.pumpWidget(wrap(
+      itemsController.stream,
+      reservedIdsStream: reservedController.stream,
+      wishlistService: _ThrowingWishlistService(),
+    ));
+
+    itemsController.add([partners]);
+    reservedController.add({partners.id});
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.textContaining('予約済み'));
+    await tester.pump();
+
+    expect(find.text('予約の取り消しに失敗しました。もう一度お試しください'), findsOneWidget);
+
+    await itemsController.close();
+    await reservedController.close();
+  });
 }
 
 class _ThrowingWishlistService extends WishlistService {
   _ThrowingWishlistService() : super(firestore: FakeFirebaseFirestore(), uid: 'user-me');
+
+  @override
+  Future<void> reserveItem(String coupleId, String itemId) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> unreserveItem(String coupleId, String itemId) {
+    throw Exception('firestore unavailable');
+  }
 
   @override
   Future<WishlistItem> addItem(String coupleId, String text, {String? url}) {
