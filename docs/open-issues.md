@@ -753,6 +753,16 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 （`_ThrowingTodoService`等、`event_form_screen_test.dart`の`_ThrowingEventService`と
 同じ設計）を使って追加・削除それぞれの失敗時の挙動を確認するテストを追加した。
 
+2026-10-23、記念日タブ（`AnniversaryHubScreen`）の`_loadCouple`が`getMyCouple`の例外を
+捕まえておらず、権限・通信エラーで`_loadingCouple`がtrueのまま無限ローディングになる
+経路を直した（reduce-debt枠、本PR）。失敗時はエラー表示と「再読み込み」ボタンを出す
+（空のカードを出すと保存で既存の日付を上書きしかねないため）。`test/screens/anniversary_hub_screen_test.dart`
+にローディング・失敗・再読み込みでの復帰を追加した（`flutter analyze`・`flutter test`（668件）通過）。
+**同じ型（initStateからの読み込みで例外を捕まえない）が`settings_screen.dart`の
+`_loadPrefs`/`_loadPartner`（`_loadingPrefs`が戻らない）と`chat_screen.dart`の`_loadPartner`にも
+残っている**。この2画面はサービスをコンストラクタから注入できずテストを書けないため今回は
+見送った。次回は注入ポイントを足してから同様に直す。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

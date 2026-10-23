@@ -56,6 +56,7 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
 
   CoupleModel? _couple;
   bool _loadingCouple = true;
+  bool _coupleLoadFailed = false;
 
   DateTime get _now => (widget.nowOverride ?? DateTime.now)();
 
@@ -71,11 +72,27 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
     }
   }
 
+  // 失敗を握りつぶさないと、権限エラー等で_loadingCoupleがtrueのまま
+  // 無限ローディングになる。空のカードを出すと保存で既存の日付を
+  // 上書きしかねないので、エラー表示と再読み込みに倒す。
   Future<void> _loadCouple() async {
-    final couple = await _coupleService.getMyCouple();
-    if (mounted) {
+    if (_coupleLoadFailed) {
+      setState(() {
+        _coupleLoadFailed = false;
+        _loadingCouple = true;
+      });
+    }
+    try {
+      final couple = await _coupleService.getMyCouple();
+      if (!mounted) return;
       setState(() {
         _couple = couple;
+        _loadingCouple = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _coupleLoadFailed = true;
         _loadingCouple = false;
       });
     }
@@ -182,6 +199,18 @@ class _AnniversaryHubScreenState extends State<AnniversaryHubScreen> {
       appBar: AppBar(title: const Text('記念日')),
       body: _loadingCouple
           ? Center(child: CircularProgressIndicator(color: appAccent(context)))
+          : _coupleLoadFailed
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('読み込みに失敗しました',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                  const SizedBox(height: 12),
+                  TextButton(onPressed: _loadCouple, child: const Text('再読み込み')),
+                ],
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [

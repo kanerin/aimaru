@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/anniversary_hub_screen.dart';
 import 'package:aimaru/services/anniversary_service.dart';
+import 'package:aimaru/services/couple_service.dart';
 import 'package:aimaru/widgets/anniversary_card.dart';
 
 // 記念日タブ（次に会う日・記念日・記念日リストを1画面に統合したもの）を検証する。
@@ -287,6 +288,57 @@ void main() {
       expect(tileWidth, cardWidth);
     });
   });
+
+  // initialCoupleOverrideを使わない本番経路。getMyCoupleが失敗しても
+  // 無限ローディングのまま固まらないことを確かめる。
+  group('ペア情報の読み込み', () {
+    Widget wrapLoading(CoupleService service) => MaterialApp(
+          home: AnniversaryHubScreen(
+            coupleId: 'couple-1',
+            coupleServiceOverride: service,
+            anniversariesStreamOverride: const Stream.empty(),
+            nowOverride: () => DateTime(2026, 8, 19),
+          ),
+        );
+
+    testWidgets('読み込み中はローディング、終わればカードを表示する', (tester) async {
+      final completer = Completer<CoupleModel?>();
+      await tester.pumpWidget(wrapLoading(_StubCoupleService(() => completer.future)));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      completer.complete(couple);
+      await tester.pump();
+      expect(find.text('🗓️ 次に会う日'), findsOneWidget);
+    });
+
+    testWidgets('失敗したらエラーを出し、再読み込みで復帰できる', (tester) async {
+      var fail = true;
+      await tester.pumpWidget(wrapLoading(_StubCoupleService(() async {
+        if (fail) throw Exception('PERMISSION_DENIED');
+        return couple;
+      })));
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('読み込みに失敗しました'), findsOneWidget);
+
+      fail = false;
+      await tester.tap(find.text('再読み込み'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('読み込みに失敗しました'), findsNothing);
+      expect(find.text('🗓️ 次に会う日'), findsOneWidget);
+    });
+  });
+}
+
+class _StubCoupleService extends CoupleService {
+  _StubCoupleService(this._load) : super(firestore: FakeFirebaseFirestore(), uid: 'u1');
+  final Future<CoupleModel?> Function() _load;
+
+  @override
+  Future<CoupleModel?> getMyCouple() => _load();
 }
 
 // 書き込みだけが必ず失敗するサービス（通信・権限エラーの再現用）。
