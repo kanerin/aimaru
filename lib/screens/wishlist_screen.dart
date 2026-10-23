@@ -109,10 +109,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Future<void> _toggleReserve(WishlistItem item, bool reserved) async {
-    if (reserved) {
-      await _service.unreserveItem(widget.coupleId, item.id);
-    } else {
-      await _service.reserveItem(widget.coupleId, item.id);
+    try {
+      if (reserved) {
+        await _service.unreserveItem(widget.coupleId, item.id);
+      } else {
+        await _service.reserveItem(widget.coupleId, item.id);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(reserved
+              ? '予約の取り消しに失敗しました。もう一度お試しください'
+              : '予約に失敗しました。もう一度お試しください')),
+        );
+      }
     }
   }
 
