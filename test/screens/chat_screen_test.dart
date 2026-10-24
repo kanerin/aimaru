@@ -227,6 +227,33 @@ void main() {
     expect(size.width, greaterThanOrEqualTo(44));
     expect(size.height, greaterThanOrEqualTo(44));
   });
+
+  testWidgets('パートナー情報の読み込みに失敗しても例外を出さず「パートナー」表示のまま使える', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(
+        coupleId: coupleId,
+        isActive: true,
+        chatServiceOverride: meChatService,
+        coupleServiceOverride: _FailingCoupleService(db),
+        currentUidOverride: meUid,
+        messagesStreamOverride: Stream.value(const <ChatMessage>[]).asBroadcastStream(),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('パートナー'), findsOneWidget);
+  });
+}
+
+class _FailingCoupleService extends CoupleService {
+  _FailingCoupleService(FirebaseFirestore db) : super(firestore: db, uid: 'me');
+
+  @override
+  Future<CoupleModel?> getMyCouple() async {
+    throw Exception('permission-denied');
+  }
 }
 
 class _FailingSendChatService extends ChatService {
