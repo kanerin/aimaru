@@ -203,7 +203,10 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.byIcon(Icons.delete_sweep_outlined));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('購入済みの1件を削除します。元に戻せません。'), findsOneWidget);
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
 
     final doc = await db
         .collection('couples')
@@ -212,6 +215,67 @@ void main() {
         .doc('i1')
         .get();
     expect(doc.exists, isFalse);
+
+    await controller.close();
+  });
+
+  testWidgets('一括削除は確認でキャンセルすれば何も消えない', (tester) async {
+    final db = FakeFirebaseFirestore();
+    final service = ShoppingListService(firestore: db, uid: 'u1');
+    final done = ShoppingItem(
+      id: 'i1', coupleId: 'couple-1', title: '購入済み',
+      done: true, createdBy: 'u1', createdAt: DateTime(2026, 1, 1),
+    );
+    final ref = db.collection('couples').doc('couple-1').collection('shoppingItems').doc('i1');
+    await ref.set(done.toMap());
+
+    final controller = StreamController<List<ShoppingItem>>();
+    await tester.pumpWidget(wrap(controller.stream, shoppingListService: service));
+    controller.add([done]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_sweep_outlined));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+
+    expect((await ref.get()).exists, isTrue);
+
+    await controller.close();
+  });
+
+  testWidgets('購入済みが無いときの一括削除は確認を出さず案内する', (tester) async {
+    final controller = StreamController<List<ShoppingItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+    controller.add([sampleItem]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_sweep_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.text('購入済みのものはありません'), findsOneWidget);
+    expect(find.text('キャンセル'), findsNothing);
+
+    await controller.close();
+  });
+
+  testWidgets('一括削除に失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<ShoppingItem>>();
+    await tester.pumpWidget(wrap(controller.stream, shoppingListService: _ThrowingShoppingListService()));
+    controller.add([
+      ShoppingItem(
+        id: 'i2', coupleId: 'couple-1', title: '購入済み',
+        done: true, createdBy: 'u1', createdAt: DateTime(2026, 1, 1),
+      ),
+    ]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.delete_sweep_outlined));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('削除に失敗しました。もう一度お試しください'), findsOneWidget);
 
     await controller.close();
   });
@@ -263,6 +327,11 @@ class _ThrowingShoppingListService extends ShoppingListService {
 
   @override
   Future<void> deleteItem(ShoppingItem item) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> clearDone(String coupleId) {
     throw Exception('firestore unavailable');
   }
 }

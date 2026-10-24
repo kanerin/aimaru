@@ -91,8 +91,35 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     await _delete(item);
   }
 
+  // 直近のストリームで見えている購入済みの件数。一括削除の確認文言と、
+  // 対象が無いときの案内に使う（setStateは不要なので代入のみ）。
+  int _doneCount = 0;
+
+  // 一括削除は複数件が一度に消え、ゴミ箱も無いので、個別削除と同じく確認を挟む。
+  // 以前は確認なし・失敗しても無反応で、押し間違えると戻せず、
+  // 通信エラーのときは例外が拾われないままだった。
   Future<void> _clearDone() async {
-    await _service.clearDone(widget.coupleId);
+    if (_doneCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('購入済みのものはありません')),
+      );
+      return;
+    }
+    final confirmed = await confirmDelete(
+      context,
+      title: '購入済みをまとめて削除',
+      message: '購入済みの$_doneCount件を削除します。元に戻せません。',
+    );
+    if (!confirmed) return;
+    try {
+      await _service.clearDone(widget.coupleId);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
   }
 
   @override
@@ -128,6 +155,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                   return Center(child: CircularProgressIndicator(color: appAccent(context)));
                 }
                 final items = snap.data!;
+                _doneCount = items.where((i) => i.done).length;
                 if (items.isEmpty) {
                   return const Center(
                     child: Text('まだ買い物リストは空です\n買うものを書いておきましょう',
