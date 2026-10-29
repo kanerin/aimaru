@@ -106,17 +106,22 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadPartner() async {
-    final couple = await _coupleService.getMyCouple();
-    if (couple == null) return;
-    final partnerId = couple.memberIds.firstWhere((id) => id != _myUid, orElse: () => '');
-    final name = await _coupleService.getPartnerName(couple);
-    if (!mounted) return;
-    setState(() {
-      _partnerName = name;
-      if (partnerId.isNotEmpty) {
-        _partnerReadStream = _chatService.watchPartnerLastReadAt(widget.coupleId, partnerId);
-      }
-    });
+    try {
+      final couple = await _coupleService.getMyCouple();
+      if (couple == null) return;
+      final partnerId = couple.memberIds.firstWhere((id) => id != _myUid, orElse: () => '');
+      final name = await _coupleService.getPartnerName(couple);
+      if (!mounted) return;
+      setState(() {
+        _partnerName = name;
+        if (partnerId.isNotEmpty) {
+          _partnerReadStream = _chatService.watchPartnerLastReadAt(widget.coupleId, partnerId);
+        }
+      });
+    } catch (_) {
+      // 相手の名前・既読表示は補助情報。権限・通信エラーやログアウト直後に
+      // 拾い手のない非同期例外にならないよう握りつぶし、「パートナー」表示のまま続ける。
+    }
   }
 
   Future<void> _send() async {

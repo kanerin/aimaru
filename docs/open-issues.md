@@ -759,9 +759,15 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 （空のカードを出すと保存で既存の日付を上書きしかねないため）。`test/screens/anniversary_hub_screen_test.dart`
 にローディング・失敗・再読み込みでの復帰を追加した（`flutter analyze`・`flutter test`（668件）通過）。
 **同じ型（initStateからの読み込みで例外を捕まえない）が`settings_screen.dart`の
-`_loadPrefs`/`_loadPartner`（`_loadingPrefs`が戻らない）と`chat_screen.dart`の`_loadPartner`にも
-残っている**。この2画面はサービスをコンストラクタから注入できずテストを書けないため今回は
-見送った。次回は注入ポイントを足してから同様に直す。
+`_loadPrefs`/`_loadPartner`（`_loadingPrefs`が戻らない）にも残っている**。この画面は
+サービスをコンストラクタから注入できずテストを書けないため今回は見送った。次回は注入ポイントを
+足してから同様に直す。
+
+2026-10-24、上記のうち`chat_screen.dart`の`_loadPartner`を直した（reduce-debt枠、本PR）。
+`getMyCouple`/`getPartnerName`の失敗が拾い手のない非同期例外になっていたのを`try/catch`で受け、
+相手の名前は「パートナー」表示のまま画面を使い続けられるようにした（補助情報なので画面全体は
+エラーにしない）。`test/screens/chat_screen_test.dart`に失敗時のテストを追加した
+（`flutter analyze`・`flutter test`（671件）通過）。残りは`settings_screen.dart`のみ。
 
 ### P2 — 余力があれば
 
