@@ -769,6 +769,14 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 エラーにしない）。`test/screens/chat_screen_test.dart`に失敗時のテストを追加した
 （`flutter analyze`・`flutter test`（671件）通過）。残りは`settings_screen.dart`のみ。
 
+2026-10-30、残っていた`settings_screen.dart`を直した（reduce-debt枠、本PR）。`CoupleService`/
+`SettingsService`/`NotificationSettingsService`/プロフィール表示をコンストラクタから差し込めるようにし、
+`_loadPrefs`の失敗は「設定を読み込めませんでした」＋「再読み込み」を出して無限ローディングから復帰できる
+ようにした。`_loadPartner`の失敗は補助情報なので握って`debugPrint`に残し、画面は使い続けられる。
+`test/screens/settings_screen_test.dart`にローディング・失敗と再読み込み・パートナー読み込み失敗の3件を
+追加した（`flutter analyze`・`flutter test`（674件）通過）。これで同型の「initStateの読み込みで例外を
+捕まえない」箇所の洗い出し分は完了。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
