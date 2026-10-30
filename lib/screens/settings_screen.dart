@@ -37,19 +37,33 @@ const _reminderOptions = <int, String>{
 
 class SettingsScreen extends StatefulWidget {
   final String coupleId;
-  const SettingsScreen({super.key, required this.coupleId});
+  // テストからFirebaseに触れずに検証するための差し込み口（本番の呼び出しはそのまま）。
+  final CoupleService? coupleServiceOverride;
+  final SettingsService? settingsServiceOverride;
+  final NotificationSettingsService? notificationSettingsServiceOverride;
+  final ({String? displayName, String? email, String? photoUrl})? profileOverride;
+
+  const SettingsScreen({
+    super.key,
+    required this.coupleId,
+    this.coupleServiceOverride,
+    this.settingsServiceOverride,
+    this.notificationSettingsServiceOverride,
+    this.profileOverride,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _authService = AuthService();
-  final _coupleService = CoupleService();
-  final _settingsService = SettingsService();
-  final _googleCalendarCache = GoogleCalendarCacheService();
-  final _notificationSettingsService = NotificationSettingsService();
-  final _dataExportService = DataExportService();
+  late final _authService = AuthService();
+  late final _coupleService = widget.coupleServiceOverride ?? CoupleService();
+  late final _settingsService = widget.settingsServiceOverride ?? SettingsService();
+  late final _googleCalendarCache = GoogleCalendarCacheService();
+  late final _notificationSettingsService =
+      widget.notificationSettingsServiceOverride ?? NotificationSettingsService();
+  late final _dataExportService = DataExportService();
 
   String? _partnerName;
   CoupleModel? _couple;
@@ -58,6 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showHolidays = true;
   bool _weekStartsMonday = false;
   bool _loadingPrefs = true;
+  bool _loadPrefsFailed = false;
   bool _exporting = false;
   bool _accountActionInProgress = false;
 
@@ -75,24 +90,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadPartner() async {
-    final couple = await _coupleService.getMyCouple();
-    if (couple == null) return;
-    final name = await _coupleService.getPartnerName(couple);
-    if (mounted) {
-      setState(() {
-        _partnerName = name;
-        _couple = couple;
-      });
+    // パートナー名は補助情報なので、失敗しても画面は使い続けられるようにする
+    // （拾い手のない非同期例外にしない）。
+    try {
+      final couple = await _coupleService.getMyCouple();
+      if (couple == null) return;
+      final name = await _coupleService.getPartnerName(couple);
+      if (mounted) {
+        setState(() {
+          _partnerName = name;
+          _couple = couple;
+        });
+      }
+    } catch (e) {
+      debugPrint('設定画面: パートナー情報の読み込みに失敗: $e');
     }
   }
 
   Future<void> _loadPrefs() async {
-    final show = await _settingsService.getShowGoogleCalendar();
-    final sync = await _settingsService.getDefaultSyncGoogleCalendar();
-    final holidays = await _settingsService.getShowHolidays();
-    final weekStart = await _settingsService.getWeekStartsMonday();
-    final notif = await _notificationSettingsService.get();
-    if (mounted) {
+    if (_loadPrefsFailed) {
+      setState(() {
+        _loadPrefsFailed = false;
+        _loadingPrefs = true;
+      });
+    }
+    try {
+      final show = await _settingsService.getShowGoogleCalendar();
+      final sync = await _settingsService.getDefaultSyncGoogleCalendar();
+      final holidays = await _settingsService.getShowHolidays();
+      final weekStart = await _settingsService.getWeekStartsMonday();
+      final notif = await _notificationSettingsService.get();
+      if (!mounted) return;
       setState(() {
         _showGoogleCalendar = show;
         _defaultSync = sync;
@@ -105,6 +133,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _reminderMinutesBefore = notif.reminderMinutesBefore;
         _loadingPrefs = false;
       });
+    } catch (e) {
+      debugPrint('設定画面: 設定値の読み込みに失敗: $e');
+      if (mounted) {
+        setState(() {
+          _loadingPrefs = false;
+          _loadPrefsFailed = true;
+        });
+      }
     }
   }
 
@@ -224,7 +260,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final override = widget.profileOverride;
+    final user = override == null ? FirebaseAuth.instance.currentUser : null;
+    final photoUrl = override != null ? override.photoUrl : user?.photoURL;
+    final displayName = override != null ? override.displayName : user?.displayName;
+    final email = override != null ? override.email : user?.email;
 
     return Scaffold(
       backgroundColor: AppColors.navy,
@@ -245,8 +285,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 CircleAvatar(
                   radius: 28,
                   backgroundColor: AppColors.navyCard,
-                  backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-                  child: user?.photoURL == null
+                  backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
+                  child: photoUrl == null
                       ? const Icon(Icons.person, color: AppColors.textMuted)
                       : null,
                 ),
@@ -255,11 +295,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user?.displayName ?? '', style: const TextStyle(
+                      Text(displayName ?? '', style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.cream,
                       )),
                       const SizedBox(height: 2),
-                      Text(user?.email ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                      Text(email ?? '', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
                     ],
                   ),
                 ),
@@ -304,6 +344,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _SectionLabel('表示'),
           if (_loadingPrefs)
             const _LoadingRow()
+          else if (_loadPrefsFailed)
+            _LoadErrorRow(onRetry: _loadPrefs)
           else ...[
             Container(
               padding: const EdgeInsets.all(14),
@@ -349,6 +391,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _SectionLabel('カレンダー連携'),
           if (_loadingPrefs)
             const _LoadingRow()
+          else if (_loadPrefsFailed)
+            _LoadErrorRow(onRetry: _loadPrefs)
           else ...[
             _SettingsSwitch(
               title: 'Googleカレンダーの予定を表示',
@@ -395,6 +439,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _SectionLabel('通知'),
           if (_loadingPrefs)
             const _LoadingRow()
+          else if (_loadPrefsFailed)
+            _LoadErrorRow(onRetry: _loadPrefs)
           else ...[
             _SettingsSwitch(
               title: 'パートナーの予定登録を通知',
@@ -591,6 +637,21 @@ class _SectionLabel extends StatelessWidget {
     child: Text(text, style: const TextStyle(
       fontSize: 11, letterSpacing: 1, color: AppColors.textMuted, fontWeight: FontWeight.w600,
     )),
+  );
+}
+
+class _LoadErrorRow extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _LoadErrorRow({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Column(children: [
+      const Text('設定を読み込めませんでした',
+          style: TextStyle(fontSize: 13, color: AppColors.textSecond)),
+      TextButton(onPressed: onRetry, child: const Text('再読み込み')),
+    ]),
   );
 }
 
