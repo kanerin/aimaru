@@ -5,11 +5,23 @@ import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../services/couple_service.dart';
 import '../../utils/app_theme.dart';
+import '../models/models.dart';
 import '../services/deep_link_service.dart';
 import '../widgets/pairing_preview_cards.dart';
 
 class PairingScreen extends StatefulWidget {
-  const PairingScreen({super.key});
+  // 引数なしなら本番のCoupleServiceを使う。テストからは3つの経路を差し込んで
+  // Firebaseに触れずに「取得失敗」「参加失敗」などの状態を確かめる。
+  const PairingScreen({
+    super.key,
+    this.createInviteCodeOverride,
+    this.joinWithCodeOverride,
+    this.coupleStreamOverride,
+  });
+
+  final Future<String> Function()? createInviteCodeOverride;
+  final Future<CoupleModel?> Function(String code)? joinWithCodeOverride;
+  final Stream<CoupleModel?>? coupleStreamOverride;
 
   @override
   State<PairingScreen> createState() => _PairingScreenState();
@@ -17,7 +29,8 @@ class PairingScreen extends StatefulWidget {
 
 class _PairingScreenState extends State<PairingScreen>
     with SingleTickerProviderStateMixin {
-  final _coupleService = CoupleService();
+  // 差し込みが揃っているテストでFirebaseを初期化せずに済むよう遅延生成する。
+  late final _coupleService = CoupleService();
   late final TabController _tab;
 
   String? _myCode;
@@ -35,21 +48,26 @@ class _PairingScreenState extends State<PairingScreen>
     pendingInviteCode.addListener(_onPendingCodeChanged);
     _onPendingCodeChanged(); // 画面が開く前にリンクを受け取っていた場合に備える
     // 自分が発行したコードを相手が使ってペアが成立したら自動で遷移する
-    _coupleSub = _coupleService.watchMyCouple().listen((couple) {
+    // エラーを握らないと、ログアウト直後や権限エラーで拾い手のない非同期例外になる。
+    _coupleSub = (widget.coupleStreamOverride ?? _coupleService.watchMyCouple()).listen((couple) {
       if (mounted && couple != null && couple.memberIds.length >= 2) {
         context.go('/home');
       }
-    });
+    }, onError: (Object e) => debugPrint('pairing watch failed: $e'));
   }
 
   Future<void> _loadCode() async {
     setState(() => _codeError = null);
     try {
-      final code = await _coupleService.createInviteCode()
+      final code = await (widget.createInviteCodeOverride?.call() ?? _coupleService.createInviteCode())
           .timeout(const Duration(seconds: 15));
       if (mounted) setState(() => _myCode = code);
     } catch (e) {
-      if (mounted) setState(() => _codeError = '招待コードを取得できませんでした\n$e');
+      debugPrint('createInviteCode failed: $e');
+      // 生の例外文字列は利用者には意味が無いので出さない（原因はログに残す）。
+      if (mounted) {
+        setState(() => _codeError = '招待コードを取得できませんでした\n通信状況を確認して、もう一度お試しください');
+      }
     }
   }
 
@@ -73,7 +91,7 @@ class _PairingScreenState extends State<PairingScreen>
     setState(() { _loading = true; _error = null; });
 
     try {
-      final couple = await _coupleService.joinWithCode(code)
+      final couple = await (widget.joinWithCodeOverride?.call(code) ?? _coupleService.joinWithCode(code))
           .timeout(const Duration(seconds: 15));
       if (!mounted) return;
 
@@ -162,6 +180,21 @@ class _PairingScreenState extends State<PairingScreen>
     );
   }
 
+  // 小さい端末・横向き・キーボード表示中でも中身が画面外へはみ出して
+  // 押せなくならないよう、縦に収まらないときだけスクロールさせる。
+  // 収まるときは従来どおりSpacerで上下中央寄せの見た目を保つ。
+  Widget _scrollable(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+          child: IntrinsicHeight(child: child),
+        ),
+      ),
+    );
+  }
+
   // ── 招待コード作成タブ ────────────────────────────
   Widget _buildCreateTab() {
     final link = _myCode == null ? null : buildInviteLink(_myCode!);
@@ -191,9 +224,8 @@ class _PairingScreenState extends State<PairingScreen>
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
+    return _scrollable(
+      Column(
         children: [
           const Spacer(),
 
@@ -215,10 +247,14 @@ class _PairingScreenState extends State<PairingScreen>
               height: 160,
               child: link == null
                   ? Center(child: CircularProgressIndicator(color: appAccent(context)))
-                  : QrImageView(
-                      data: link,
-                      version: QrVersions.auto,
-                      backgroundColor: Colors.white,
+                  : Semantics(
+                      label: '招待用のQRコード。下のコードかリンクをコピーして相手に送ることもできます',
+                      image: true,
+                      child: QrImageView(
+                        data: link,
+                        version: QrVersions.auto,
+                        backgroundColor: Colors.white,
+                      ),
                     ),
             ),
           ),
@@ -300,9 +336,8 @@ class _PairingScreenState extends State<PairingScreen>
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusScope.of(context).unfocus(),
-      child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
+      child: _scrollable(
+      Column(
         children: [
           const Spacer(),
 
@@ -328,6 +363,11 @@ class _PairingScreenState extends State<PairingScreen>
               hintText: '------',
               counterText: '',
             ),
+            textInputAction: TextInputAction.done,
+            // キーボードの完了キーでも参加できるようにする（ボタンまで指を戻さなくてよい）。
+            onSubmitted: (_) {
+              if (!_loading) _joinWithCode();
+            },
             onChanged: (_) => setState(() => _error = null),
           ),
 
