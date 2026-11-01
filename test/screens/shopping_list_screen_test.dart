@@ -299,6 +299,22 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('購入済みの切り替えに失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<ShoppingItem>>();
+    await tester.pumpWidget(wrap(controller.stream, shoppingListService: _ThrowingShoppingListService()));
+
+    controller.add([sampleItem]);
+    await tester.pump();
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+
+    expect(find.text('更新に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+
   testWidgets('削除に失敗したらエラーを表示する', (tester) async {
     final controller = StreamController<List<ShoppingItem>>();
     await tester.pumpWidget(wrap(controller.stream, shoppingListService: _ThrowingShoppingListService()));
@@ -327,6 +343,11 @@ class _ThrowingShoppingListService extends ShoppingListService {
 
   @override
   Future<void> deleteItem(ShoppingItem item) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> setDone(ShoppingItem item, bool done) {
     throw Exception('firestore unavailable');
   }
 

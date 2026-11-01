@@ -67,6 +67,32 @@ class _TodosScreenState extends State<TodosScreen> {
     }
   }
 
+  // 完了チェック・「興味あり」は通信失敗時に未捕捉の非同期例外にせず、
+  // 画面側で通知する。
+  Future<void> _setDone(TodoItem todo, bool done) async {
+    try {
+      await _todoService.setDone(todo, done);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('更新に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleLike(TodoItem todo) async {
+    try {
+      await _todoService.toggleLike(todo, _uid);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('更新に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
+  }
+
   Future<void> _delete(TodoItem todo) async {
     try {
       await _todoService.deleteTodo(todo);
@@ -198,7 +224,7 @@ class _TodosScreenState extends State<TodosScreen> {
             color: liked ? Colors.redAccent : AppColors.textMuted,
           ),
           tooltip: '興味あり',
-          onPressed: () => _todoService.toggleLike(todo, _uid),
+          onPressed: () => _toggleLike(todo),
         ),
       ],
     );
@@ -244,7 +270,7 @@ class _TodosScreenState extends State<TodosScreen> {
               children: [
                 Checkbox(
                   value: todo.done,
-                  onChanged: (v) => _todoService.setDone(todo, v ?? false),
+                  onChanged: (v) => _setDone(todo, v ?? false),
                   activeColor: appAccent(context),
                 ),
                 // タイトルをタップするとカレンダー登録に遷移する

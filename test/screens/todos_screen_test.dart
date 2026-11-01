@@ -275,6 +275,38 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('完了チェックの更新に失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, todoService: _ThrowingTodoService()));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+
+    expect(find.text('更新に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+
+  testWidgets('興味ありの更新に失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream, todoService: _ThrowingTodoService()));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.favorite_border));
+    await tester.pump();
+
+    expect(find.text('更新に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+
   testWidgets('自分が既に興味ありを付けているTodoは塗りつぶしハートで表示される', (tester) async {
     final controller = StreamController<List<TodoItem>>();
     await tester.pumpWidget(wrap(controller.stream, currentUid: 'u1'));
@@ -309,6 +341,16 @@ class _ThrowingTodoService extends TodoService {
 
   @override
   Future<void> deleteTodo(TodoItem todo) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> setDone(TodoItem todo, bool done) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> toggleLike(TodoItem todo, String uid) {
     throw Exception('firestore unavailable');
   }
 }
