@@ -777,6 +777,14 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 追加した（`flutter analyze`・`flutter test`（674件）通過）。これで同型の「initStateの読み込みで例外を
 捕まえない」箇所の洗い出し分は完了。
 
+2026-11-01、ホーム（`_HomeShell`、`lib/main.dart`）の`_loadCouple`が`getMyCouple`の例外を捕まえておらず、
+権限・通信エラーでペア情報が読めないと拾い手のない非同期例外のまま無限ローディングになる経路を直した
+（reduce-debt枠、本PR）。読み込みを`lib/widgets/couple_loader.dart`の`CoupleLoader`に切り出し、失敗時は
+エラー表示と「再読み込み」を出す。GoRouterの`redirect`（ログイン画面からの遷移時）も同じ呼び出しで
+例外になり得たため、失敗時は`/home`へ進めて`CoupleLoader`に委ねるようにした。
+`test/widgets/couple_loader_test.dart`にローディング・成功・ペア無し・失敗と再読み込みの4件を追加した
+（`flutter analyze`・`flutter test`（690件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
