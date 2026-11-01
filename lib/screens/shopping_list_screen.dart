@@ -68,6 +68,18 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
     }
   }
 
+  Future<void> _setDone(ShoppingItem item, bool done) async {
+    try {
+      await _service.setDone(item, done);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('更新に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
+  }
+
   Future<void> _delete(ShoppingItem item) async {
     try {
       await _service.deleteItem(item);
@@ -256,7 +268,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
               children: [
                 Checkbox(
                   value: item.done,
-                  onChanged: (v) => _service.setDone(item, v ?? false),
+                  onChanged: (v) => _setDone(item, v ?? false),
                   activeColor: appAccent(context),
                 ),
                 Expanded(
