@@ -24,6 +24,7 @@ import 'services/firebase_bootstrap.dart';
 import 'services/home_tab_requests.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
+import 'widgets/couple_loader.dart';
 import 'widgets/daily_refresh.dart';
 import 'widgets/home_tab_request_listener.dart';
 
@@ -87,8 +88,15 @@ final _router = GoRouter(
 
     // ログイン済み → ペアリング確認
     if (onLogin) {
-      final couple = await CoupleService().getMyCouple();
-      return couple != null ? '/home' : '/pairing';
+      try {
+        final couple = await CoupleService().getMyCouple();
+        return couple != null ? '/home' : '/pairing';
+      } catch (e, st) {
+        // 読み込み失敗でリダイレクトごと例外にしない。ログイン済みなので
+        // /homeへ進め、そちら（CoupleLoader）が再読み込みを出す。
+        debugPrint('[ペア確認に失敗: $e]\n$st');
+        return '/home';
+      }
     }
     return null;
   },
@@ -177,56 +185,48 @@ class _AppLockGateState extends State<_AppLockGate> with WidgetsBindingObserver 
 }
 
 // ── ホームシェル（BottomNav）──────────────────────
-class _HomeShell extends StatefulWidget {
+class _HomeShell extends StatelessWidget {
   const _HomeShell();
 
   @override
-  State<_HomeShell> createState() => _HomeShellState();
+  Widget build(BuildContext context) {
+    // ペア情報の読み込み失敗は無限ローディングにせず、再読み込みを出す。
+    // ペアがまだ無い状態でここに来た場合は迷子にならないようペアリング画面へ。
+    return CoupleLoader(
+      onNoCouple: () => context.go('/pairing'),
+      builder: (_, coupleId) => _HomeContent(coupleId: coupleId),
+    );
+  }
 }
 
-class _HomeShellState extends State<_HomeShell> {
+class _HomeContent extends StatefulWidget {
+  final String coupleId;
+  const _HomeContent({required this.coupleId});
+
+  @override
+  State<_HomeContent> createState() => _HomeContentState();
+}
+
+class _HomeContentState extends State<_HomeContent> {
   int _index = 0;
-  String? _coupleId;
   // チャットタブで2人のトーク（1枚目）を開くよう頼んだ回数。増えるたびに
   // ChatPagerScreenが1枚目へ切り替える。
   int _showChatRequest = 0;
 
   @override
-  void initState() {
-    super.initState();
-    _loadCouple();
-  }
-
-  Future<void> _loadCouple() async {
-    final couple = await CoupleService().getMyCouple();
-    if (!mounted) return;
-    if (couple == null) {
-      // ペアがまだ無い状態でここに来た場合は迷子にならないようペアリング画面へ
-      context.go('/pairing');
-      return;
-    }
-    setState(() => _coupleId = couple.id);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_coupleId == null) {
-      return Scaffold(
-        body: Center(child: CircularProgressIndicator(color: appAccent(context))),
-      );
-    }
-
+    final coupleId = widget.coupleId;
     final pages = [
       // ① カレンダー
-      CalendarScreen(coupleId: _coupleId!),
+      CalendarScreen(coupleId: coupleId),
       // ② チャット（左右スワイプでカップルチャット ⇄ AIチャット）
       ChatPagerScreen(
-        coupleId: _coupleId!,
+        coupleId: coupleId,
         isActive: _index == 1,
         showChatRequest: _showChatRequest,
       ),
       // ③ 記念日
-      AnniversaryHubScreen(coupleId: _coupleId!),
+      AnniversaryHubScreen(coupleId: coupleId),
       // ④ ふたりの質問。IndexedStackで保持しているので、作り直さないと日付を
       // またいでも前日の質問のまま残る。アプリ復帰時・0時に作り直す。
       DailyRefresh(builder: (_) => const QuestionsRouteScreen()),
