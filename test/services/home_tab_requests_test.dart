@@ -25,8 +25,10 @@ void main() {
     });
 
     test('タブの並びはホームの下部ナビと同じ', () {
-      expect(HomeTab.values.map((t) => t.index), [0, 1, 2, 3]);
+      expect(HomeTab.values.map((t) => t.index), [0, 1, 2, 3, 4]);
       expect(HomeTab.questions.index, 3);
+      // 家計は「質問」の右
+      expect(HomeTab.budget.index, 4);
     });
   });
 }

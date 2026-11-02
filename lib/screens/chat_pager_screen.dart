@@ -4,7 +4,7 @@ import 'ai_chat_screen.dart';
 import 'chat_screen.dart';
 
 // ── チャットタブ（カップルチャット ⇄ AIチャット）──────────
-// ホームの下部ナビを4つに絞るため、AIチャットは独立したタブではなく
+// ホームの下部ナビのタブを増やしすぎないよう、AIチャットは独立したタブではなく
 // チャットタブの中で左右スワイプして切り替える。1枚目が2人のチャット、
 // 右へ送った2枚目がAIチャット。
 class ChatPagerScreen extends StatefulWidget {

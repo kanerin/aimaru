@@ -87,7 +87,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       '2人のスケジュール管理をお手伝いします ✦\n'
       '「来週の土曜デートしたい」のように話しかけたり、「来週の予定は？」と聞いたりしてみてください';
 
-  // IndexedStackで4画面を保持しているため、アプリを閉じてもプロセスが生きていれば
+  // IndexedStackで全タブの画面を保持しているため、アプリを閉じてもプロセスが生きていれば
   // 会話が残り続ける。一度アプリを離れたら、戻ってきた時点で新しい会話から始める。
   bool _wasPaused = false;
 
