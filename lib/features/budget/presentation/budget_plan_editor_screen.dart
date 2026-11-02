@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/app_theme.dart';
 import '../data/budget_plan_repository.dart';
+import '../domain/bonus_savings.dart';
 import '../domain/budget_calculator.dart';
 import '../domain/budget_plan.dart';
 import '../domain/budget_plan_diff.dart';
@@ -248,7 +249,7 @@ class _BudgetPlanEditorScreenState extends State<BudgetPlanEditorScreen> {
                   _buildExpenseSection(),
                   _buildOffsetSection(),
                   _buildLivingSection(result),
-                  _buildSavingsSection(),
+                  _buildSavingsSection(result),
                   BudgetWarningsCard(plan: _draft, result: result),
                   MonthlyFlowCard(plan: _draft, result: result, baseline: _baselineResult),
                   SavingsGoalCard(plan: _draft, result: result, baseline: _baselineResult),
@@ -458,9 +459,48 @@ class _BudgetPlanEditorScreenState extends State<BudgetPlanEditorScreen> {
     );
   }
 
-  Widget _buildSavingsSection() {
+  // 毎月の貯金の決め方を切り替える。自動→カスタムに切り替えたときは、
+  // それまで自動で決まっていた額を手入力の出発点にする（「自動で入れてから
+  // 手で微調整する」ができるように）。
+  void _setSavingsMode(SavingsContributionMode mode, BudgetResult result) {
+    final members = _draft.members;
+    _updateGoal((g) {
+      var next = g.copyWith(contributionMode: mode);
+      switch (mode) {
+        case SavingsContributionMode.custom:
+          next = next.copyWith(monthlyContributions: {...g.monthlyContributions, ...result.savingsContributions});
+        case SavingsContributionMode.ratio:
+          if (g.contributionWeights.values.every((w) => w <= 0)) {
+            next = next.copyWith(contributionWeights: {for (final m in members) m.memberId: 50});
+          }
+        case SavingsContributionMode.fixed:
+          if (g.fixedMemberIds.isEmpty && members.isNotEmpty) {
+            final first = members.first.memberId;
+            next = next.copyWith(
+              fixedMemberIds: [first],
+              monthlyContributions: {...g.monthlyContributions, first: result.savingsContributions[first] ?? 0},
+            );
+          }
+        case SavingsContributionMode.incomeProportional:
+          break;
+      }
+      return next;
+    });
+  }
+
+  Widget _buildSavingsSection(BudgetResult result) {
     final goal = _draft.savingsGoal;
     final baseGoal = widget.baseline?.savingsGoal;
+    final mode = goal.contributionMode;
+    final sameModeAsBase = baseGoal?.contributionMode == mode;
+    final required = result.requiredMonthlyToHitGoal;
+    final explanation = switch (mode) {
+      SavingsContributionMode.custom => '各自の毎月の貯金額を手で決めます。',
+      SavingsContributionMode.ratio => '期限に間に合う毎月の貯金を、決めた比率で2人に分けます。',
+      SavingsContributionMode.fixed => '固定した人はその額のまま、期限に間に合うために足りない分を残りの人で分けます。',
+      SavingsContributionMode.incomeProportional => '期限に間に合う毎月の貯金を、2人の手取りの比で分けます。',
+    };
+
     return BudgetSectionCard(
       title: '貯金',
       child: Column(
@@ -485,33 +525,6 @@ class _BudgetPlanEditorScreenState extends State<BudgetPlanEditorScreen> {
             baselineValue: baseGoal?.currentBalance,
             onChanged: (v) => _updateGoal((g) => g.copyWith(currentBalance: v)),
           ),
-          for (final m in _draft.members)
-            AmountSliderField(
-              key: ValueKey('saving-${m.memberId}'),
-              label: '${m.displayName}の毎月の貯金',
-              value: goal.monthlyContributions[m.memberId] ?? 0,
-              baselineValue: baseGoal?.monthlyContributions[m.memberId],
-              onChanged: (v) => _updateGoal((g) => g.copyWith(
-                monthlyContributions: {...g.monthlyContributions, m.memberId: v},
-              )),
-            ),
-          for (final (i, b) in goal.bonusContributions.indexed)
-            AmountSliderField(
-              key: ValueKey('bonus-saving-$i'),
-              label: '${_draft.memberName(b.memberId)}の${b.month}月ボーナスから',
-              value: b.amount,
-              max: 1000000,
-              step: 10000,
-              baselineValue: baseGoal != null && i < baseGoal.bonusContributions.length &&
-                      baseGoal.bonusContributions[i].memberId == b.memberId &&
-                      baseGoal.bonusContributions[i].month == b.month
-                  ? baseGoal.bonusContributions[i].amount
-                  : null,
-              onChanged: (v) => _updateGoal((g) => g.copyWith(bonusContributions: [
-                for (final (j, x) in g.bonusContributions.indexed) j == i ? x.copyWith(amount: v) : x,
-              ])),
-            ),
-          const SizedBox(height: 4),
           _DateRow(
             label: '開始月',
             value: formatYearMonthJa(goal.startDate),
@@ -524,10 +537,205 @@ class _BudgetPlanEditorScreenState extends State<BudgetPlanEditorScreen> {
             value: formatDateJa(goal.deadline),
             onTap: () => _pickDate(goal.deadline, (d) => _updateGoal((g) => g.copyWith(deadline: d))),
           ),
+
+          // ── ボーナスからの貯金（年に何回・1回いくら）──
+          const SizedBox(height: 12),
+          const _SubHeading('ボーナスからの貯金'),
+          for (final m in _draft.members) _buildBonusSavingsRow(m),
+
+          // ── 毎月の貯金の決め方 ──
+          const SizedBox(height: 12),
+          const _SubHeading('毎月の貯金の決め方'),
+          SegmentedButton<SavingsContributionMode>(
+            segments: const [
+              ButtonSegment(value: SavingsContributionMode.custom, label: Text('カスタム', style: TextStyle(fontSize: 11.5))),
+              ButtonSegment(value: SavingsContributionMode.ratio, label: Text('比率', style: TextStyle(fontSize: 11.5))),
+              ButtonSegment(value: SavingsContributionMode.fixed, label: Text('固定', style: TextStyle(fontSize: 11.5))),
+              ButtonSegment(value: SavingsContributionMode.incomeProportional, label: Text('収入比', style: TextStyle(fontSize: 11.5))),
+            ],
+            selected: {mode},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => _setSavingsMode(s.first, result),
+          ),
+          const SizedBox(height: 8),
+          Text(explanation, style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted, height: 1.5)),
+          const SizedBox(height: 6),
+          if (!goal.hasTarget)
+            Text(
+              mode.isAutomatic
+                  ? '目標額を決めると、期限に間に合う毎月の貯金を自動で計算して入れます'
+                  : '目標額を決めると、期限に間に合う毎月の貯金の目安を出します',
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textSecond, height: 1.5),
+            )
+          else if (required != null)
+            AmountRow(
+              // 幅の狭い端末で折り返さない長さにする
+              label: '必要な毎月の貯金（2人の合計）',
+              value: formatYen(required),
+              emphasized: mode.isAutomatic,
+            ),
+          if (mode == SavingsContributionMode.custom && goal.hasTarget && required != null)
+            AmountRow(
+              label: '今の毎月の貯金（2人の合計）',
+              value: formatYen(result.totalMonthlySavingsContributions),
+              valueColor: result.totalMonthlySavingsContributions >= required ? AppColors.success : Colors.redAccent,
+            ),
+          const SizedBox(height: 6),
+          for (final m in _draft.members) ..._buildMemberSaving(m, mode, result, baseGoal, sameModeAsBase),
         ],
       ),
     );
   }
+
+  List<Widget> _buildMemberSaving(
+    BudgetMember m,
+    SavingsContributionMode mode,
+    BudgetResult result,
+    SavingsGoal? baseGoal,
+    bool sameModeAsBase,
+  ) {
+    final goal = _draft.savingsGoal;
+    final computed = result.savingsContributions[m.memberId] ?? 0;
+    switch (mode) {
+      case SavingsContributionMode.custom:
+        return [
+          AmountSliderField(
+            key: ValueKey('saving-${m.memberId}'),
+            label: '${m.displayName}の毎月の貯金',
+            value: goal.monthlyContributions[m.memberId] ?? 0,
+            baselineValue: baseGoal?.monthlyContributions[m.memberId],
+            onChanged: (v) => _updateGoal((g) => g.copyWith(
+              monthlyContributions: {...g.monthlyContributions, m.memberId: v},
+            )),
+          ),
+        ];
+      case SavingsContributionMode.ratio:
+        return [
+          AmountSliderField(
+            key: ValueKey('saving-ratio-${m.memberId}'),
+            label: '${m.displayName}の貯金の比率（→ ${formatYen(computed)}）',
+            value: goal.contributionWeights[m.memberId] ?? 0,
+            unit: '',
+            max: 100,
+            step: 1,
+            baselineValue: sameModeAsBase ? baseGoal?.contributionWeights[m.memberId] : null,
+            onChanged: (v) => _updateGoal((g) => g.copyWith(
+              contributionWeights: {...g.contributionWeights, m.memberId: v},
+            )),
+          ),
+        ];
+      case SavingsContributionMode.fixed:
+        final isFixed = goal.fixedMemberIds.contains(m.memberId);
+        return [
+          Row(children: [
+            Expanded(
+              child: Text(m.displayName,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            ),
+            const Text('額を固定', style: TextStyle(fontSize: 12, color: AppColors.textSecond)),
+            Switch(
+              value: isFixed,
+              onChanged: (v) => _updateGoal((g) {
+                final ids = [...g.fixedMemberIds]..remove(m.memberId);
+                if (v) ids.add(m.memberId);
+                return g.copyWith(
+                  fixedMemberIds: ids,
+                  // 固定に切り替えた瞬間は、今自動で決まっている額から始める
+                  monthlyContributions: v ? {...g.monthlyContributions, m.memberId: computed} : null,
+                );
+              }),
+            ),
+          ]),
+          if (isFixed)
+            AmountSliderField(
+              key: ValueKey('saving-fixed-${m.memberId}'),
+              label: '${m.displayName}の毎月の貯金（固定）',
+              value: goal.monthlyContributions[m.memberId] ?? 0,
+              onChanged: (v) => _updateGoal((g) => g.copyWith(
+                monthlyContributions: {...g.monthlyContributions, m.memberId: v},
+              )),
+            )
+          else
+            AmountRow(label: '${m.displayName}の毎月の貯金（残りを自動）', value: formatYen(computed)),
+          const SizedBox(height: 4),
+        ];
+      case SavingsContributionMode.incomeProportional:
+        return [AmountRow(label: '${m.displayName}の毎月の貯金（手取りの比）', value: formatYen(computed))];
+    }
+  }
+
+  Widget _buildBonusSavingsRow(BudgetMember m) {
+    final setting = bonusSavingsOf(_draft.savingsGoal, m.memberId);
+    final baseSetting = widget.baseline == null ? null : bonusSavingsOf(widget.baseline!.savingsGoal, m.memberId);
+    void set({int? times, int? amount}) => _updateGoal((g) => g.copyWith(
+      bonusContributions: withBonusSavings(
+        _draft,
+        m.memberId,
+        timesPerYear: times ?? setting.timesPerYear,
+        // 回数だけ変えたときは今の1回あたりの額を引き継ぐ（0回からなら0円から）
+        amountPerTime: amount ?? setting.amountPerTime,
+      ),
+    ));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(children: [
+          Expanded(
+            child: Text('${m.displayName}のボーナスから',
+                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline, size: 22),
+            tooltip: '${m.displayName}のボーナス入金の回数を減らす',
+            onPressed: setting.timesPerYear <= 0 ? null : () => set(times: setting.timesPerYear - 1),
+          ),
+          SizedBox(
+            width: 52,
+            child: Text('年${setting.timesPerYear}回',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, size: 22),
+            tooltip: '${m.displayName}のボーナス入金の回数を増やす',
+            onPressed: setting.timesPerYear >= maxBonusSavingsTimesPerYear
+                ? null
+                : () => set(times: setting.timesPerYear + 1),
+          ),
+        ]),
+        if (setting.timesPerYear > 0) ...[
+          AmountSliderField(
+            key: ValueKey('bonus-saving-${m.memberId}'),
+            label: '1回あたり',
+            value: setting.amountPerTime,
+            max: 1000000,
+            step: 10000,
+            baselineValue: baseSetting != null && baseSetting.timesPerYear > 0 ? baseSetting.amountPerTime : null,
+            onChanged: (v) => set(amount: v),
+          ),
+          Text(
+            '${setting.months.map((mo) => '$mo月').join('・')}に入金（年${formatYen(setting.annualAmount)}）'
+            '${setting.uniformAmount ? '' : '。月ごとに額が違うため、ここで変えると全部の月が同じ額になります'}'
+            '。入金する月は「項目を編集」で変えられます',
+            style: const TextStyle(fontSize: 11, color: AppColors.textMuted, height: 1.5),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _SubHeading extends StatelessWidget {
+  final String text;
+  const _SubHeading(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecond)),
+  );
 }
 
 class _DateRow extends StatelessWidget {

@@ -406,6 +406,143 @@ void main() {
     });
   });
 
+  group('毎月の貯金を目標から自動で決める', () {
+    // 期限に間に合う毎月の貯金（2人の合計）が258,334円になるプラン
+    //   (8,000,000 − 1,000,000 − ボーナス入金800,000) / 24ヶ月 = 258,333.3… → 切り上げ
+    BudgetPlan planWith(SavingsGoal Function(SavingsGoal) change,
+        {SurplusHandling surplusHandling = SurplusHandling.keep}) {
+      final plan = realCouplePlan(
+        surplusHandling: surplusHandling,
+        currentBalance: 1000000,
+        startDate: DateTime(2026, 11, 1),
+        deadline: DateTime(2028, 10, 31),
+      );
+      return plan.copyWith(savingsGoal: change(plan.savingsGoal));
+    }
+
+    void expectReachesGoal(BudgetResult result) {
+      expect(result.projectedAtDeadline, greaterThanOrEqualTo(8000000));
+      expect(result.hasWarning(BudgetWarningType.goalNotReached), isFalse);
+    }
+
+    test('比率指定: 必要額を比率（40:60）で分け、合計は必要額ちょうど', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        contributionMode: SavingsContributionMode.ratio,
+        contributionWeights: {memberA: 40, memberB: 60},
+      )));
+
+      expect(result.requiredMonthlyToHitGoal, 258334);
+      // 258,334 × 0.4 = 103,333.6 / × 0.6 = 155,000.4 → 端数1円は剰余の大きいAへ
+      expect(result.savingsContributions, {memberA: 103334, memberB: 155000});
+      expect(result.totalMonthlySavingsContributions, 258334);
+      expectReachesGoal(result);
+      // 自由に使えるお金も自動で決まった額で計算する
+      expect(result.remainingAfterSavings, {memberA: 120000 - 103334, memberB: 250000 - 155000});
+    });
+
+    test('収入比: 必要額を手取りの比（18万:40万）で分ける', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        contributionMode: SavingsContributionMode.incomeProportional,
+      )));
+
+      // 258,334 × 180/580 = 80,172.6… / × 400/580 = 178,161.3… → 端数1円はAへ
+      expect(result.savingsContributions, {memberA: 80173, memberB: 178161});
+      expectReachesGoal(result);
+    });
+
+    test('固定＋残り: Aを5万円で固定すると、残りをBが負担する', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        contributionMode: SavingsContributionMode.fixed,
+        fixedMemberIds: [memberA],
+        monthlyContributions: {memberA: 50000, memberB: 999999},
+      )));
+
+      // Bの手入力値（999,999）は使わない
+      expect(result.savingsContributions, {memberA: 50000, memberB: 208334});
+      expectReachesGoal(result);
+    });
+
+    test('固定＋残り: 固定した額だけで必要額を超えるなら、残りの人は0（マイナスにしない）', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        contributionMode: SavingsContributionMode.fixed,
+        fixedMemberIds: [memberA],
+        monthlyContributions: {memberA: 300000},
+      )));
+
+      expect(result.savingsContributions, {memberA: 300000, memberB: 0});
+    });
+
+    test('固定＋残り: 誰も固定しなければ必要額を等分する', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        contributionMode: SavingsContributionMode.fixed,
+        fixedMemberIds: const [],
+      )));
+
+      expect(result.savingsContributions, {memberA: 129167, memberB: 129167});
+    });
+
+    test('目標額や期限を変えると、自動で決まる額も変わる', () {
+      SavingsGoal ratio(SavingsGoal g) => g.copyWith(
+        contributionMode: SavingsContributionMode.ratio,
+        contributionWeights: {memberA: 1, memberB: 1},
+      );
+      final base = BudgetCalculator.calculate(planWith(ratio));
+      final higherTarget = BudgetCalculator.calculate(planWith((g) => ratio(g).copyWith(targetAmount: 9200000)));
+      final laterDeadline = BudgetCalculator.calculate(
+        planWith((g) => ratio(g).copyWith(deadline: DateTime(2029, 10, 31))),
+      );
+
+      // (9,200,000 − 1,000,000 − 800,000) / 24 = 308,333.3… → 308,334
+      expect(higherTarget.totalMonthlySavingsContributions, 308334);
+      expect(higherTarget.totalMonthlySavingsContributions, greaterThan(base.totalMonthlySavingsContributions));
+      expect(laterDeadline.totalMonthlySavingsContributions, lessThan(base.totalMonthlySavingsContributions));
+      expectReachesGoal(higherTarget);
+      expectReachesGoal(laterDeadline);
+    });
+
+    test('余りを毎月貯金へ移す設定なら、その分を差し引いた額を割り振る', () {
+      final result = BudgetCalculator.calculate(planWith(
+        (g) => g.copyWith(
+          contributionMode: SavingsContributionMode.ratio,
+          contributionWeights: {memberA: 1, memberB: 1},
+        ),
+        surplusHandling: SurplusHandling.toSavings,
+      ));
+
+      // (8,000,000 − 1,000,000 − 800,000 − 余り35,000×24) / 24 = 223,333.3… → 223,334
+      expect(result.savingsContributions, {memberA: 111667, memberB: 111667});
+      expectReachesGoal(result);
+    });
+
+    test('ボーナス入金だけで届くなら、毎月の貯金は0になる', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        targetAmount: 1500000,
+        contributionMode: SavingsContributionMode.incomeProportional,
+      )));
+
+      expect(result.savingsContributions, {memberA: 0, memberB: 0});
+      expect(result.projectedAtDeadline, greaterThanOrEqualTo(1500000));
+      expect(result.hasWarning(BudgetWarningType.goalNotReached), isFalse);
+    });
+
+    test('目標額が未設定なら自動では決められないので0（手入力の値は使わない）', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g.copyWith(
+        targetAmount: 0,
+        contributionMode: SavingsContributionMode.ratio,
+        contributionWeights: {memberA: 1, memberB: 1},
+      )));
+
+      expect(result.savingsContributions, {memberA: 0, memberB: 0});
+      expect(result.hasWarning(BudgetWarningType.goalNotReached), isFalse);
+    });
+
+    test('カスタムは従来どおり手入力の額を使う', () {
+      final result = BudgetCalculator.calculate(planWith((g) => g));
+
+      expect(result.savingsContributions, {memberA: 50000, memberB: 90000});
+    });
+  });
+
   group('allocateByWeights（端数の配り方）', () {
     test('合計は必ずtotalに一致する', () {
       for (final total in [0, 1, 99, 100000, 175001]) {

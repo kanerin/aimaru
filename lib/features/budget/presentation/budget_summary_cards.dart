@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/app_theme.dart';
+import '../domain/bonus_savings.dart';
 import '../domain/budget_plan.dart';
 import '../domain/budget_plan_diff.dart';
 import '../domain/budget_result.dart';
@@ -235,6 +236,18 @@ class SavingsGoalCard extends StatelessWidget {
             value: formatYen(result.annualSavings),
             diff: base == null ? null : DiffText(result.annualSavings - base.annualSavings),
           ),
+          AmountRow(
+            label: '毎月の貯金の決め方',
+            value: goal.contributionMode.isAutomatic
+                ? '${goal.contributionMode.label}（目標から自動）'
+                : goal.contributionMode.label,
+          ),
+          for (final m in plan.members)
+            if (bonusSavingsOf(goal, m.memberId).timesPerYear > 0)
+              AmountRow(
+                label: '${m.displayName}のボーナスから（年${bonusSavingsOf(goal, m.memberId).timesPerYear}回）',
+                value: formatYen(bonusSavingsOf(goal, m.memberId).annualAmount),
+              ),
           if (goal.hasTarget) ...[
             AmountRow(
               label: '目標に届く見込み',
