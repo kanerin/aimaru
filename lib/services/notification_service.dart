@@ -14,7 +14,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
 // 通知タップ時に開くホームのタブ。ペイロードの`type`（functions/src/index.ts）が
 // "question"（ふたりの質問の未回答リマインダー、sendDailyQuestionReminder）なら
 // 「質問」タブ、"new_chat_message"（パートナーからのトーク、onChatMessageCreated）
-// なら「チャット」タブ、それ以外は開いていたタブのまま（null）。予定などは
+// なら「チャット」タブ、"budget_plan_updated"（家計の確定プランの変更、
+// onBudgetPlanWritten）なら「家計」タブ、それ以外は開いていたタブのまま（null）。予定などは
 // 従来どおりホームへ飛ばすだけ。チャットタブを開いたときは、AIチャット側を
 // 開いていても2人のトークに戻す（main.dartの_HomeShell→ChatPagerScreen）。
 // 以前は`/home/questions`という別画面をホームの上に積んでいたが、下部ナビに
@@ -28,6 +29,8 @@ HomeTab? homeTabForNotificationData(Map<String, dynamic> data) {
       return HomeTab.questions;
     case 'new_chat_message':
       return HomeTab.chat;
+    case 'budget_plan_updated':
+      return HomeTab.budget;
     default:
       return null;
   }
@@ -50,6 +53,7 @@ SnackBar? buildForegroundNotificationSnackBar(
   final actionLabel = switch (homeTabForNotificationData(message.data)) {
     HomeTab.questions => '回答する',
     HomeTab.chat => '開く',
+    HomeTab.budget => '開く',
     _ => null,
   };
   final action = actionLabel == null ? null : SnackBarAction(label: actionLabel, onPressed: onOpen);

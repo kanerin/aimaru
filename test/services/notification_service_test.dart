@@ -54,6 +54,11 @@ const _questionMessage = RemoteMessage(
   ),
 );
 
+const _budgetMessage = RemoteMessage(
+  data: {'type': 'budget_plan_updated', 'coupleId': 'couple-1', 'planId': 'plan-1'},
+  notification: RemoteNotification(title: '確定プランが更新されました', body: 'あいてさんが確定プラン「確定プラン」を変更しました'),
+);
+
 const _chatMessage = RemoteMessage(
   data: {'type': 'new_chat_message', 'coupleId': 'couple-1', 'messageId': 'm1'},
   notification: RemoteNotification(title: 'あいてさんからメッセージ', body: 'おつかれさま'),
@@ -73,6 +78,10 @@ void main() {
 
     test('トークの通知は「チャット」タブ', () {
       expect(homeTabForNotificationData(_chatMessage.data), HomeTab.chat);
+    });
+
+    test('家計の確定プランの変更通知は「家計」タブ', () {
+      expect(homeTabForNotificationData(_budgetMessage.data), HomeTab.budget);
     });
 
     test('予定・リマインダー・記念日の通知はタブを指定しない', () {
@@ -119,6 +128,18 @@ void main() {
       expect((snackBar.content as Text).data, 'あいてさんからメッセージ - おつかれさま');
 
       action.onPressed();
+      expect(opened, isTrue);
+    });
+
+    test('家計の確定プランの変更通知には家計タブへ飛ぶ「開く」ボタンが付く', () {
+      var opened = false;
+      final snackBar = buildForegroundNotificationSnackBar(
+        _budgetMessage,
+        onOpen: () => opened = true,
+      )!;
+
+      expect(snackBar.action!.label, '開く');
+      snackBar.action!.onPressed();
       expect(opened, isTrue);
     });
 

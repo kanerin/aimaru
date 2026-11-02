@@ -128,7 +128,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   // 家計の確定プランのボーナス支給日を祝日と同じように重ねて表示する
   // （予定としては保存しない。lib/features/budget/domain/bonus_calendar.dart）。
-  // 設定（ふたりの家計 → ボーナスをカレンダーに表示）がオンのときだけ購読する。
+  // 設定（家計タブ右上の「⋮」→ ボーナスをカレンダーに表示）がオンのときだけ購読する。
   bool _showBudgetBonuses = false;
   StreamSubscription<BudgetPlan?>? _budgetSub;
   BudgetPlan? _activeBudgetPlan;

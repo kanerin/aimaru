@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/models.dart';
-import '../features/budget/presentation/budget_summary_screen.dart';
 import '../services/auth_service.dart';
 import '../services/couple_service.dart';
 import '../services/data_export_service.dart';
@@ -589,14 +588,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
 
-          const SizedBox(height: 10),
-          SettingsNavigationRow(
-            title: 'ふたりの家計',
-            subtitle: '生活費の分担と貯金目標を2人で管理し、金額を変えながらシミュレーションできます',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => BudgetSummaryScreen(coupleId: widget.coupleId)),
-            ),
-          ),
 
           const SizedBox(height: 28),
           const _SectionLabel('データ管理'),

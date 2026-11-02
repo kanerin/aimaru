@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'features/budget/presentation/budget_summary_screen.dart';
 import 'utils/app_theme.dart';
 import 'screens/app_lock_screen.dart';
 import 'screens/login_screen.dart';
@@ -230,10 +231,12 @@ class _HomeContentState extends State<_HomeContent> {
       // ④ ふたりの質問。IndexedStackで保持しているので、作り直さないと日付を
       // またいでも前日の質問のまま残る。アプリ復帰時・0時に作り直す。
       DailyRefresh(builder: (_) => const QuestionsRouteScreen()),
+      // ⑤ ふたりの家計（確定プランのサマリー。以前は設定画面の「暮らし」にあった）
+      BudgetSummaryScreen(coupleId: coupleId),
     ];
 
     // 通知タップなどで頼まれたタブ（ふたりの質問の通知なら「質問」、トークの
-    // 通知なら「チャット」）を開く。チャットタブはAIチャット側を開いたままに
+    // 通知なら「チャット」、家計の確定プランの変更通知なら「家計」）を開く。チャットタブはAIチャット側を開いたままに
     // なっていることがあるので、2人のトークに戻すよう頼む。
     return HomeTabRequestListener(
       requests: HomeTabRequests.instance,
@@ -242,7 +245,7 @@ class _HomeContentState extends State<_HomeContent> {
         if (tab == HomeTab.chat) _showChatRequest++;
       }),
       child: Scaffold(
-        // IndexedStackで4画面すべてをマウントしたまま保持する。
+        // IndexedStackで全タブの画面をマウントしたまま保持する。
         // pages[_index]のように切り替えるとタブを離れた画面は破棄され、
         // AIチャットの会話などがタブ切り替えのたびに消えてしまう。
         body: IndexedStack(index: _index, children: pages),
@@ -257,6 +260,7 @@ class _HomeContentState extends State<_HomeContent> {
             NavigationDestination(icon: Text('💬', style: TextStyle(fontSize: 20)), label: 'チャット'),
             NavigationDestination(icon: Text('💕', style: TextStyle(fontSize: 20)), label: '記念日'),
             NavigationDestination(icon: Text('💭', style: TextStyle(fontSize: 20)), label: '質問'),
+            NavigationDestination(icon: Text('💰', style: TextStyle(fontSize: 20)), label: '家計'),
           ],
         ),
       ),
