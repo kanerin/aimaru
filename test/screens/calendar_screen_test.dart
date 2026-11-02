@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:aimaru/features/budget/domain/budget_plan.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/calendar_screen.dart';
 import 'package:aimaru/services/couple_service.dart';
@@ -39,6 +40,7 @@ void main() {
     NavigatorObserver? observer,
     GoogleCalendarService? googleCalendarServiceOverride,
     GoogleCalendarCacheService? googleCalendarCacheServiceOverride,
+    Stream<BudgetPlan?>? activeBudgetPlanStream,
   }) =>
       MaterialApp(
         navigatorObservers: observer != null ? [observer] : [],
@@ -53,6 +55,7 @@ void main() {
           googleCalendarCacheServiceOverride: googleCalendarCacheServiceOverride,
           currentUidOverride: meUid,
           nowOverride: () => today,
+          activeBudgetPlanStreamOverride: activeBudgetPlanStream,
         ),
       );
 
@@ -273,6 +276,88 @@ void main() {
     expect(find.textContaining('内緒の予定'), findsNothing);
 
     await controller.close();
+  });
+
+  group('家計の確定プランのボーナス表示', () {
+    // 今日（8/20）支給のボーナスを持つ確定プラン
+    BudgetPlan planWithBonusToday() => BudgetPlan(
+          name: '確定プラン',
+          isActive: true,
+          members: const [
+            BudgetMember(memberId: meUid, displayName: 'あい', monthlyTakeHome: 200000),
+            BudgetMember(
+              memberId: 'partner',
+              displayName: 'まる',
+              monthlyTakeHome: 300000,
+              bonuses: [Bonus(month: 8, amount: 400000, payDay: 20)],
+            ),
+          ],
+          savingsGoal: SavingsGoal(
+            targetAmount: 0,
+            startDate: DateTime(2026, 1, 1),
+            deadline: DateTime(2027, 12, 31),
+          ),
+        );
+
+    testWidgets('設定でオンにすると、支給日にボーナスを表示する', (tester) async {
+      SharedPreferences.setMockInitialValues({'show_budget_bonuses': true});
+      final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+      final budget = StreamController<BudgetPlan?>();
+      await tester.pumpWidget(wrap(controller.stream, activeBudgetPlanStream: budget.stream));
+      controller.add({});
+      await tester.pumpAndSettle();
+
+      budget.add(planWithBonusToday());
+      // 1回目のpumpでプランが届き（setState）、2回目で描画に反映される
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('まるのボーナス'), findsOneWidget);
+
+      // 選択表示では金額も出す
+      await tester.tap(find.text('${today.day}').first);
+      await tester.pump();
+      expect(find.text('1件'), findsOneWidget);
+      expect(find.textContaining('400,000円'), findsOneWidget);
+
+      await controller.close();
+      await budget.close();
+    });
+
+    testWidgets('設定がオフ（既定）なら確定プランを購読せず、ボーナスも出さない', (tester) async {
+      final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+      final budget = StreamController<BudgetPlan?>();
+      await tester.pumpWidget(wrap(controller.stream, activeBudgetPlanStream: budget.stream));
+      controller.add({});
+      await tester.pumpAndSettle();
+
+      expect(budget.hasListener, isFalse);
+      expect(find.textContaining('ボーナス'), findsNothing);
+
+      await controller.close();
+      // 一度も購読されていないStreamControllerのclose()は完了しないのでawaitしない
+      unawaited(budget.close());
+    });
+
+    testWidgets('確定プランの読み込みに失敗してもカレンダーは壊れず、予定は表示し続ける', (tester) async {
+      SharedPreferences.setMockInitialValues({'show_budget_bonuses': true});
+      final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+      final budget = StreamController<BudgetPlan?>();
+      await tester.pumpWidget(wrap(controller.stream, activeBudgetPlanStream: budget.stream));
+      controller.add({today: [buildEvent(title: '水族館デート')]});
+      await tester.pumpAndSettle();
+
+      budget.addError(Exception('PERMISSION_DENIED'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('水族館デート'), findsOneWidget);
+      expect(find.textContaining('ボーナス'), findsNothing);
+
+      await controller.close();
+      await budget.close();
+    });
   });
 }
 

@@ -16,6 +16,8 @@ import {
   warmUpRulesEngine,
   seedAlbumPhoto,
   seedAnniversary,
+  seedBudgetHistory,
+  seedBudgetPlan,
   seedChat,
   seedShoppingItem,
   seedCouple,
@@ -1200,5 +1202,119 @@ describe("bugReports — 書き込みは常に拒否、読み取りは自分の�
     });
 
     await assertFails(asA().doc("bugReports/report-1").update({ status: "done" }));
+  });
+});
+
+describe("budgetPlans — 2人とも閲覧・編集でき、誰が変えたかは偽装できない", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedBudgetPlan(testEnv, { planId: "plan-1", isActive: true, createdBy: USER_A });
+    await seedBudgetPlan(testEnv, { planId: "sim-1", isActive: false, createdBy: USER_A });
+  });
+
+  const plan = (uid) => ({
+    name: "確定プラン",
+    isActive: false,
+    members: [],
+    createdBy: uid,
+    updatedBy: uid,
+    updatedAt: new Date("2026-11-02T10:00:00"),
+  });
+
+  it("2人とも家計プランを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).get());
+    await assertSucceeds(asB().collection(`couples/${COUPLE_ID}/budgetPlans`).get());
+  });
+
+  it("メンバー以外・未認証は家計プランを読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).get());
+  });
+
+  it("メンバーは自分を作成者・更新者としてプランを作れる", async () => {
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-2`).set(plan(USER_B)));
+  });
+
+  it("相手を作成者・更新者に騙ってプランを作れない", async () => {
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-2`).set(plan(USER_A)));
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-2`).set({ ...plan(USER_B), updatedBy: USER_A }),
+    );
+  });
+
+  it("相手が作ったプランも、自分を更新者にすれば編集できる", async () => {
+    await assertSucceeds(
+      asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).update({ name: "変更後", updatedBy: USER_B }),
+    );
+  });
+
+  it("更新者を相手のままにして（誰が変えたかを偽装して）編集できない", async () => {
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).update({ name: "変更後" }),
+    );
+  });
+
+  it("作成者は書き換えられない", async () => {
+    await assertFails(
+      asB().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).update({ createdBy: USER_B, updatedBy: USER_B }),
+    );
+  });
+
+  it("シミュレーションは削除できるが、確定プランは削除できない", async () => {
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/budgetPlans/sim-1`).delete());
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).delete());
+  });
+
+  it("メンバー以外は作成・更新・削除できない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/budgetPlans/plan-3`).set(plan(USER_C)));
+    await assertFails(
+      asC().doc(`couples/${COUPLE_ID}/budgetPlans/plan-1`).update({ name: "改ざん", updatedBy: USER_C }),
+    );
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/budgetPlans/sim-1`).delete());
+  });
+});
+
+describe("budgetHistory — 変更履歴は追記のみ", () => {
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedBudgetHistory(testEnv);
+  });
+
+  const entry = (uid) => ({
+    planId: "plan-1",
+    planName: "確定プラン",
+    action: "updated",
+    changedBy: uid,
+    changedAt: new Date("2026-11-02T10:00:00"),
+    changes: [],
+  });
+
+  it("2人とも履歴を読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/budgetHistory/history-1`).get());
+    await assertSucceeds(asB().collection(`couples/${COUPLE_ID}/budgetHistory`).get());
+  });
+
+  it("メンバー以外は履歴を読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/budgetHistory/history-1`).get());
+  });
+
+  it("自分が変えたという履歴は追加できる", async () => {
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/budgetHistory/history-2`).set(entry(USER_B)));
+  });
+
+  it("相手が変えたことにした履歴は追加できない", async () => {
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/budgetHistory/history-2`).set(entry(USER_A)));
+  });
+
+  it("履歴は書き換え・削除できない（本人の分でも）", async () => {
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/budgetHistory/history-1`).update({ changes: [] }),
+    );
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/budgetHistory/history-1`).delete());
+  });
+
+  it("メンバー以外は履歴を追加できない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/budgetHistory/history-3`).set(entry(USER_C)));
   });
 });

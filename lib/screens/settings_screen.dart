@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/models.dart';
+import '../features/budget/presentation/budget_summary_screen.dart';
 import '../services/auth_service.dart';
 import '../services/couple_service.dart';
 import '../services/data_export_service.dart';
@@ -79,6 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notifyOnNewEvent = true;
   bool _notifyOnNewChatMessage = true;
   bool _notifyOnDailyQuestion = true;
+  bool _notifyOnBudgetChange = true;
   bool _remindersEnabled = true;
   int  _reminderMinutesBefore = 60;
 
@@ -129,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _notifyOnNewEvent = notif.notifyOnNewEvent;
         _notifyOnNewChatMessage = notif.notifyOnNewChatMessage;
         _notifyOnDailyQuestion = notif.notifyOnDailyQuestion;
+        _notifyOnBudgetChange = notif.notifyOnBudgetChange;
         _remindersEnabled = notif.remindersEnabled;
         _reminderMinutesBefore = notif.reminderMinutesBefore;
         _loadingPrefs = false;
@@ -473,6 +476,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
+              title: '家計の確定プランの変更を通知',
+              subtitle: 'パートナーが家計の確定プランを変えたときにプッシュ通知でお知らせします',
+              value: _notifyOnBudgetChange,
+              onChanged: (v) async {
+                setState(() => _notifyOnBudgetChange = v);
+                await _notificationSettingsService.setNotifyOnBudgetChange(v);
+              },
+            ),
+            const SizedBox(height: 12),
+            _SettingsSwitch(
               title: '予定・記念日のリマインダー通知',
               subtitle: '予定の開始前や記念日の当日にプッシュ通知でお知らせします',
               value: _remindersEnabled,
@@ -573,6 +586,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 memberIds: _couple?.memberIds ?? const [],
                 partnerName: _partnerName ?? 'パートナー',
               )),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+          SettingsNavigationRow(
+            title: 'ふたりの家計',
+            subtitle: '生活費の分担と貯金目標を2人で管理し、金額を変えながらシミュレーションできます',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => BudgetSummaryScreen(coupleId: widget.coupleId)),
             ),
           ),
 

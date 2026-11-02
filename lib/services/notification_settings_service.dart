@@ -6,6 +6,8 @@ class NotificationSettings {
   final bool notifyOnNewEvent;
   final bool notifyOnNewChatMessage;
   final bool notifyOnDailyQuestion;
+  // 相手が家計の確定プランを変えたとき（onBudgetPlanWritten）
+  final bool notifyOnBudgetChange;
   final bool remindersEnabled;
   final int  reminderMinutesBefore;
 
@@ -13,6 +15,7 @@ class NotificationSettings {
     this.notifyOnNewEvent = true,
     this.notifyOnNewChatMessage = true,
     this.notifyOnDailyQuestion = true,
+    this.notifyOnBudgetChange = true,
     this.remindersEnabled = true,
     this.reminderMinutesBefore = 60,
   });
@@ -21,6 +24,7 @@ class NotificationSettings {
     notifyOnNewEvent:       d?['notifyOnNewEvent'] ?? true,
     notifyOnNewChatMessage: d?['notifyOnNewChatMessage'] ?? true,
     notifyOnDailyQuestion:  d?['notifyOnDailyQuestion'] ?? true,
+    notifyOnBudgetChange:   d?['notifyOnBudgetChange'] ?? true,
     remindersEnabled:       d?['remindersEnabled'] ?? true,
     reminderMinutesBefore:  d?['reminderMinutesBefore'] ?? 60,
   );
@@ -58,6 +62,12 @@ class NotificationSettingsService {
   Future<void> setNotifyOnDailyQuestion(bool value) async {
     await _db.collection('users').doc(_uid).set(
       {'notifyOnDailyQuestion': value}, SetOptions(merge: true),
+    );
+  }
+
+  Future<void> setNotifyOnBudgetChange(bool value) async {
+    await _db.collection('users').doc(_uid).set(
+      {'notifyOnBudgetChange': value}, SetOptions(merge: true),
     );
   }
 
