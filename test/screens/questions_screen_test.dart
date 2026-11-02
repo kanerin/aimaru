@@ -19,6 +19,7 @@ void main() {
   Widget wrap(
     Stream<List<QuestionAnswer>> stream, {
     Future<String?>? dailyQuestion,
+    Future<void> Function(String, String)? submit,
   }) =>
       MaterialApp(
         home: QuestionsScreen(
@@ -29,6 +30,7 @@ void main() {
           nowOverride: now,
           answersStreamOverride: stream,
           dailyQuestionFutureOverride: dailyQuestion ?? Future.value(null),
+          submitOverride: submit,
         ),
       );
 
@@ -132,6 +134,44 @@ void main() {
       expect(find.textContaining('読み込みに失敗'), findsOneWidget);
       expect(find.text(pickDailyQuestion(now)), findsNothing);
       expect(find.byType(TextField), findsNothing);
+    });
+  });
+
+  group('回答の送信', () {
+    testWidgets('送信に失敗したら入力を残して通知し、ボタンを押し直せる', (tester) async {
+      await tester.pumpWidget(wrap(
+        Stream.value(const <QuestionAnswer>[]),
+        submit: (_, __) async => throw Exception('permission-denied'),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), '水族館');
+      await tester.tap(find.text('回答する'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('回答の送信に失敗しました。もう一度お試しください'), findsOneWidget);
+      expect(find.text('水族館'), findsOneWidget);
+      final button = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      expect(button.onPressed, isNotNull);
+    });
+
+    testWidgets('送信に成功したら入力内容を渡す', (tester) async {
+      String? sent;
+      await tester.pumpWidget(wrap(
+        Stream.value(const <QuestionAnswer>[]),
+        submit: (text, _) async => sent = text,
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.enterText(find.byType(TextField), '動物園');
+      await tester.tap(find.text('回答する'));
+      await tester.pump();
+
+      expect(sent, '動物園');
+      expect(find.textContaining('送信に失敗'), findsNothing);
     });
   });
 

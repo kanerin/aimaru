@@ -785,6 +785,13 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 `test/widgets/couple_loader_test.dart`にローディング・成功・ペア無し・失敗と再読み込みの4件を追加した
 （`flutter analyze`・`flutter test`（690件）通過）。
 
+2026-11-02、「ふたりの質問」の回答送信（`QuestionsScreen._submit`）が`submitAnswer`の例外を捕まえておらず、
+権限・通信エラーで失敗すると拾い手のない非同期例外になり、`_submitting`がtrueのまま「回答する」ボタンが
+無効化されて固まる経路を直した（reduce-debt枠、本PR）。失敗時は入力欄を残したまま
+「回答の送信に失敗しました。もう一度お試しください」を`SnackBar`で出し、押し直せる状態に戻す。
+`submitOverride`を注入ポイントとして追加し、`test/screens/questions_screen_test.dart`に失敗・成功の2件を
+追加した（`flutter analyze`・`flutter test`（695件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
