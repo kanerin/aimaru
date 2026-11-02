@@ -35,6 +35,8 @@ class QuestionsScreen extends StatefulWidget {
   final String? currentUidOverride;
   // テストから「今日」を固定するための注入ポイント。
   final DateTime? nowOverride;
+  // テストから回答の送信（成功/失敗）を差し込むための注入ポイント。
+  final Future<void> Function(String text, String question)? submitOverride;
 
   const QuestionsScreen({
     super.key,
@@ -45,6 +47,7 @@ class QuestionsScreen extends StatefulWidget {
     this.dailyQuestionFutureOverride,
     this.currentUidOverride,
     this.nowOverride,
+    this.submitOverride,
   });
 
   @override
@@ -80,7 +83,21 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     final text = _answerController.text.trim();
     if (text.isEmpty || _submitting) return;
     setState(() => _submitting = true);
-    await _service.submitAnswer(widget.coupleId, _dateKey, text, question: question);
+    try {
+      final override = widget.submitOverride;
+      if (override != null) {
+        await override(text, question);
+      } else {
+        await _service.submitAnswer(widget.coupleId, _dateKey, text, question: question);
+      }
+    } catch (_) {
+      // 失敗しても入力欄は消さず、押し直せる状態に戻す（送信中のまま固まらない）。
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('回答の送信に失敗しました。もう一度お試しください')),
+        );
+      }
+    }
     if (mounted) setState(() => _submitting = false);
   }
 
