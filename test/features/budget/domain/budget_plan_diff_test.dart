@@ -112,6 +112,35 @@ void main() {
     ]);
   });
 
+  test('毎月の貯金の決め方を比率指定に変えると、決め方と比率を記録する', () {
+    final changed = base.copyWith(
+      savingsGoal: base.savingsGoal.copyWith(
+        contributionMode: SavingsContributionMode.ratio,
+        contributionWeights: {memberA: 40, memberB: 60},
+      ),
+    );
+
+    expect(diffBudgetPlans(base, changed).map((c) => c.describe()), [
+      '毎月の貯金の決め方: カスタム → 比率指定',
+      'Aの貯金の比率: 0 → 40',
+      'Bの貯金の比率: 0 → 60',
+    ]);
+  });
+
+  test('固定＋残り では、誰をいくらで固定したかを記録する', () {
+    final changed = base.copyWith(
+      savingsGoal: base.savingsGoal.copyWith(
+        contributionMode: SavingsContributionMode.fixed,
+        fixedMemberIds: [memberA],
+      ),
+    );
+
+    expect(diffBudgetPlans(base, changed).map((c) => c.describe()), [
+      '毎月の貯金の決め方: カスタム → 固定＋残り',
+      'Aの毎月の貯金: 残りを負担 → 固定 50,000円',
+    ]);
+  });
+
   test('ボーナス（収入側）の変更', () {
     final changed = base.copyWith(members: [
       base.members[0].copyWith(bonuses: const [Bonus(month: 7, amount: 200000)]),

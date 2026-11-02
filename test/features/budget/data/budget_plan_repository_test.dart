@@ -56,6 +56,37 @@ void main() {
       expect(doc.data()!['schemaVersion'], BudgetPlanMapper.schemaVersion);
     });
 
+    test('毎月の貯金の決め方（比率・固定するメンバー）も保存して読み戻せる', () async {
+      final plan = realCouplePlan();
+      final saved = await repo.createPlan(
+        coupleId,
+        plan.copyWith(
+          savingsGoal: plan.savingsGoal.copyWith(
+            contributionMode: SavingsContributionMode.fixed,
+            contributionWeights: {memberA: 40, memberB: 60},
+            fixedMemberIds: [memberA],
+          ),
+        ),
+        activate: true,
+      );
+
+      final loaded = BudgetPlanMapper.fromDoc(await plansRef().doc(saved.id).get());
+      expect(loaded.savingsGoal.contributionMode, SavingsContributionMode.fixed);
+      expect(loaded.savingsGoal.contributionWeights, {memberA: 40, memberB: 60});
+      expect(loaded.savingsGoal.fixedMemberIds, [memberA]);
+    });
+
+    test('決め方が無い既存のプランは、従来どおり手入力（カスタム）として読む', () {
+      final plan = BudgetPlanMapper.fromMap('p1', {
+        'name': '既存のプラン',
+        'savingsGoal': {'targetAmount': 8000000, 'monthlyContributions': {memberA: 50000}},
+      });
+
+      expect(plan.savingsGoal.contributionMode, SavingsContributionMode.custom);
+      expect(plan.savingsGoal.monthlyContributions, {memberA: 50000});
+      expect(plan.savingsGoal.fixedMemberIds, isEmpty);
+    });
+
     test('金額がdoubleで入っていても、フィールドが欠けていても読める', () {
       final plan = BudgetPlanMapper.fromMap('p1', {
         'name': '古いプラン',

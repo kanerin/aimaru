@@ -60,7 +60,10 @@ class BudgetPlanMapper {
       'targetAmount':         plan.savingsGoal.targetAmount,
       'startDate':            Timestamp.fromDate(plan.savingsGoal.startDate),
       'deadline':             Timestamp.fromDate(plan.savingsGoal.deadline),
+      'contributionMode':     plan.savingsGoal.contributionMode.name,
       'monthlyContributions': plan.savingsGoal.monthlyContributions,
+      'contributionWeights':  plan.savingsGoal.contributionWeights,
+      'fixedMemberIds':       plan.savingsGoal.fixedMemberIds,
       'bonusContributions': [
         for (final b in plan.savingsGoal.bonusContributions)
           {'memberId': b.memberId, 'month': b.month, 'amount': b.amount},
@@ -127,7 +130,15 @@ class BudgetPlanMapper {
         targetAmount: _int(goal['targetAmount']),
         startDate:    startDate,
         deadline:     _date(goal['deadline']) ?? DateTime(startDate.year + 2, startDate.month, 0),
+        // 既存のプランにはこのフィールドが無い。従来どおり手入力（custom）として読む
+        contributionMode: SavingsContributionMode.values.firstWhere(
+          (m) => m.name == goal['contributionMode'], orElse: () => SavingsContributionMode.custom),
         monthlyContributions: _intMap(goal['monthlyContributions']),
+        contributionWeights:  _intMap(goal['contributionWeights']),
+        fixedMemberIds: [
+          for (final id in (goal['fixedMemberIds'] is List ? goal['fixedMemberIds'] as List : const []))
+            if (id is String) id,
+        ],
         bonusContributions: [
           for (final b in _list(goal['bonusContributions']))
             BonusContribution(

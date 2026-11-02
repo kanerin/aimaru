@@ -103,11 +103,114 @@ void main() {
     final active = realCouplePlan(id: 'plan-1');
     await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
 
-    await tester.tap(find.text('収入比'));
+    // 「収入比」は生活費口座と貯金の両方にある。生活費口座のほうが上
+    await tester.tap(find.text('収入比').first);
     await tester.pump();
 
     expect(find.text('54,310円'), findsWidgets);
     expect(find.text('120,690円'), findsWidgets);
+  });
+
+  group('毎月の貯金を目標から自動で決める', () {
+    // 期限に間に合う毎月の貯金（2人の合計）が258,334円になるプラン
+    BudgetPlan goalPlan() => realCouplePlan(
+          id: 'plan-1',
+          currentBalance: 1000000,
+          startDate: DateTime(2026, 11, 1),
+          deadline: DateTime(2028, 10, 31),
+        );
+
+    testWidgets('比率指定にすると必要額を比率で割り振り、目標額を変えると自動で再計算する', (tester) async {
+      final active = goalPlan();
+      await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
+
+      await tester.tap(find.text('比率'));
+      await tester.pump();
+
+      // 入力欄の「期限に間に合う毎月の貯金」と、結果の「毎月の貯金」の両方に出る
+      expect(find.text('258,334円'), findsWidgets);
+      // 既定は50:50
+      expect(find.text('Aの貯金の比率（→ 129,167円）'), findsOneWidget);
+      expect(find.text('Bの貯金の比率（→ 129,167円）'), findsOneWidget);
+
+      // 目標額を上げると、そのまま毎月の額が増える
+      await tester.enterText(amountInput('目標額'), '9200000');
+      await tester.pump();
+
+      expect(find.text('Aの貯金の比率（→ 154,167円）'), findsOneWidget);
+      expect(find.textContaining('足りません'), findsNothing);
+    });
+
+    testWidgets('固定にすると1人目が今の額で固定され、残りをもう1人が負担する', (tester) async {
+      final active = goalPlan();
+      await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
+
+      await tester.tap(find.text('固定'));
+      await tester.pump();
+
+      expect(amountInput('Aの毎月の貯金（固定）'), findsOneWidget);
+      expect(find.text('Bの毎月の貯金（残りを自動）'), findsOneWidget);
+      // 258,334 − Aの固定額50,000
+      expect(find.text('208,334円'), findsWidgets);
+
+      await tester.enterText(amountInput('Aの毎月の貯金（固定）'), '80000');
+      await tester.pump();
+      expect(find.text('178,334円'), findsWidgets);
+    });
+
+    testWidgets('貯金の「収入比」は手取りの比で割り振る', (tester) async {
+      final active = goalPlan();
+      await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
+
+      await tester.tap(find.text('収入比').last);
+      await tester.pump();
+
+      expect(find.text('Aの毎月の貯金（手取りの比）'), findsOneWidget);
+      expect(find.text('80,173円'), findsWidgets);
+      expect(find.text('178,161円'), findsWidgets);
+    });
+
+    testWidgets('自動からカスタムに戻すと、自動で決まっていた額が手入力欄に入る', (tester) async {
+      final active = goalPlan();
+      await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
+
+      await tester.tap(find.text('比率'));
+      await tester.pump();
+      await tester.tap(find.text('カスタム'));
+      await tester.pump();
+
+      final input = tester.widget<TextField>(amountInput('Aの毎月の貯金'));
+      expect(input.controller!.text, '129,167');
+    });
+  });
+
+  testWidgets('ボーナスからの貯金を「年◯回 × 1回あたり◯円」で入力できる', (tester) async {
+    final active = realCouplePlan(id: 'plan-1');
+    await openEditor(tester, plan: active.duplicateAsDraft(name: '案'), baseline: active);
+
+    // Bは年2回×200,000円、Aはまだ無い
+    expect(find.text('年0回'), findsOneWidget);
+    expect(find.text('年2回'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Aのボーナス入金の回数を増やす'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Aのボーナス入金の回数を増やす'));
+    await tester.pump();
+    expect(find.text('年2回'), findsNWidgets(2));
+
+    // 1回あたりの額（Aが先頭）
+    await tester.enterText(
+      find.descendant(
+        of: find.widgetWithText(AmountSliderField, '1回あたり').first,
+        matching: find.byType(TextField),
+      ),
+      '100000',
+    );
+    await tester.pump();
+
+    expect(find.textContaining('6月・12月に入金（年200,000円）'), findsOneWidget);
+    // 年間の貯金にボーナス分（Aの200,000 + Bの400,000）が反映される
+    expect(find.text('年間の貯金（ボーナス600,000円を含む）'), findsOneWidget);
   });
 
   testWidgets('未保存のシミュレーションを「確定にする」と、確定プランとして保存され元の確定プランは外れる',

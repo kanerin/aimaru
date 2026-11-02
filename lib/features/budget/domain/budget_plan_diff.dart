@@ -160,10 +160,31 @@ List<BudgetChange> diffBudgetPlans(BudgetPlan before, BudgetPlan after) {
   compare('貯金の開始月', formatYearMonthJa(oldGoal.startDate), formatYearMonthJa(newGoal.startDate));
   compare('貯金の期限', formatDateJa(oldGoal.deadline), formatDateJa(newGoal.deadline));
   compare('現在の貯金残高', formatYen(oldGoal.currentBalance), formatYen(newGoal.currentBalance));
-  for (final m in after.members) {
-    compare('${m.displayName}の毎月の貯金',
-        formatYen(oldGoal.monthlyContributions[m.memberId] ?? 0),
-        formatYen(newGoal.monthlyContributions[m.memberId] ?? 0));
+  compare('毎月の貯金の決め方', oldGoal.contributionMode.label, newGoal.contributionMode.label);
+  // 決め方ごとに意味のある入力だけを記録する（比率指定・収入比の各自の額は
+  // 目標から自動で決まる結果なので、入力の変更としては残さない）
+  switch (newGoal.contributionMode) {
+    case SavingsContributionMode.custom:
+      for (final m in after.members) {
+        compare('${m.displayName}の毎月の貯金',
+            formatYen(oldGoal.monthlyContributions[m.memberId] ?? 0),
+            formatYen(newGoal.monthlyContributions[m.memberId] ?? 0));
+      }
+    case SavingsContributionMode.ratio:
+      for (final m in after.members) {
+        compare('${m.displayName}の貯金の比率',
+            '${oldGoal.contributionWeights[m.memberId] ?? 0}',
+            '${newGoal.contributionWeights[m.memberId] ?? 0}');
+      }
+    case SavingsContributionMode.fixed:
+      String fixedDesc(SavingsGoal g, String id) => g.fixedMemberIds.contains(id)
+          ? '固定 ${formatYen(g.monthlyContributions[id] ?? 0)}'
+          : '残りを負担';
+      for (final m in after.members) {
+        compare('${m.displayName}の毎月の貯金', fixedDesc(oldGoal, m.memberId), fixedDesc(newGoal, m.memberId));
+      }
+    case SavingsContributionMode.incomeProportional:
+      break;
   }
   String describeBonusContributions(List<BonusContribution> list) => list.isEmpty
       ? 'なし'

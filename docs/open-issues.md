@@ -59,11 +59,12 @@ test/services/bug_report_service_test.dart       15   バグ報告送信サー�
 test/screens/bug_report_screen_test.dart         10   バグ報告フォーム画面（受理・拒否・入力検証・送信中表示・失敗時表示・送った報告一覧の表示/エラー）
 rules_test/firestore.test.js                     79   Firestoreルールのメンバー境界（todos・questionAnswers・anniversaries・aiCallCount/reportCallMonth保護・bugReports自分の報告のみ読める・ペアの解消・googleEventVisibility自分のみ読み書き含む）
 rules_test/storage.test.js                        6   Storageルールの画像アクセス制御
-test/features/budget/domain/budget_calculator_test.dart 42 家計の計算エンジン（実際の2人のルールの期待値・余剰の扱い・警告・貯金推移・必要月額・比率配分の端数）
-test/features/budget/domain/budget_plan_diff_test.dart 10 家計プランの変更履歴に残す差分
+test/features/budget/domain/budget_calculator_test.dart 52 家計の計算エンジン（実際の2人のルールの期待値・余剰の扱い・警告・貯金推移・必要月額・比率配分の端数・毎月の貯金の自動割り振り（比率/固定＋残り/収入比））
+test/features/budget/domain/budget_plan_diff_test.dart 12 家計プランの変更履歴に残す差分
+test/features/budget/domain/bonus_savings_test.dart  8   ボーナスからの貯金を「年◯回 × 1回あたり◯円」と月ごとの入金に相互変換
 test/features/budget/domain/{year_month,money,bonus_calendar}_test.dart 11 年月・金額表示・ボーナス支給日の算出
-test/features/budget/data/budget_plan_repository_test.dart 13 家計プランの読み書き（確定プランは1つ・履歴を同じバッチで記録・確定プランは削除不可）
-test/features/budget/presentation/*_test.dart    28   家計サマリー・シミュレーション・項目編集・貯金推移グラフ・変更履歴の画面
+test/features/budget/data/budget_plan_repository_test.dart 15 家計プランの読み書き（確定プランは1つ・履歴を同じバッチで記録・確定プランは削除不可）
+test/features/budget/presentation/*_test.dart    33   家計サマリー・シミュレーション（貯金の決め方の切り替え・ボーナス入金の回数）・項目編集・貯金推移グラフ・変更履歴の画面
 test/screens/calendar_screen_test.dart（追加分）    3   カレンダーへのボーナス表示（設定オン/オフ・購読失敗時もカレンダーを壊さない）
 functions/src/budget_notification_logic.test.ts  15   確定プラン変更通知の判定（シミュレーションでは通知しない・メタ情報だけの更新は通知しない）
 rules_test/firestore.test.js（追加分）            15   budgetPlans（updatedBy偽装不可・確定プラン削除不可）/ budgetHistory（追記のみ）

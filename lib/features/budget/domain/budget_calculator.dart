@@ -37,34 +37,43 @@ class BudgetCalculator {
     final totalLivingContributions = _sum(livingContributions.values);
     final livingSurplus = totalLivingContributions - netRequired;
 
-    // ── 各自のお金 ──
+    // ── 貯金（毎月の貯金額を決める前に分かるもの）──
     final savingsGoal = plan.savingsGoal;
-    final remainingAfterLiving = <String, int>{};
-    final savingsContributions = <String, int>{};
-    final remainingAfterSavings = <String, int>{};
-    for (final m in members) {
-      final living = livingContributions[m.memberId] ?? 0;
-      final saving = savingsGoal.monthlyContributions[m.memberId] ?? 0;
-      remainingAfterLiving[m.memberId] = m.monthlyTakeHome - living;
-      savingsContributions[m.memberId] = saving;
-      remainingAfterSavings[m.memberId] = m.monthlyTakeHome - living - saving;
-    }
-
-    // ── 貯金 ──
     // 不足しているときに貯金口座から生活費口座へ逆流させる、という扱いはしない
     // （不足は警告で知らせる）。移すのは余剰があるときだけ。
     final monthlySurplusToSavings =
         plan.livingAccount.surplusHandling == SurplusHandling.toSavings && livingSurplus > 0
             ? livingSurplus
             : 0;
-    final monthlySavingsInflow = _sum(savingsContributions.values) + monthlySurplusToSavings;
-    final annualBonusContributions = _sum(savingsGoal.bonusContributions.map((b) => b.amount));
-    final annualSavings = monthlySavingsInflow * 12 + annualBonusContributions;
-
     final start = YearMonth.fromDate(savingsGoal.startDate);
     final deadline = YearMonth.fromDate(savingsGoal.deadline);
     // 期限が開始より前なら推移は空（入金する月が無い）
     final periodMonths = start.isAfter(deadline) ? 0 : start.monthsUntil(deadline) + 1;
+    // 期限に間に合う「2人の毎月の貯金の合計」。各自の貯金額には依存しない
+    // （ボーナス入金と余剰の移し替えだけを差し引く）ので、自動で割り振る
+    // モードはこれを割り振ればよい。
+    final requiredMonthlyToHitGoal = _requiredMonthly(
+      savingsGoal: savingsGoal,
+      start: start,
+      periodMonths: periodMonths,
+      monthlySurplusToSavings: monthlySurplusToSavings,
+    );
+
+    // ── 各自のお金 ──
+    final savingsContributions = _savingsContributions(plan, requiredMonthlyToHitGoal);
+    final remainingAfterLiving = <String, int>{};
+    final remainingAfterSavings = <String, int>{};
+    for (final m in members) {
+      final living = livingContributions[m.memberId] ?? 0;
+      final saving = savingsContributions[m.memberId] ?? 0;
+      remainingAfterLiving[m.memberId] = m.monthlyTakeHome - living;
+      remainingAfterSavings[m.memberId] = m.monthlyTakeHome - living - saving;
+    }
+
+    // ── 貯金 ──
+    final monthlySavingsInflow = _sum(savingsContributions.values) + monthlySurplusToSavings;
+    final annualBonusContributions = _sum(savingsGoal.bonusContributions.map((b) => b.amount));
+    final annualSavings = monthlySavingsInflow * 12 + annualBonusContributions;
 
     int inflowFor(YearMonth ym) =>
         monthlySavingsInflow + _bonusInflowForMonth(savingsGoal.bonusContributions, ym.month);
@@ -79,12 +88,6 @@ class BudgetCalculator {
     final projectedAtDeadline = projection.isEmpty ? savingsGoal.currentBalance : projection.last.balance;
 
     final goalAchievedDate = _goalAchievedDate(savingsGoal, start, inflowFor);
-    final requiredMonthlyToHitGoal = _requiredMonthly(
-      savingsGoal: savingsGoal,
-      start: start,
-      periodMonths: periodMonths,
-      monthlySurplusToSavings: monthlySurplusToSavings,
-    );
 
     // ── 警告 ──
     final warnings = <BudgetWarning>[];
@@ -157,6 +160,43 @@ class BudgetCalculator {
         ];
         final shares = allocateByWeights(total, weights);
         return {for (var i = 0; i < members.length; i++) members[i].memberId: shares[i]};
+    }
+  }
+
+  // ── 毎月の貯金の各自の額 ─────────────────────────────
+  // custom以外は「期限に間に合う毎月の貯金（2人の合計）」を割り振る。
+  // 目標未設定・期限が開始より前（必要額を出せない）なら割り振る額は0。
+  static Map<String, int> _savingsContributions(BudgetPlan plan, int? requiredMonthly) {
+    final goal = plan.savingsGoal;
+    final members = plan.members;
+    final required = requiredMonthly ?? 0;
+    switch (goal.contributionMode) {
+      case SavingsContributionMode.custom:
+        return {for (final m in members) m.memberId: goal.monthlyContributions[m.memberId] ?? 0};
+      case SavingsContributionMode.ratio:
+      case SavingsContributionMode.incomeProportional:
+        final weights = [
+          for (final m in members)
+            goal.contributionMode == SavingsContributionMode.ratio
+                ? (goal.contributionWeights[m.memberId] ?? 0)
+                : m.monthlyTakeHome,
+        ];
+        final shares = allocateByWeights(required, weights);
+        return {for (var i = 0; i < members.length; i++) members[i].memberId: shares[i]};
+      case SavingsContributionMode.fixed:
+        final fixedIds = goal.fixedMemberIds.toSet();
+        final fixed = {
+          for (final m in members)
+            if (fixedIds.contains(m.memberId)) m.memberId: goal.monthlyContributions[m.memberId] ?? 0,
+        };
+        final others = members.where((m) => !fixedIds.contains(m.memberId)).toList();
+        // 固定した額だけで必要額を超えるなら、残りの人は0（マイナスにはしない）
+        final remainder = required - _sum(fixed.values);
+        final shares = allocateByWeights(remainder > 0 ? remainder : 0, [for (final _ in others) 1]);
+        return {
+          for (final m in members)
+            m.memberId: fixed[m.memberId] ?? shares[others.indexOf(m)],
+        };
     }
   }
 

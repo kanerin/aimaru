@@ -214,6 +214,33 @@ class LivingAccountRule {
 }
 
 // ── 貯金目標 ───────────────────────────────────────
+
+// 毎月の貯金を2人でどう決めるか。custom以外は、目標額・期限・ボーナス入金から
+// 「期限に間に合う毎月の貯金（2人の合計）」を逆算し、その額を割り振る
+// （目標や期限を変えるたびに自動で再計算される）。
+enum SavingsContributionMode {
+  // 各自の毎月の貯金額を手で決める（monthlyContributions）
+  custom,
+  // 必要額を決めた比率で分ける（contributionWeights）
+  ratio,
+  // 一部のメンバーの額を固定し（fixedMemberIds + monthlyContributions）、
+  // 必要額の残りを固定していないメンバーで等分する
+  fixed,
+  // 必要額を2人の手取りの比で分ける
+  incomeProportional,
+}
+
+extension SavingsContributionModeLabel on SavingsContributionMode {
+  String get label => switch (this) {
+    SavingsContributionMode.custom             => 'カスタム',
+    SavingsContributionMode.ratio              => '比率指定',
+    SavingsContributionMode.fixed              => '固定＋残り',
+    SavingsContributionMode.incomeProportional => '収入比',
+  };
+
+  bool get isAutomatic => this != SavingsContributionMode.custom;
+}
+
 class BonusContribution {
   final String memberId;
   final int month; // 入金する月（1〜12、毎年）
@@ -234,7 +261,15 @@ class SavingsGoal {
   // 計算は月単位。startDateの月〜deadlineの月の各月に入金があるものとして積み上げる。
   final DateTime startDate;
   final DateTime deadline;
-  final Map<String, int> monthlyContributions; // memberId → 毎月の貯金額
+  // 毎月の貯金の決め方。既存のプラン（フィールドが無い）は手入力のcustom。
+  final SavingsContributionMode contributionMode;
+  // memberId → 毎月の貯金額。customでは全員の額、fixedでは固定するメンバーの額。
+  // 比率指定・収入比では使わない（切り替えて戻したときのために残しておく）。
+  final Map<String, int> monthlyContributions;
+  // 比率指定の重み（memberId → 重み。合計100でなくてよい）
+  final Map<String, int> contributionWeights;
+  // 固定＋残り で額を固定するメンバー。ここに無いメンバーが残りを等分する。
+  final List<String> fixedMemberIds;
   final List<BonusContribution> bonusContributions;
   // startDate時点（その月の入金前）の貯金残高
   final int currentBalance;
@@ -243,7 +278,10 @@ class SavingsGoal {
     required this.targetAmount,
     required this.startDate,
     required this.deadline,
+    this.contributionMode = SavingsContributionMode.custom,
     this.monthlyContributions = const {},
+    this.contributionWeights = const {},
+    this.fixedMemberIds = const [],
     this.bonusContributions = const [],
     this.currentBalance = 0,
   });
@@ -254,7 +292,10 @@ class SavingsGoal {
     int? targetAmount,
     DateTime? startDate,
     DateTime? deadline,
+    SavingsContributionMode? contributionMode,
     Map<String, int>? monthlyContributions,
+    Map<String, int>? contributionWeights,
+    List<String>? fixedMemberIds,
     List<BonusContribution>? bonusContributions,
     int? currentBalance,
   }) =>
@@ -262,7 +303,10 @@ class SavingsGoal {
         targetAmount:         targetAmount ?? this.targetAmount,
         startDate:            startDate ?? this.startDate,
         deadline:             deadline ?? this.deadline,
+        contributionMode:     contributionMode ?? this.contributionMode,
         monthlyContributions: monthlyContributions ?? this.monthlyContributions,
+        contributionWeights:  contributionWeights ?? this.contributionWeights,
+        fixedMemberIds:       fixedMemberIds ?? this.fixedMemberIds,
         bonusContributions:   bonusContributions ?? this.bonusContributions,
         currentBalance:       currentBalance ?? this.currentBalance,
       );
