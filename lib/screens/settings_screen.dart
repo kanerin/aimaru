@@ -79,6 +79,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notifyOnNewEvent = true;
   bool _notifyOnNewChatMessage = true;
   bool _notifyOnDailyQuestion = true;
+  bool _notifyOnBudgetChange = true;
   bool _remindersEnabled = true;
   int  _reminderMinutesBefore = 60;
 
@@ -129,6 +130,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _notifyOnNewEvent = notif.notifyOnNewEvent;
         _notifyOnNewChatMessage = notif.notifyOnNewChatMessage;
         _notifyOnDailyQuestion = notif.notifyOnDailyQuestion;
+        _notifyOnBudgetChange = notif.notifyOnBudgetChange;
         _remindersEnabled = notif.remindersEnabled;
         _reminderMinutesBefore = notif.reminderMinutesBefore;
         _loadingPrefs = false;
@@ -469,6 +471,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) async {
                 setState(() => _notifyOnDailyQuestion = v);
                 await _notificationSettingsService.setNotifyOnDailyQuestion(v);
+              },
+            ),
+            const SizedBox(height: 12),
+            _SettingsSwitch(
+              title: '家計の確定プランの変更を通知',
+              subtitle: 'パートナーが家計の確定プランを変えたときにプッシュ通知でお知らせします',
+              value: _notifyOnBudgetChange,
+              onChanged: (v) async {
+                setState(() => _notifyOnBudgetChange = v);
+                await _notificationSettingsService.setNotifyOnBudgetChange(v);
               },
             ),
             const SizedBox(height: 12),

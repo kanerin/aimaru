@@ -185,3 +185,33 @@ export async function seedQuestionAnswer(testEnv, { uid = USER_A, dateKey = "202
   });
 }
 
+
+/**
+ * 家計プランを1件作る。isActive=true なら確定プラン、false ならシミュレーション。
+ * 中身（金額など）はルールの判定に使わないので最小限にしておく。
+ */
+export async function seedBudgetPlan(testEnv, { planId = "plan-1", isActive = true, createdBy = USER_A } = {}) {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/budgetPlans/${planId}`).set({
+      name: isActive ? "確定プラン" : "家賃上げた場合",
+      isActive,
+      members: [],
+      createdBy,
+      updatedBy: createdBy,
+      updatedAt: new Date("2026-11-01T10:00:00"),
+    });
+  });
+}
+
+export async function seedBudgetHistory(testEnv, entryId = "history-1") {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().doc(`couples/${COUPLE_ID}/budgetHistory/${entryId}`).set({
+      planId: "plan-1",
+      planName: "確定プラン",
+      action: "updated",
+      changedBy: USER_A,
+      changedAt: new Date("2026-11-01T10:00:00"),
+      changes: [{ label: "家賃", before: "110,000円", after: "120,000円" }],
+    });
+  });
+}

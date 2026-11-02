@@ -22,6 +22,7 @@ void main() {
       expect(settings.notifyOnNewEvent, isTrue);
       expect(settings.notifyOnNewChatMessage, isTrue);
       expect(settings.notifyOnDailyQuestion, isTrue);
+      expect(settings.notifyOnBudgetChange, isTrue);
       expect(settings.remindersEnabled, isTrue);
       expect(settings.reminderMinutesBefore, 60);
     });
@@ -52,6 +53,17 @@ void main() {
 
       final settings = await service.get();
       expect(settings.notifyOnDailyQuestion, isFalse);
+      // 他の設定には影響しない
+      expect(settings.notifyOnNewEvent, isTrue);
+    });
+  });
+
+  group('setNotifyOnBudgetChange', () {
+    test('falseにするとgetでも反映される', () async {
+      await service.setNotifyOnBudgetChange(false);
+
+      final settings = await service.get();
+      expect(settings.notifyOnBudgetChange, isFalse);
       // 他の設定には影響しない
       expect(settings.notifyOnNewEvent, isTrue);
     });

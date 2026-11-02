@@ -2,7 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { getStorage } from "firebase-admin/storage";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
@@ -43,6 +43,11 @@ import {
   validateReportText,
 } from "./bug_report_logic";
 import { buildChatNotificationBody } from "./chat_notification_logic";
+import {
+  budgetNotificationTargets,
+  buildBudgetPlanNotification,
+  classifyBudgetPlanChange,
+} from "./budget_notification_logic";
 import { cleanupLeftoverSoloCouples, deleteCoupleData } from "./couple_cleanup";
 import { prepareDailyQuestion } from "./daily_question_generation";
 import {
@@ -86,6 +91,7 @@ interface UserDoc {
   notifyOnNewEvent?: boolean;
   notifyOnNewChatMessage?: boolean;
   notifyOnDailyQuestion?: boolean;
+  notifyOnBudgetChange?: boolean;
   remindersEnabled?: boolean;
   reminderMinutesBefore?: number;
 }
@@ -201,6 +207,44 @@ export const onChatMessageCreated = onDocumentCreated(
           body,
           { type: "new_chat_message", coupleId, messageId },
         );
+      }),
+    );
+  },
+);
+
+// ── 家計プラン通知: 相手が確定プランを変えたら通知 ──────────────
+// 2人で話し合って決めた家計（確定プラン）が片方だけで変わったことに
+// 気づけるようにする。シミュレーション（仮案）の編集では通知しない
+// （判定はbudget_notification_logic.tsの純粋関数）。
+// 宛先は「更新した本人（updatedBy）以外のメンバー」。updatedByはFirestoreの
+// ルールで書き込んだ本人のuidに固定しているので、偽装されない。
+export const onBudgetPlanWritten = onDocumentWritten(
+  "couples/{coupleId}/budgetPlans/{planId}",
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    const kind = classifyBudgetPlanChange(before, after);
+    if (!kind || !after) return;
+    const actorId = typeof after.updatedBy === "string" ? after.updatedBy : "";
+    if (!actorId) return;
+    const { coupleId, planId } = event.params;
+
+    const coupleSnap = await db.collection("couples").doc(coupleId).get();
+    const memberIds: string[] = coupleSnap.data()?.memberIds ?? [];
+    const targetIds = budgetNotificationTargets(memberIds, actorId);
+    if (targetIds.length === 0) return;
+
+    const actorSnap = await db.collection("users").doc(actorId).get();
+    const actorName = (actorSnap.data() as UserDoc | undefined)?.displayName ?? "パートナー";
+    const planName = typeof after.name === "string" ? after.name : "";
+    const { title, body } = buildBudgetPlanNotification(kind, actorName, planName);
+
+    await Promise.all(
+      targetIds.map(async (uid) => {
+        const userSnap = await db.collection("users").doc(uid).get();
+        const user = userSnap.data() as UserDoc | undefined;
+        if (!user || user.notifyOnBudgetChange === false) return;
+        await sendFcm(user.fcmToken, title, body, { type: "budget_plan_updated", coupleId, planId });
       }),
     );
   },
