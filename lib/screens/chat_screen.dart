@@ -305,8 +305,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     builder: (context, snap) {
                       if (snap.hasError) {
                         return const Center(
-                          child: Text('メッセージの読み込みに失敗しました',
-                            style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                          child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
                         );
                       }
                       final messages = snap.data ?? [];

@@ -180,7 +180,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(find.text('メッセージの読み込みに失敗しました'), findsOneWidget);
+    expect(find.text('読み込みに失敗しました\nしばらくしてから開き直してください'), findsOneWidget);
 
     await controller.close();
   });
