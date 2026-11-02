@@ -8,6 +8,7 @@ class SettingsService {
   static const _keyAccentName = 'accent_color_name';
   static const _keyShowHolidays = 'show_holidays';
   static const _keyWeekStartsMonday = 'week_starts_monday';
+  static const _keyShowBudgetBonuses = 'show_budget_bonuses';
 
   static const defaultAccentName = 'ラベンダー';
 
@@ -52,6 +53,18 @@ class SettingsService {
   Future<void> setShowHolidays(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowHolidays, value);
+  }
+
+  // ── 家計の確定プランのボーナスをカレンダーに表示するか ──
+  // 金額にかかわる情報なので既定はオフ。端末ごとの表示設定（祝日表示と同じ扱い）。
+  Future<bool> getShowBudgetBonuses() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyShowBudgetBonuses) ?? false;
+  }
+
+  Future<void> setShowBudgetBonuses(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShowBudgetBonuses, value);
   }
 
   // ── 週の開始曜日（true: 月曜始まり / false: 日曜始まり） ──

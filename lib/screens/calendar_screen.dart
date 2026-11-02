@@ -3,6 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import '../features/budget/data/budget_plan_repository.dart';
+import '../features/budget/domain/bonus_calendar.dart';
+import '../features/budget/domain/budget_plan.dart';
+import '../features/budget/domain/money.dart';
 import '../models/models.dart';
 import '../services/couple_service.dart';
 import '../services/event_service.dart';
@@ -53,6 +57,8 @@ class CalendarScreen extends StatefulWidget {
   final String? currentUidOverride;
   // テストから「今日」を固定するための注入ポイント（未指定時はDateTime.now）。
   final DateTime Function()? nowOverride;
+  // 家計の確定プラン（ボーナスの表示用）。設定でオンのときだけ購読する。
+  final Stream<BudgetPlan?>? activeBudgetPlanStreamOverride;
   const CalendarScreen({
     super.key,
     required this.coupleId,
@@ -64,6 +70,7 @@ class CalendarScreen extends StatefulWidget {
     this.coupleServiceOverride,
     this.currentUidOverride,
     this.nowOverride,
+    this.activeBudgetPlanStreamOverride,
   });
 
   @override
@@ -119,6 +126,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Map<String, _Member> _members = {};
 
+  // 家計の確定プランのボーナス支給日を祝日と同じように重ねて表示する
+  // （予定としては保存しない。lib/features/budget/domain/bonus_calendar.dart）。
+  // 設定（ふたりの家計 → ボーナスをカレンダーに表示）がオンのときだけ購読する。
+  bool _showBudgetBonuses = false;
+  StreamSubscription<BudgetPlan?>? _budgetSub;
+  BudgetPlan? _activeBudgetPlan;
+
+  List<BonusCalendarEntry> _bonusesFor(DateTime day) {
+    final plan = _activeBudgetPlan;
+    if (!_showBudgetBonuses || plan == null) return const [];
+    return bonusEntriesOn(plan, day);
+  }
+
   DateTime _key(DateTime d) => dayKey(d);
 
   Color _dotColor(EventType t) => switch (t) {
@@ -150,13 +170,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void dispose() {
     _gcalSub?.cancel();
+    _budgetSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadDisplayPrefs() async {
     final holidays = await _settingsService.getShowHolidays();
     final weekStart = await _settingsService.getWeekStartsMonday();
+    final budgetBonuses = await _settingsService.getShowBudgetBonuses();
     if (mounted) setState(() { _showHolidays = holidays; _weekStartsMonday = weekStart; });
+    if (mounted) _syncBudgetSubscription(budgetBonuses);
+  }
+
+  // ボーナス表示はカレンダーの補助情報なので、購読に失敗しても（ルール未反映・
+  // 権限エラーなど）カレンダー自体は壊さず、ボーナスを出さないだけにする。
+  void _syncBudgetSubscription(bool show) {
+    setState(() => _showBudgetBonuses = show);
+    if (!show) {
+      _budgetSub?.cancel();
+      _budgetSub = null;
+      setState(() => _activeBudgetPlan = null);
+      return;
+    }
+    if (_budgetSub != null) return;
+    final stream = widget.activeBudgetPlanStreamOverride ??
+        BudgetPlanRepository().watchActivePlan(widget.coupleId);
+    _budgetSub = stream.listen(
+      (plan) {
+        if (mounted) setState(() => _activeBudgetPlan = plan);
+      },
+      onError: (Object e) {
+        debugPrint('[家計プランの取得に失敗] $e');
+        if (mounted) setState(() => _activeBudgetPlan = null);
+      },
+    );
   }
 
   // メンバーの表示名・アイコンの取得。
@@ -480,6 +527,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final holidayName = _showHolidays ? JapanHolidays.nameFor(day) : null;
 
     final chips = <(String label, Color categoryColor, String uid)>[
+      ..._bonusesFor(day).map((b) => ('💰 ${b.label}', AppColors.gold, b.memberId)),
       ...events.map((e) => ('${e.type.emoji} ${e.title}', _dotColor(e.type), e.createdBy)),
       ...gcalEvents.map((e) => ('📅 ${e.event.title}', _gcalColor, e.uid)),
     ];
@@ -593,7 +641,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   ) {
     final selectedEvents     = eventsMap[_key(_selectedDay)] ?? [];
     final selectedGcalEvents = _gcalFor(_selectedDay, syncedIds);
-    final totalCount         = selectedEvents.length + selectedGcalEvents.length;
+    final selectedBonuses    = _bonusesFor(_selectedDay);
+    final totalCount         = selectedEvents.length + selectedGcalEvents.length + selectedBonuses.length;
     final holidayName        = _showHolidays ? JapanHolidays.nameFor(_selectedDay) : null;
 
     return Column(
@@ -703,6 +752,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 88),
                   children: [
+                    ...selectedBonuses.map((b) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.navySurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.gold.withValues(alpha: 0.5)),
+                        ),
+                        child: Row(children: [
+                          Container(width: 3, height: 34, decoration: const BoxDecoration(
+                            color: AppColors.gold, borderRadius: BorderRadius.all(Radius.circular(2)),
+                          )),
+                          const SizedBox(width: 10),
+                          _memberAvatar(context, b.memberId),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('💰 ${b.label}', style: const TextStyle(
+                                fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.cream,
+                              )),
+                              const SizedBox(height: 3),
+                              Text('${formatYen(b.amount)} · 家計の確定プランより',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                            ]),
+                          ),
+                        ]),
+                      ),
+                    )),
                     ...selectedEvents.map((e) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: GestureDetector(
