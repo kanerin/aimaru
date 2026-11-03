@@ -105,6 +105,64 @@ void main() {
     expect((await myReadStatusDoc()).exists, isTrue);
   });
 
+  group('新着メッセージの自動スクロール', () {
+    List<ChatMessage> build(int n, {String lastSender = partnerUid}) => [
+          for (var i = 0; i < n; i++)
+            ChatMessage(
+              id: 'm$i',
+              coupleId: coupleId,
+              text: 'メッセージ$i',
+              senderId: i == n - 1 ? lastSender : partnerUid,
+              timestamp: DateTime(2026, 1, 1).add(Duration(minutes: i)),
+            ),
+        ];
+
+    ScrollPosition position(WidgetTester tester) =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+
+    testWidgets('過去ログを読んでいる最中に相手の新着が届いても読んでいる位置から動かさない', (tester) async {
+      final ctrl = StreamController<List<ChatMessage>>.broadcast();
+      addTearDown(ctrl.close);
+      await tester.pumpWidget(wrap(isActive: true, messagesStreamOverride: ctrl.stream));
+      ctrl.add(build(40));
+      await tester.pumpAndSettle();
+      expect(position(tester).pixels, position(tester).maxScrollExtent);
+
+      position(tester).jumpTo(0);
+      await tester.pump();
+
+      ctrl.add(build(41));
+      await tester.pumpAndSettle();
+      expect(position(tester).pixels, 0);
+    });
+
+    testWidgets('最下部付近を見ているときは新着で最下部へ追従する', (tester) async {
+      final ctrl = StreamController<List<ChatMessage>>.broadcast();
+      addTearDown(ctrl.close);
+      await tester.pumpWidget(wrap(isActive: true, messagesStreamOverride: ctrl.stream));
+      ctrl.add(build(40));
+      await tester.pumpAndSettle();
+
+      ctrl.add(build(41));
+      await tester.pumpAndSettle();
+      expect(position(tester).pixels, position(tester).maxScrollExtent);
+    });
+
+    testWidgets('自分が送ったメッセージは過去ログを読んでいても最下部へ送る', (tester) async {
+      final ctrl = StreamController<List<ChatMessage>>.broadcast();
+      addTearDown(ctrl.close);
+      await tester.pumpWidget(wrap(isActive: true, messagesStreamOverride: ctrl.stream));
+      ctrl.add(build(40));
+      await tester.pumpAndSettle();
+      position(tester).jumpTo(0);
+      await tester.pump();
+
+      ctrl.add(build(41, lastSender: meUid));
+      await tester.pumpAndSettle();
+      expect(position(tester).pixels, position(tester).maxScrollExtent);
+    });
+  });
+
   testWidgets('リアクションが人数付きピルで表示される', (tester) async {
     final message = ChatMessage(
       id: 'msg-1',

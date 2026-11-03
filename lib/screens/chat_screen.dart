@@ -64,6 +64,9 @@ class _ChatScreenState extends State<ChatScreen> {
   // パートナーのuidが分かるまでは既読ストリームを作れないためnullable。
   Stream<DateTime?>? _partnerReadStream;
   bool _sendingImage = false;
+  // 最後に自動スクロールの判定をした時点の最新メッセージID。ビルダーは既読の更新や
+  // 再ビルドのたびに走るので、IDが変わったとき（初回・新着）だけスクロールを考える。
+  String? _lastSeenMessageId;
 
   // メッセージ一覧を購読し、このタブを表示している間だけ、初回・新着のたびに
   // 自分の既読時刻を更新する（画面を開いている＝既読、が自然なチャットの既読UX）。
@@ -257,6 +260,19 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  // 新着メッセージが届いたときの自動スクロール判定。過去のメッセージを遡って読んで
+  // いる最中に相手のメッセージが届いても、読んでいる位置から引き戻さない。
+  // 初回表示・自分の送信・すでに最下部付近を見ている場合だけ最下部へ送る。
+  void _autoScrollOnNewMessage(List<ChatMessage> messages) {
+    final latest = messages.last;
+    if (latest.id == _lastSeenMessageId) return;
+    final isFirst = _lastSeenMessageId == null;
+    _lastSeenMessageId = latest.id;
+    final nearBottom = !_scrollCtrl.hasClients ||
+        _scrollCtrl.position.maxScrollExtent - _scrollCtrl.position.pixels < 120;
+    if (isFirst || latest.senderId == _myUid || nearBottom) _scrollToBottom();
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollCtrl.hasClients) {
@@ -321,7 +337,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
                         );
                       }
-                      _scrollToBottom();
+                      _autoScrollOnNewMessage(messages);
                       final lastMyIndex = messages.lastIndexWhere((m) => m.senderId == _myUid);
                       return ListView.builder(
                         controller: _scrollCtrl,
