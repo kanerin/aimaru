@@ -801,6 +801,14 @@ Issue化を`fix-bug-reports.yml`（2日に1回、Claude Codeの実行とセッ�
 `submitOverride`を注入ポイントとして追加し、`test/screens/questions_screen_test.dart`に失敗・成功の2件を
 追加した（`flutter analyze`・`flutter test`（695件）通過）。
 
+2026-11-03、カレンダー画面（`CalendarScreen`）のGoogleカレンダー同期（`_syncGoogleCalendarForMonth`）が
+`fetchEvents`（Google認証切れ・オフライン）と`pushMyEvents`（Firestore権限エラー）の例外を捕まえておらず、
+initStateと月送りのどちらからも結果を待たないため拾い手のない非同期例外になる経路を直した（reduce-debt枠、
+本PR）。失敗は`debugPrint`に残し、同期済みの印を戻して次の月送りで再試行する。パートナーのGoogle予定の
+キャッシュ購読（`watchAll().listen`）にも`onError`を付けた（補助表示なので失敗してもカレンダー本体は壊さない）。
+`test/screens/calendar_screen_test.dart`に同期失敗時のテストを追加した（`flutter analyze`・`flutter test`
+（833件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

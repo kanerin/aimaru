@@ -278,6 +278,27 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('Googleカレンダーの同期に失敗しても例外を漏らさず、予定は表示し続ける', (tester) async {
+    SharedPreferences.setMockInitialValues({'show_google_calendar': true});
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      googleCalendarServiceOverride: _ThrowingGoogleCalendarService(),
+      googleCalendarCacheServiceOverride: GoogleCalendarCacheService(firestore: db, uid: meUid),
+    ));
+    await tester.pumpAndSettle();
+
+    controller.add({today: [buildEvent(title: '水族館デート')]});
+    await tester.pump();
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('水族館デート'), findsOneWidget);
+
+    await controller.close();
+  });
+
   group('家計の確定プランのボーナス表示', () {
     // 今日（8/20）支給のボーナスを持つ確定プラン
     BudgetPlan planWithBonusToday() => BudgetPlan(
@@ -370,6 +391,15 @@ class _FakeGoogleCalendarService extends GoogleCalendarService {
     required DateTime end,
   }) async =>
       [];
+}
+
+class _ThrowingGoogleCalendarService extends GoogleCalendarService {
+  @override
+  Future<List<GCalEventSummary>> fetchEvents({
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      throw Exception('google sign-in failed');
 }
 
 class _RecordingNavigatorObserver extends NavigatorObserver {

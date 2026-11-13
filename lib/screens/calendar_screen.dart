@@ -256,6 +256,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
         }
       });
       if (mounted) setState(() => _gcalByDate = byDate);
+    }, onError: (Object e) {
+      // パートナーのGoogle予定は補助表示。購読が権限・通信エラーで落ちても
+      // カレンダー本体は壊さず、Google予定を出さないだけにする。
+      debugPrint('[Googleカレンダーのキャッシュ購読に失敗] $e');
     });
 
     await _syncGoogleCalendarForMonth(_focusedDay);
@@ -270,8 +274,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     // 前後1ヶ月ぶんも合わせて取得しておくと月送り直後も表示が揃う
     final start = DateTime(month.year, month.month - 1, 1);
     final end   = DateTime(month.year, month.month + 2, 0, 23, 59);
-    final events = await _googleCalendar.fetchEvents(start: start, end: end);
-    await _googleCalendarCache.pushMyEvents(widget.coupleId, events);
+    // Googleの認証切れ・オフライン・Firestoreの権限エラーはここで起こり得る。
+    // 呼び出し元（initState・月送り）は結果を待たないので、握らないと拾い手の
+    // ない非同期例外になる。失敗したら同期済みの印を戻し、次の月送りで再試行する。
+    try {
+      final events = await _googleCalendar.fetchEvents(start: start, end: end);
+      await _googleCalendarCache.pushMyEvents(widget.coupleId, events);
+    } catch (e) {
+      debugPrint('[Googleカレンダーの同期に失敗] $e');
+      if (_gcalSyncedMonth == monthKey) _gcalSyncedMonth = null;
+    }
   }
 
   // このアプリからGoogleカレンダーに同期した予定のGoogle側IDの集合。
