@@ -11,6 +11,7 @@ import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/event_form_screen.dart';
 import 'package:aimaru/services/event_service.dart';
 import 'package:aimaru/services/google_calendar_service.dart';
+import 'package:aimaru/services/settings_service.dart';
 import 'package:aimaru/services/storage_service.dart';
 
 // StorageService/GoogleCalendarServiceは本番実装がFirebase/Google APIに
@@ -54,6 +55,11 @@ class _ThrowingEventService extends EventService {
   }
 }
 
+class _ThrowingSettingsService extends SettingsService {
+  @override
+  Future<bool> getDefaultSyncGoogleCalendar() async => throw Exception('prefs unavailable');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -94,6 +100,7 @@ void main() {
     EventService? eventServiceOverride,
     StorageService? storageService,
     GoogleCalendarService? calendarService,
+    SettingsService? settingsService,
     List<File>? initialImages,
   }) async {
     await tester.pumpWidget(MaterialApp(
@@ -108,6 +115,7 @@ void main() {
                   eventServiceOverride: eventServiceOverride ?? eventService,
                   storageServiceOverride: storageService,
                   calendarServiceOverride: calendarService,
+                  settingsServiceOverride: settingsService,
                   initialImagesForTest: initialImages,
                 ),
               )),
@@ -120,6 +128,25 @@ void main() {
     await tester.tap(find.text('起点画面'));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('Googleカレンダー同期の既定値の読み出しに失敗しても、例外にならずフォームが開く', (tester) async {
+    await openForm(tester, settingsService: _ThrowingSettingsService());
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('起点画面'), findsNothing); // フォームが開いている
+  });
+
+  testWidgets('設定で既定がONなら新規作成フォームのGoogle同期スイッチがONになる', (tester) async {
+    SharedPreferences.setMockInitialValues({'default_sync_google_calendar': true});
+    tester.view.physicalSize = const Size(1080, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await openForm(tester);
+
+    final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+    expect(switches.any((s) => s.value), isTrue);
+  });
 
   testWidgets('タイトルが空のまま保存するとバリデーションメッセージが出て保存されない', (tester) async {
     await openForm(tester);
