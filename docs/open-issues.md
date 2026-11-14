@@ -809,6 +809,13 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 `test/screens/calendar_screen_test.dart`に同期失敗時のテストを追加した（`flutter analyze`・`flutter test`
 （833件）通過）。
 
+2026-11-14、予定フォーム（`EventFormScreen`）の新規作成時にGoogleカレンダー同期の既定値を読む処理
+（`SettingsService().getDefaultSyncGoogleCalendar().then(...)`）がエラーを握っておらず、読み出しが
+失敗すると拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。失敗は`debugPrint`に残し
+既定値（同期しない）のままフォームを使えるようにした。`settingsServiceOverride`を注入ポイントとして追加し、
+`test/screens/event_form_screen_test.dart`に失敗時・既定ONの2件を追加した（`flutter analyze`・
+`flutter test`（838件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

@@ -25,6 +25,7 @@ class EventFormScreen extends StatefulWidget {
   final EventService? eventServiceOverride;
   final StorageService? storageServiceOverride;
   final GoogleCalendarService? calendarServiceOverride;
+  final SettingsService? settingsServiceOverride;
   final List<File>? initialImagesForTest;
 
   const EventFormScreen({
@@ -36,6 +37,7 @@ class EventFormScreen extends StatefulWidget {
     this.eventServiceOverride,
     this.storageServiceOverride,
     this.calendarServiceOverride,
+    this.settingsServiceOverride,
     this.initialImagesForTest,
   });
 
@@ -85,9 +87,19 @@ class _EventFormScreenState extends State<EventFormScreen> {
       _syncGoogle = widget.existing!.googleCalendarEventId != null;
     } else {
       // 新規作成時は設定画面のデフォルト値を反映
-      SettingsService().getDefaultSyncGoogleCalendar().then((value) {
-        if (mounted) setState(() => _syncGoogle = value);
-      });
+      _loadDefaultSync();
+    }
+  }
+
+  // 端末設定の読み出しが失敗しても、握らないと結果を待たない呼び出しなので
+  // 拾い手のない非同期例外になる。既定値（同期しない）のままフォームを使えるようにする。
+  Future<void> _loadDefaultSync() async {
+    try {
+      final value = await (widget.settingsServiceOverride ?? SettingsService())
+          .getDefaultSyncGoogleCalendar();
+      if (mounted) setState(() => _syncGoogle = value);
+    } catch (e) {
+      debugPrint('[Googleカレンダー同期の既定値の取得に失敗] $e');
     }
   }
 
