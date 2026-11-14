@@ -58,10 +58,39 @@ class _ImageDetailScreenState extends State<ImageDetailScreen> {
             imageUrl: widget.imageUrl,
             fit: BoxFit.contain,
             placeholder: (_, __) => const CircularProgressIndicator(color: Colors.white),
-            errorWidget: (_, __, ___) => const Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+            errorWidget: (_, __, ___) => const ImageDetailLoadError(),
           ),
         ),
       ),
     );
   }
+}
+
+// 拡大表示で画像を読み込めなかったときの表示。アイコンだけだと「読み込み中の
+// まま固まったのか、壊れたのか」が分からず、次に何をすればよいかも伝わらない
+// ため、理由と対処（戻ってもう一度開く）を文言で示す。
+@visibleForTesting
+class ImageDetailLoadError extends StatelessWidget {
+  const ImageDetailLoadError({super.key});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: '画像を読み込めませんでした。通信状況を確認して、もう一度開いてください',
+        excludeSemantics: true,
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.broken_image_outlined, color: Colors.white54, size: 48),
+              SizedBox(height: 12),
+              Text(
+                '画像を読み込めませんでした\n通信状況を確認して、もう一度開いてください',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+              ),
+            ],
+          ),
+        ),
+      );
 }

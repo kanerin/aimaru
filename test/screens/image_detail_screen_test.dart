@@ -54,4 +54,14 @@ void main() {
     expect(find.byTooltip('閉じる'), findsOneWidget);
     expect(find.byTooltip('画像を保存'), findsOneWidget);
   });
+
+  testWidgets('画像の読み込み失敗表示は理由と対処を文言で案内する', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(backgroundColor: Colors.black, body: Center(child: ImageDetailLoadError())),
+    ));
+
+    expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+    expect(find.textContaining('画像を読み込めませんでした'), findsOneWidget);
+    expect(find.textContaining('もう一度開いてください'), findsOneWidget);
+  });
 }
