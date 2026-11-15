@@ -286,6 +286,25 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(44));
   });
 
+  testWidgets('画像メッセージ本体に「写真を開く」の読み上げラベルが付く', (tester) async {
+    final handle = tester.ensureSemantics();
+    final message = ChatMessage(
+      id: 'img-2',
+      coupleId: coupleId,
+      text: '',
+      imageUrl: 'https://example.com/a.png',
+      senderId: partnerUid,
+      timestamp: DateTime(2026, 1, 1),
+    );
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('写真を開く'), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('パートナー情報の読み込みに失敗しても例外を出さず「パートナー」表示のまま使える', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: ChatScreen(
