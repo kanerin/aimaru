@@ -13,6 +13,7 @@ import 'package:aimaru/screens/calendar_screen.dart';
 import 'package:aimaru/services/couple_service.dart';
 import 'package:aimaru/services/google_calendar_cache_service.dart';
 import 'package:aimaru/services/google_calendar_service.dart';
+import 'package:aimaru/services/settings_service.dart';
 
 // カレンダー画面がストリームエラーで（無限ローディングではなく、予定が0件に
 // 見える空のカレンダーで）固まらないことと、基本的な表示・遷移経路を確かめる。
@@ -37,6 +38,7 @@ void main() {
 
   Widget wrap(
     Stream<Map<DateTime, List<AimaruEvent>>> stream, {
+    SettingsService? settingsServiceOverride,
     NavigatorObserver? observer,
     GoogleCalendarService? googleCalendarServiceOverride,
     GoogleCalendarCacheService? googleCalendarCacheServiceOverride,
@@ -51,6 +53,7 @@ void main() {
           // _loadMembersはFirestoreの生のusers参照へ進まず早期return するため、
           // Firebase未初期化のテストでも安全に動く。
           coupleServiceOverride: CoupleService(firestore: db, uid: meUid),
+          settingsServiceOverride: settingsServiceOverride,
           googleCalendarServiceOverride: googleCalendarServiceOverride,
           googleCalendarCacheServiceOverride: googleCalendarCacheServiceOverride,
           currentUidOverride: meUid,
@@ -299,6 +302,25 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('表示設定の読み込みに失敗しても例外を漏らさず、予定は表示し続ける', (tester) async {
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      settingsServiceOverride: _ThrowingSettingsService(),
+    ));
+    await tester.pumpAndSettle();
+
+    controller.add({today: [buildEvent(title: '水族館デート')]});
+    await tester.pump();
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('水族館デート'), findsOneWidget);
+
+    await controller.close();
+  });
+
   group('家計の確定プランのボーナス表示', () {
     // 今日（8/20）支給のボーナスを持つ確定プラン
     BudgetPlan planWithBonusToday() => BudgetPlan(
@@ -400,6 +422,20 @@ class _ThrowingGoogleCalendarService extends GoogleCalendarService {
     required DateTime end,
   }) async =>
       throw Exception('google sign-in failed');
+}
+
+class _ThrowingSettingsService extends SettingsService {
+  @override
+  Future<bool> getShowGoogleCalendar() async => throw Exception('prefs failed');
+
+  @override
+  Future<bool> getShowHolidays() async => throw Exception('prefs failed');
+
+  @override
+  Future<bool> getWeekStartsMonday() async => throw Exception('prefs failed');
+
+  @override
+  Future<bool> getShowBudgetBonuses() async => throw Exception('prefs failed');
 }
 
 class _RecordingNavigatorObserver extends NavigatorObserver {

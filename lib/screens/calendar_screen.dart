@@ -174,12 +174,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.dispose();
   }
 
+  // 表示設定の読み込みは補助的なもの。端末ストレージの読み出しに失敗しても
+  // 既定の表示でカレンダーを使えるようにし、拾い手のない非同期例外にしない。
   Future<void> _loadDisplayPrefs() async {
-    final holidays = await _settingsService.getShowHolidays();
-    final weekStart = await _settingsService.getWeekStartsMonday();
-    final budgetBonuses = await _settingsService.getShowBudgetBonuses();
-    if (mounted) setState(() { _showHolidays = holidays; _weekStartsMonday = weekStart; });
-    if (mounted) _syncBudgetSubscription(budgetBonuses);
+    try {
+      final holidays = await _settingsService.getShowHolidays();
+      final weekStart = await _settingsService.getWeekStartsMonday();
+      final budgetBonuses = await _settingsService.getShowBudgetBonuses();
+      if (mounted) setState(() { _showHolidays = holidays; _weekStartsMonday = weekStart; });
+      if (mounted) _syncBudgetSubscription(budgetBonuses);
+    } catch (e) {
+      debugPrint('[カレンダー表示設定の読み込みに失敗] $e');
+    }
   }
 
   // ボーナス表示はカレンダーの補助情報なので、購読に失敗しても（ルール未反映・
@@ -233,7 +239,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   Future<void> _initGoogleCalendar() async {
-    final show = await _settingsService.getShowGoogleCalendar();
+    final bool show;
+    try {
+      show = await _settingsService.getShowGoogleCalendar();
+    } catch (e) {
+      // Google予定は補助表示。設定を読めなければ出さないだけにする。
+      debugPrint('[Googleカレンダー表示設定の読み込みに失敗] $e');
+      return;
+    }
     if (!mounted) return;
     setState(() => _showGoogleCalendar = show);
     if (!show) return;

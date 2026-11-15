@@ -816,6 +816,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 `test/screens/event_form_screen_test.dart`に失敗時・既定ONの2件を追加した（`flutter analyze`・
 `flutter test`（838件）通過）。
 
+2026-11-15、カレンダー画面（`CalendarScreen`）のinitStateから呼ぶ`_loadDisplayPrefs`（祝日・週の開始曜日・ボーナス表示の設定）と`_initGoogleCalendar`の設定読み出しが例外を捕まえておらず、端末ストレージの読み出し失敗が拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。失敗は`debugPrint`に残し、既定の表示（Google予定・ボーナスは出さない）のままカレンダーを使えるようにした。`test/screens/calendar_screen_test.dart`に失敗時のテストを追加した（`flutter analyze`・`flutter test`（840件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
