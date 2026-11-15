@@ -444,14 +444,22 @@ class _ChatScreenState extends State<ChatScreen> {
               bottomLeft: isMe ? null : const Radius.circular(4),
               bottomRight: isMe ? const Radius.circular(4) : null,
             ),
-            child: GestureDetector(
+            // 画像だけのバブルはスクリーンリーダーに何も読まれないため、
+            // 「拡大できる」ことをラベルで伝える（アルバムのタイルと同じ文言）。
+            child: Semantics(
+              button: true,
+              label: '写真を開く',
               onTap: () => _openImageDetail(m.imageUrl!),
               onLongPress: () => _showReactionPicker(m),
-              child: CachedNetworkImage(
-                imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
-                memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
-                placeholder: (_, __) => Container(width: 180, height: 140, color: AppColors.navySurface),
-                errorWidget: (_, __, ___) => const ImageLoadError(width: 180),
+              child: GestureDetector(
+                onTap: () => _openImageDetail(m.imageUrl!),
+                onLongPress: () => _showReactionPicker(m),
+                child: CachedNetworkImage(
+                  imageUrl: m.imageUrl!, width: 180, fit: BoxFit.cover,
+                  memCacheWidth: 360, // 表示サイズに対して過大な解像度でデコードしない
+                  placeholder: (_, __) => Container(width: 180, height: 140, color: AppColors.navySurface),
+                  errorWidget: (_, __, ___) => const ImageLoadError(width: 180),
+                ),
               ),
             ),
           ),
