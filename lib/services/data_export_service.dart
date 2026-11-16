@@ -31,6 +31,7 @@ class DataExportService {
       coupleRef.collection('questionAnswers').get(),
       coupleRef.collection('shoppingItems').get(),
       coupleRef.collection('wishlistItems').get(),
+      coupleRef.collection('questionComments').get(),
     ]);
 
     final events = results[0].docs
@@ -50,6 +51,11 @@ class DataExportService {
     final wishlistItems =
         results[5].docs.map(WishlistItem.fromDoc).map(_wishlistItemToJson).toList();
 
+    final questionComments = (results[6].docs.map(QuestionComment.fromDoc).toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt)))
+        .map(_commentToJson)
+        .toList();
+
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
       'coupleId': coupleId,
@@ -57,6 +63,7 @@ class DataExportService {
       'chats': chats,
       'todos': todos,
       'questionAnswers': questionAnswers,
+      'questionComments': questionComments,
       'shoppingItems': shoppingItems,
       'wishlistItems': wishlistItems,
     };
@@ -102,6 +109,14 @@ class DataExportService {
     if (a.question != null) 'question': a.question,
     'text': a.text,
     'createdAt': a.createdAt.toIso8601String(),
+  };
+
+  Map<String, dynamic> _commentToJson(QuestionComment c) => {
+    'id': c.id,
+    'dateKey': c.dateKey,
+    'senderId': c.senderId,
+    'text': c.text,
+    'createdAt': c.createdAt.toIso8601String(),
   };
 
   Map<String, dynamic> _shoppingItemToJson(ShoppingItem s) => {

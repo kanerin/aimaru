@@ -20,6 +20,8 @@ void main() {
     Stream<List<QuestionAnswer>> stream, {
     Future<String?>? dailyQuestion,
     Future<void> Function(String, String)? submit,
+    Stream<List<QuestionComment>>? comments,
+    Future<void> Function(String dateKey, String text)? sendComment,
   }) =>
       MaterialApp(
         home: QuestionsScreen(
@@ -31,6 +33,8 @@ void main() {
           answersStreamOverride: stream,
           dailyQuestionFutureOverride: dailyQuestion ?? Future.value(null),
           submitOverride: submit,
+          commentsStreamOverride: comments ?? Stream.value(const <QuestionComment>[]),
+          sendCommentOverride: sendComment,
         ),
       );
 
@@ -334,6 +338,151 @@ void main() {
       expect(find.text('2026-08-17'), findsNothing);
 
       await controller.close();
+    });
+  });
+
+  group('回答へのコメント', () {
+    QuestionComment buildComment({
+      required String senderId,
+      required String text,
+      String dateKey = '2026-08-17',
+      DateTime? createdAt,
+    }) =>
+        QuestionComment(
+          id: '$dateKey-$text',
+          coupleId: 'couple-1',
+          dateKey: dateKey,
+          text: text,
+          senderId: senderId,
+          createdAt: createdAt ?? now,
+        );
+
+    final bothAnswered = [
+      buildAnswer(uid: uidA, text: '水族館に行きたい'),
+      buildAnswer(uid: uidB, text: '動物園に行きたい'),
+    ];
+
+    Future<void> pumpWithComments(
+      WidgetTester tester,
+      List<QuestionAnswer> answers, {
+      Stream<List<QuestionComment>>? comments,
+      Future<void> Function(String, String)? sendComment,
+    }) async {
+      await tester.pumpWidget(wrap(
+        Stream.value(answers),
+        comments: comments,
+        sendComment: sendComment,
+      ));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('2人とも回答した日は、その日のコメントを古い順に出し、入力欄を出す', (tester) async {
+      await pumpWithComments(tester, bothAnswered, comments: Stream.value([
+        buildComment(senderId: uidA, text: '今度行こう', createdAt: DateTime(2026, 8, 17, 21)),
+        buildComment(senderId: uidB, text: 'それ意外！', createdAt: DateTime(2026, 8, 17, 20)),
+        buildComment(senderId: uidA, dateKey: '2026-08-10', text: '別の日のコメント'),
+      ]));
+
+      expect(find.text('それ意外！'), findsOneWidget);
+      expect(find.text('今度行こう'), findsOneWidget);
+      expect(find.text('別の日のコメント'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('それ意外！')).dy,
+        lessThan(tester.getTopLeft(find.text('今度行こう')).dy),
+      );
+      expect(find.textContaining('パートナー ·'), findsOneWidget);
+      expect(find.textContaining('あなた ·'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '回答にコメント'), findsOneWidget);
+    });
+
+    testWidgets('相手がまだ回答していなければコメント欄は出さない', (tester) async {
+      await pumpWithComments(tester, [buildAnswer(uid: uidA, text: '水族館に行きたい')]);
+
+      expect(find.widgetWithText(TextField, '回答にコメント'), findsNothing);
+      expect(find.text('コメントする'), findsNothing);
+    });
+
+    testWidgets('送信すると日付と本文を渡し、入力欄を空にする', (tester) async {
+      String? sentDate;
+      String? sentText;
+      await pumpWithComments(tester, bothAnswered, sendComment: (d, t) async {
+        sentDate = d;
+        sentText = t;
+      });
+
+      await tester.enterText(find.widgetWithText(TextField, '回答にコメント'), '  今度行こう  ');
+      await tester.tap(find.byTooltip('コメントを送信'));
+      await tester.pump();
+
+      expect(sentDate, '2026-08-17');
+      expect(sentText, '今度行こう');
+      expect(find.text('  今度行こう  '), findsNothing);
+    });
+
+    testWidgets('空のままでは送信しない', (tester) async {
+      var called = false;
+      await pumpWithComments(tester, bothAnswered, sendComment: (_, __) async => called = true);
+
+      await tester.tap(find.byTooltip('コメントを送信'));
+      await tester.pump();
+
+      expect(called, isFalse);
+    });
+
+    testWidgets('送信に失敗したら入力を残して通知する', (tester) async {
+      await pumpWithComments(tester, bothAnswered,
+          sendComment: (_, __) async => throw Exception('permission-denied'));
+
+      await tester.enterText(find.widgetWithText(TextField, '回答にコメント'), '今度行こう');
+      await tester.tap(find.byTooltip('コメントを送信'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('コメントの送信に失敗しました。もう一度お試しください'), findsOneWidget);
+      expect(find.text('今度行こう'), findsOneWidget);
+    });
+
+    testWidgets('コメントが読めなくても回答は出し、コメント欄だけでエラーを知らせる', (tester) async {
+      await pumpWithComments(tester, bothAnswered,
+          comments: Stream.error(Exception('PERMISSION_DENIED')));
+
+      expect(find.text('水族館に行きたい'), findsOneWidget);
+      expect(find.text('動物園に行きたい'), findsOneWidget);
+      expect(find.text('コメントを読み込めませんでした'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('過去の日は「コメントする」を押すと入力欄を出し、その日付で送る', (tester) async {
+      String? sentDate;
+      await pumpWithComments(
+        tester,
+        [
+          buildAnswer(uid: uidA, dateKey: '2026-08-16', text: '昨日の自分'),
+          buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '昨日の相手'),
+        ],
+        sendComment: (d, _) async => sentDate = d,
+      );
+
+      expect(find.widgetWithText(TextField, '回答にコメント'), findsNothing);
+      await tester.ensureVisible(find.text('コメントする'));
+      await tester.tap(find.text('コメントする'));
+      await tester.pump();
+
+      await tester.enterText(find.widgetWithText(TextField, '回答にコメント'), 'なつかしい');
+      await tester.ensureVisible(find.byTooltip('コメントを送信'));
+      await tester.tap(find.byTooltip('コメントを送信'));
+      await tester.pump();
+
+      expect(sentDate, '2026-08-16');
+    });
+
+    testWidgets('過去の日でも自分が回答していなければコメント欄は出さない', (tester) async {
+      await pumpWithComments(tester, [
+        buildAnswer(uid: uidB, dateKey: '2026-08-16', text: '昨日の相手'),
+      ]);
+
+      expect(find.text('コメントする'), findsNothing);
     });
   });
 }

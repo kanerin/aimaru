@@ -25,6 +25,7 @@ import 'services/firebase_bootstrap.dart';
 import 'services/home_tab_requests.dart';
 import 'services/notification_service.dart';
 import 'services/theme_controller.dart';
+import 'widgets/app_lock_overlay.dart';
 import 'widgets/couple_loader.dart';
 import 'widgets/daily_refresh.dart';
 import 'widgets/home_tab_request_listener.dart';
@@ -146,6 +147,9 @@ class AimaruApp extends StatelessWidget {
 // いれば次に前面に戻ったときAppLockScreenでパスコードを要求する。ルーティング
 // より外側（MaterialApp.routerのbuilder）で画面全体を差し替えるため、
 // ログイン画面・カレンダーなどどの画面にいてもロック対象になる。
+// ロック中も下の画面は破棄せず隠しておく（AppLockOverlay）。以前は画面ごと
+// 差し替えていたため、ロック中にタップした通知（トーク・質問）のタブ切り替えが
+// 解除後に作り直されたホームへ届かず、カレンダーが開いていた。
 class _AppLockGate extends StatefulWidget {
   final Widget child;
   const _AppLockGate({required this.child});
@@ -178,9 +182,11 @@ class _AppLockGateState extends State<_AppLockGate> with WidgetsBindingObserver 
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: AppLockController.instance,
-      builder: (context, _) {
-        return AppLockController.instance.locked ? const AppLockScreen() : widget.child;
-      },
+      builder: (context, _) => AppLockOverlay(
+        locked: AppLockController.instance.locked,
+        lockScreen: const AppLockScreen(),
+        child: widget.child,
+      ),
     );
   }
 }

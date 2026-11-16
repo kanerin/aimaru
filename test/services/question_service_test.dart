@@ -136,4 +136,31 @@ void main() {
       expect(await service.watchRecentAnswers(coupleId).first, isEmpty);
     });
   });
+
+  group('回答へのコメント', () {
+    test('送信者・日付・本文が保存され、読み出せる', () async {
+      await service.addComment(coupleId, dateKey, 'それ意外！');
+
+      final comments = await service.watchRecentComments(coupleId).first;
+      expect(comments.length, 1);
+      expect(comments.single.senderId, meUid);
+      expect(comments.single.dateKey, dateKey);
+      expect(comments.single.text, 'それ意外！');
+      expect(comments.single.coupleId, coupleId);
+    });
+
+    test('2人のコメントがどちらも返り、新しい日付順に並ぶ', () async {
+      await service.addComment(coupleId, '2026-08-16', '前の日');
+      await QuestionService(firestore: db, uid: partnerUid)
+          .addComment(coupleId, dateKey, '今度行こう');
+
+      final comments = await service.watchRecentComments(coupleId).first;
+      expect(comments.map((c) => c.dateKey).toList(), [dateKey, '2026-08-16']);
+      expect(comments.map((c) => c.senderId), containsAll([meUid, partnerUid]));
+    });
+
+    test('1件も無ければ空リスト', () async {
+      expect(await service.watchRecentComments(coupleId).first, isEmpty);
+    });
+  });
 }
