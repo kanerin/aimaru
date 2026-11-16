@@ -322,6 +322,57 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('パートナー'), findsOneWidget);
   });
+
+  testWidgets('既読の更新に失敗しても例外を出さず画面を使い続けられる', (tester) async {
+    final controller = StreamController<List<ChatMessage>>.broadcast();
+    addTearDown(controller.close);
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(
+        coupleId: coupleId,
+        isActive: true,
+        chatServiceOverride: _FailingMarkReadChatService(db),
+        coupleServiceOverride: meCoupleService,
+        currentUidOverride: meUid,
+        messagesStreamOverride: controller.stream,
+      ),
+    ));
+    await tester.pump();
+
+    controller.add(const <ChatMessage>[]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('非アクティブから戻った瞬間の既読更新が失敗しても例外を出さない', (tester) async {
+    Widget build(bool active) => MaterialApp(
+          home: ChatScreen(
+            coupleId: coupleId,
+            isActive: active,
+            chatServiceOverride: _FailingMarkReadChatService(db),
+            coupleServiceOverride: meCoupleService,
+            currentUidOverride: meUid,
+            messagesStreamOverride: Stream.value(const <ChatMessage>[]).asBroadcastStream(),
+          ),
+        );
+    await tester.pumpWidget(build(false));
+    await tester.pump();
+    await tester.pumpWidget(build(true));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _FailingMarkReadChatService extends ChatService {
+  _FailingMarkReadChatService(FirebaseFirestore db) : super(firestore: db, uid: 'me');
+
+  @override
+  Future<void> markAsRead(String coupleId) async {
+    throw Exception('permission-denied');
+  }
 }
 
 class _FailingCoupleService extends CoupleService {

@@ -82,7 +82,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _readMarkerSub = _messagesStream.listen(
       (_) {
         if (widget.isActive) {
-          _chatService.markAsRead(widget.coupleId);
+          _markAsRead();
         }
       },
       // 通信・権限エラーはStreamBuilder側の表示で扱うので、ここでは
@@ -96,7 +96,17 @@ class _ChatScreenState extends State<ChatScreen> {
     super.didUpdateWidget(oldWidget);
     // 裏に隠れている間に届いたメッセージも、タブを開いた瞬間に既読にする。
     if (widget.isActive && !oldWidget.isActive) {
-      _chatService.markAsRead(widget.coupleId);
+      _markAsRead();
+    }
+  }
+
+  // 既読の更新は結果を待たずに呼ぶ補助的な書き込み。権限・通信エラーやログアウト直後の
+  // 失敗が拾い手のない非同期例外にならないよう、ここで受けてログに残すだけにする。
+  Future<void> _markAsRead() async {
+    try {
+      await _chatService.markAsRead(widget.coupleId);
+    } catch (e) {
+      debugPrint('[トークの既読更新に失敗] $e');
     }
   }
 

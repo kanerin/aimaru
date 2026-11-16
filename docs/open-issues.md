@@ -818,6 +818,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-15、カレンダー画面（`CalendarScreen`）のinitStateから呼ぶ`_loadDisplayPrefs`（祝日・週の開始曜日・ボーナス表示の設定）と`_initGoogleCalendar`の設定読み出しが例外を捕まえておらず、端末ストレージの読み出し失敗が拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。失敗は`debugPrint`に残し、既定の表示（Google予定・ボーナスは出さない）のままカレンダーを使えるようにした。`test/screens/calendar_screen_test.dart`に失敗時のテストを追加した（`flutter analyze`・`flutter test`（840件）通過）。
 
+2026-11-16、トーク画面（`ChatScreen`）の既読更新（`markAsRead`）が結果を待たずに呼ばれ、権限・通信エラーやログアウト直後に失敗すると拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。新着受信時とタブ復帰時の両方を`_markAsRead`（失敗は`debugPrint`に残すだけ）経由にした。`test/screens/chat_screen_test.dart`に失敗時のテスト2件を追加した（`flutter analyze`・`flutter test`（843件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
