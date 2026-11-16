@@ -808,16 +808,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     )),
                     ...selectedEvents.map((e) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
-                      child: GestureDetector(
+                      child: _tappableCard(
                         onTap: () => _openDetail(e),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppColors.navySurface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: AppColors.hairline),
-                          ),
-                          child: Row(children: [
+                        borderColor: AppColors.hairline,
+                        child: Row(children: [
                             Container(width: 3, height: 34, decoration: BoxDecoration(
                               color: _dotColor(e.type), borderRadius: BorderRadius.circular(2),
                             )),
@@ -849,23 +843,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             ),
                             const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
                           ]),
-                        ),
                       ),
                     )),
                     ...selectedGcalEvents.map((e) {
                       final isMine = e.uid == _selfUid;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: GestureDetector(
+                        child: _tappableCard(
                           onTap: isMine ? () => _openGoogleEventEdit(e.event) : null,
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: AppColors.navySurface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _gcalColor.withValues(alpha: 0.3)),
-                            ),
-                            child: Row(children: [
+                          borderColor: _gcalColor.withValues(alpha: 0.3),
+                          child: Row(children: [
                               Container(width: 3, height: 34, decoration: const BoxDecoration(
                                 color: _gcalColor, borderRadius: BorderRadius.all(Radius.circular(2)),
                               )),
@@ -897,7 +884,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               if (isMine)
                                 const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
                             ]),
-                          ),
                         ),
                       );
                     }),
@@ -905,6 +891,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
         ),
       ],
+    );
+  }
+
+  // 選択日の予定カード。GestureDetectorだとタップしても何の反応も無く
+  // 押せたかどうか分かりにくいため、波紋の出るInkWellにする。
+  // onTapがnull（他の人のGoogle予定）のときは波紋も出ない。
+  Widget _tappableCard({
+    required VoidCallback? onTap,
+    required Color borderColor,
+    required Widget child,
+  }) {
+    return Material(
+      color: AppColors.navySurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: borderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(14), child: child),
+      ),
     );
   }
 }
