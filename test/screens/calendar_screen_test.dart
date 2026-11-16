@@ -161,6 +161,25 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('選択日の予定カードはタップに反応する波紋（InkWell）を持つ', (tester) async {
+    final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add({today: [buildEvent(title: '水族館デート')]});
+    await tester.pump();
+    await tester.tap(find.text('${today.day}').first);
+    await tester.pump();
+
+    final card = find.ancestor(
+      of: find.textContaining('水族館デート'),
+      matching: find.byType(InkWell),
+    );
+    expect(card, findsOneWidget);
+    expect(tester.widget<InkWell>(card).onTap, isNotNull);
+
+    await controller.close();
+  });
+
   testWidgets('FABをタップすると予定作成画面へ遷移する', (tester) async {
     final controller = StreamController<Map<DateTime, List<AimaruEvent>>>();
     final observer = _RecordingNavigatorObserver();
