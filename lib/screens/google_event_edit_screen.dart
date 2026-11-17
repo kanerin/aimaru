@@ -12,15 +12,27 @@ class GoogleEventEditScreen extends StatefulWidget {
   final String coupleId;
   final GCalEventSummary event;
 
-  const GoogleEventEditScreen({super.key, required this.coupleId, required this.event});
+  // テストからGoogle/Firestoreへ触れずに保存・削除の失敗経路を確かめるための注入口
+  final GoogleCalendarService? calendarServiceOverride;
+  final GoogleCalendarCacheService? cacheServiceOverride;
+
+  const GoogleEventEditScreen({
+    super.key,
+    required this.coupleId,
+    required this.event,
+    this.calendarServiceOverride,
+    this.cacheServiceOverride,
+  });
 
   @override
   State<GoogleEventEditScreen> createState() => _GoogleEventEditScreenState();
 }
 
 class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
-  final _calendarService = GoogleCalendarService();
-  final _cacheService    = GoogleCalendarCacheService();
+  late final GoogleCalendarService _calendarService =
+      widget.calendarServiceOverride ?? GoogleCalendarService();
+  late final GoogleCalendarCacheService _cacheService =
+      widget.cacheServiceOverride ?? GoogleCalendarCacheService();
 
   late final _titleCtrl    = TextEditingController(text: widget.event.title);
   late final _locationCtrl = TextEditingController(text: widget.event.location ?? '');
@@ -89,18 +101,40 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
       return;
     }
 
-    // Googleカレンダー自体にはvisibilityの概念が無いので、AIMARU側の
-    // 台帳（googleEventVisibility）へ別途保存する。_resyncCacheが
-    // Google側から予定を取り直したときに、この値をキャッシュへ上書きする。
-    await _cacheService.setEventPrivate(
-      widget.coupleId,
-      widget.event.id,
-      _visibility == EventVisibility.private,
-    );
+    // ここまででGoogleカレンダー本体の更新は成功している。以降のふたりのカレンダー
+    // 用キャッシュへの反映が失敗しても、例外を拾わないと保存ボタンが回り続けたまま
+    // 画面が閉じなくなり、再度保存すると二重に更新してしまう。
+    final syncOk = await _syncCacheSafely(() async {
+      // Googleカレンダー自体にはvisibilityの概念が無いので、AIMARU側の
+      // 台帳（googleEventVisibility）へ別途保存する。_resyncCacheが
+      // Google側から予定を取り直したときに、この値をキャッシュへ上書きする。
+      await _cacheService.setEventPrivate(
+        widget.coupleId,
+        widget.event.id,
+        _visibility == EventVisibility.private,
+      );
+      await _resyncCache(_start);
+    });
 
-    await _resyncCache(_start);
+    _closeWithResult(syncOk, 'Googleカレンダーには保存しました。ふたりのカレンダーへの反映は少し遅れる場合があります');
+  }
 
-    if (mounted) Navigator.of(context).pop(true);
+  Future<bool> _syncCacheSafely(Future<void> Function() action) async {
+    try {
+      await action();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Google側の変更は済んでいるので、キャッシュ反映に失敗しても画面は閉じ、
+  // 閉じた先の画面で理由を伝える（この画面のScaffoldはpopで消えるため、先に取っておく）。
+  void _closeWithResult(bool syncOk, String syncFailureMessage) {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop(true);
+    if (!syncOk) messenger.showSnackBar(SnackBar(content: Text(syncFailureMessage)));
   }
 
   // カップル間で共有しているキャッシュにも反映されるよう、周辺期間を再同期
@@ -143,8 +177,8 @@ class _GoogleEventEditScreenState extends State<GoogleEventEditScreen> {
         return;
       }
       // 削除は元の日付の周辺を再取得しないとキャッシュに残り続ける
-      await _resyncCache(widget.event.start);
-      if (mounted) Navigator.of(context).pop(true);
+      final syncOk = await _syncCacheSafely(() => _resyncCache(widget.event.start));
+      _closeWithResult(syncOk, 'Googleカレンダーからは削除しました。ふたりのカレンダーへの反映は少し遅れる場合があります');
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
