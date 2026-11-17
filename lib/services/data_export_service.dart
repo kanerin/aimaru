@@ -92,6 +92,7 @@ class DataExportService {
     'senderId': m.senderId,
     'timestamp': m.timestamp.toIso8601String(),
     'isAi': m.isAi,
+    if (m.pinnedAt != null) 'pinnedAt': m.pinnedAt!.toIso8601String(),
   };
 
   Map<String, dynamic> _todoToJson(TodoItem t) => {

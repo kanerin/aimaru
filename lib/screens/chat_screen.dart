@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,6 +31,7 @@ class ChatScreen extends StatefulWidget {
   final CoupleService? coupleServiceOverride;
   final String? currentUidOverride;
   final Stream<List<ChatMessage>>? messagesStreamOverride;
+  final Stream<List<ChatMessage>>? pinnedStreamOverride;
 
   const ChatScreen({
     super.key,
@@ -39,6 +41,7 @@ class ChatScreen extends StatefulWidget {
     this.coupleServiceOverride,
     this.currentUidOverride,
     this.messagesStreamOverride,
+    this.pinnedStreamOverride,
   });
 
   @override
@@ -58,6 +61,9 @@ class _ChatScreenState extends State<ChatScreen> {
   // ストリームは1本だけ作って使い回す。
   late final Stream<List<ChatMessage>> _messagesStream =
       widget.messagesStreamOverride ?? _chatService.watchMessages(widget.coupleId);
+  // ピン留め（上部のバナーと一覧）。トーク一覧は直近100件しか読まないので別に読む。
+  late final Stream<List<ChatMessage>> _pinnedStream =
+      widget.pinnedStreamOverride ?? _chatService.watchPinnedMessages(widget.coupleId);
 
   String get _myUid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
   String? _partnerName;
@@ -67,6 +73,12 @@ class _ChatScreenState extends State<ChatScreen> {
   // 最後に自動スクロールの判定をした時点の最新メッセージID。ビルダーは既読の更新や
   // 再ビルドのたびに走るので、IDが変わったとき（初回・新着）だけスクロールを考える。
   String? _lastSeenMessageId;
+  // ピン留めからメッセージへ飛ぶための、表示中のメッセージ一覧と各行のキー。
+  List<ChatMessage> _messages = const [];
+  final Map<String, GlobalKey> _messageKeys = {};
+  // ピン留めから飛んだ先のメッセージを少しの間だけ目立たせる。
+  String? _highlightedId;
+  Timer? _highlightTimer;
 
   // メッセージ一覧を購読し、このタブを表示している間だけ、初回・新着のたびに
   // 自分の既読時刻を更新する（画面を開いている＝既読、が自然なチャットの既読UX）。
@@ -113,6 +125,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _readMarkerSub.cancel();
+    _highlightTimer?.cancel();
     _controller.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -207,6 +220,207 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _senderName(ChatMessage m) =>
+      m.senderId == _myUid ? 'あなた' : (_partnerName ?? 'パートナー');
+
+  static String _pinPreview(ChatMessage m) =>
+      m.imageUrl != null && m.text.isEmpty ? '📷 写真' : m.text;
+
+  // 結果を待たずに呼ばれるため、失敗を握ってSnackBarで知らせる（リアクションと同じ）。
+  Future<void> _togglePin(ChatMessage m) async {
+    try {
+      if (m.isPinned) {
+        await _chatService.unpinMessage(widget.coupleId, m.id);
+        _showSnack('ピン留めを外しました');
+      } else {
+        await _chatService.pinMessage(widget.coupleId, m.id);
+        _showSnack('ピン留めしました。トークの上部からいつでも見返せます');
+      }
+    } catch (e) {
+      debugPrint('toggle pin failed: $e');
+      _showSnack(m.isPinned
+          ? 'ピン留めを外せませんでした。もう一度お試しください'
+          : 'ピン留めできませんでした。もう一度お試しください');
+    }
+  }
+
+  // ピン留めしたメッセージの位置までトークをスクロールする。一覧は必要な行しか
+  // 作らない（ListView.builder）ため、目的の行がまだ作られていなければ位置を
+  // 見積もって近くまで飛び、作られたところでその行が見える位置に合わせる。
+  // 直近100件より古く、トーク上に読み込まれていないメッセージはfalseを返す。
+  Future<bool> _jumpToMessage(ChatMessage target) async {
+    final index = _messages.indexWhere((m) => m.id == target.id);
+    if (index < 0) return false;
+    FocusScope.of(context).unfocus();
+    for (var attempt = 0; attempt < 8; attempt++) {
+      final targetContext = _messageKeys[target.id]?.currentContext;
+      if (targetContext != null && targetContext.mounted) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.3,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+        if (!mounted) return true;
+        setState(() => _highlightedId = target.id);
+        _highlightTimer?.cancel();
+        _highlightTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _highlightedId = null);
+        });
+        return true;
+      }
+      if (!_scrollCtrl.hasClients) return false;
+      final position = _scrollCtrl.position;
+      final ratio = _messages.length <= 1 ? 0.0 : index / (_messages.length - 1);
+      _scrollCtrl.jumpTo(math.min(position.maxScrollExtent, position.maxScrollExtent * ratio));
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return false;
+    }
+    return false;
+  }
+
+  // バナーをタップしたとき：最新のピン留めへ飛ぶ。トーク上に読み込まれて
+  // いない古いメッセージなら、内容を読める一覧を開く。
+  Future<void> _openLatestPin(List<ChatMessage> pinned) async {
+    final jumped = await _jumpToMessage(pinned.first);
+    if (!jumped && mounted) _showPinnedList(pinned);
+  }
+
+  Future<void> _showPinnedList(List<ChatMessage> pinned) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.navyCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+                child: Text('ピン留め（${pinned.length}件）', style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  itemCount: pinned.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.hairline),
+                  itemBuilder: (_, i) => _buildPinnedListItem(ctx, pinned[i]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPinnedListItem(BuildContext sheetContext, ChatMessage m) {
+    return InkWell(
+      onTap: () async {
+        Navigator.pop(sheetContext);
+        final jumped = await _jumpToMessage(m);
+        if (!jumped) _showSnack('古いメッセージのため、トーク上には表示できません');
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 8, 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${_senderName(m)} · ${DateFormat('yyyy/M/d HH:mm').format(m.timestamp)}',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  const SizedBox(height: 4),
+                  if (m.imageUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: CachedNetworkImage(
+                          imageUrl: m.imageUrl!, width: 120, height: 90, fit: BoxFit.cover,
+                          memCacheWidth: 240,
+                          placeholder: (_, __) => Container(width: 120, height: 90, color: AppColors.navySurface),
+                          errorWidget: (_, __, ___) => const ImageLoadError(width: 120),
+                        ),
+                      ),
+                    ),
+                  if (m.text.isNotEmpty)
+                    // 見返すための一覧なので、バナーと違って全文を出す。
+                    Text(m.text, style: const TextStyle(
+                      fontSize: 13.5, color: AppColors.textPrimary, height: 1.5)),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'ピン留めを外す',
+              icon: const Icon(Icons.close, size: 18, color: AppColors.textMuted),
+              onPressed: () {
+                Navigator.pop(sheetContext);
+                _togglePin(m);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // トークの上部に出す、最新のピン留め1件のバナー（LINEのアナウンスに近い）。
+  // 補助的な表示なので、読み込み中・失敗時・0件のときは何も出さずにトークを使わせる。
+  Widget _buildPinnedBanner() {
+    return StreamBuilder<List<ChatMessage>>(
+      stream: _pinnedStream,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          debugPrint('[ピン留めの読み込みに失敗] ${snap.error}');
+          return const SizedBox.shrink();
+        }
+        final pinned = snap.data ?? const <ChatMessage>[];
+        if (pinned.isEmpty) return const SizedBox.shrink();
+        final latest = pinned.first;
+        return Material(
+          color: AppColors.navyCard,
+          child: InkWell(
+            onTap: () => _openLatestPin(pinned),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 6, 4, 6),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppColors.hairline)),
+              ),
+              child: Row(children: [
+                Icon(Icons.push_pin, size: 16, color: appAccent(context)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _pinPreview(latest),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _showPinnedList(pinned),
+                  child: Text(pinned.length > 1 ? '一覧（${pinned.length}）' : '一覧',
+                    style: const TextStyle(fontSize: 12)),
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _showReactionPicker(ChatMessage m) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -242,8 +456,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 }).toList(),
               ),
-              if (m.imageUrl == null) ...[
-                const Divider(height: 24, color: AppColors.hairline),
+              const Divider(height: 24, color: AppColors.hairline),
+              ListTile(
+                leading: Icon(m.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    color: AppColors.textSecond),
+                title: Text(m.isPinned ? 'ピン留めを外す' : 'ピン留め'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _togglePin(m);
+                },
+              ),
+              if (m.imageUrl == null)
                 ListTile(
                   leading: const Icon(Icons.copy_rounded, color: AppColors.textSecond),
                   title: const Text('コピー'),
@@ -252,7 +475,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     _copyText(m.text);
                   },
                 ),
-              ],
             ],
           ),
         ),
@@ -328,6 +550,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
+          _buildPinnedBanner(),
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
@@ -357,6 +580,8 @@ class _ChatScreenState extends State<ChatScreen> {
                             style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
                         );
                       }
+                      _messages = messages;
+                      _messageKeys.removeWhere((id, _) => !messages.any((m) => m.id == id));
                       _autoScrollOnNewMessage(messages);
                       final lastMyIndex = messages.lastIndexWhere((m) => m.senderId == _myUid);
                       return ListView.builder(
@@ -375,7 +600,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (showDivider) _buildDateDivider(message.timestamp),
-                              _buildBubble(message, showRead: showRead),
+                              KeyedSubtree(
+                                key: _messageKeys.putIfAbsent(message.id, GlobalKey.new),
+                                child: _buildBubble(message, showRead: showRead),
+                              ),
                             ],
                           );
                         },
@@ -529,7 +757,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
-    return Padding(
+    final bubble = Padding(
       padding: EdgeInsets.only(bottom: 4, left: isMe ? 48 : 0, right: isMe ? 0 : 48),
       child: Column(
         crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -541,6 +769,13 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (m.isPinned) ...[
+                  Semantics(
+                    label: 'ピン留め中',
+                    child: Icon(Icons.push_pin, size: 10, color: appAccentSoft(context)),
+                  ),
+                  const SizedBox(width: 3),
+                ],
                 if (showRead) ...[
                   Text('既読', style: TextStyle(fontSize: 9.5, color: appAccentSoft(context))),
                   const SizedBox(width: 4),
@@ -552,6 +787,18 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 6),
         ],
       ),
+    );
+
+    // ピン留めから飛んできたメッセージは、少しの間だけ背景を付けて見つけやすくする。
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: _highlightedId == m.id
+            ? appAccent(context).withValues(alpha: 0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: bubble,
     );
   }
 

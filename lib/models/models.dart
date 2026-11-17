@@ -222,6 +222,11 @@ class ChatMessage {
   final bool isAi;
   // uid -> 絵文字。1人につき1つまで（同じ絵文字を選び直すとトグルで外れる）。
   final Map<String, String> reactions;
+  // ピン留め（LINEのアナウンスのように、トークの上部から見返せるようにする）。
+  // ピン留めしていないメッセージにはフィールド自体を持たせない（nullを書くと
+  // pinnedAtでの並べ替えクエリに混ざるため、toMapでも書き出さない）。
+  final DateTime? pinnedAt;
+  final String? pinnedBy;
 
   ChatMessage({
     required this.id,
@@ -232,7 +237,11 @@ class ChatMessage {
     required this.timestamp,
     this.isAi = false,
     this.reactions = const {},
+    this.pinnedAt,
+    this.pinnedBy,
   });
+
+  bool get isPinned => pinnedAt != null;
 
   factory ChatMessage.fromDoc(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
@@ -245,6 +254,8 @@ class ChatMessage {
       timestamp: (d['timestamp'] as Timestamp).toDate(),
       isAi:      d['isAi'] ?? false,
       reactions: Map<String, String>.from(d['reactions'] as Map? ?? {}),
+      pinnedAt:  (d['pinnedAt'] as Timestamp?)?.toDate(),
+      pinnedBy:  d['pinnedBy'] as String?,
     );
   }
 
@@ -256,6 +267,8 @@ class ChatMessage {
     'timestamp': Timestamp.fromDate(timestamp),
     'isAi':      isAi,
     'reactions': reactions,
+    if (pinnedAt != null) 'pinnedAt': Timestamp.fromDate(pinnedAt!),
+    if (pinnedBy != null) 'pinnedBy': pinnedBy,
   };
 }
 

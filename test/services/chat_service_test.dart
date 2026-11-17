@@ -107,4 +107,57 @@ void main() {
       await sub.cancel();
     });
   });
+
+  group('ピン留め', () {
+    Future<String> send(ChatService service, String text) async {
+      await service.sendMessage(coupleId, text: text);
+      final messages = await service.watchMessages(coupleId).first;
+      return messages.lastWhere((m) => m.text == text).id;
+    }
+
+    test('送ったばかりのメッセージはピン留めされていない（フィールドも持たない）', () async {
+      final id = await send(meService, 'おはよう');
+
+      final doc = await db.collection('couples').doc(coupleId).collection('chats').doc(id).get();
+      expect(doc.data()!.containsKey('pinnedAt'), isFalse);
+      expect((await meService.watchMessages(coupleId).first).single.isPinned, isFalse);
+      expect(await meService.watchPinnedMessages(coupleId).first, isEmpty);
+    });
+
+    test('ピン留めすると日時とピン留めした人が残り、ピン留め一覧に出る', () async {
+      final id = await send(partnerService, '金曜19時に駅前で');
+      await send(meService, 'りょうかい');
+
+      await meService.pinMessage(coupleId, id);
+
+      final pinned = await partnerService.watchPinnedMessages(coupleId).first;
+      expect(pinned.map((m) => m.text), ['金曜19時に駅前で']);
+      expect(pinned.single.pinnedBy, meUid);
+      expect(pinned.single.pinnedAt, isNotNull);
+    });
+
+    test('ピン留め一覧は新しくピン留めした順に並ぶ', () async {
+      final first = await send(meService, '先にピン留め');
+      final second = await send(meService, '後でピン留め');
+
+      await meService.pinMessage(coupleId, first);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      await partnerService.pinMessage(coupleId, second);
+
+      final pinned = await meService.watchPinnedMessages(coupleId).first;
+      expect(pinned.map((m) => m.text), ['後でピン留め', '先にピン留め']);
+    });
+
+    test('ピン留めを外すとフィールドが消え、一覧からも消える（相手がピン留めしたものも外せる）', () async {
+      final id = await send(meService, '金曜19時に駅前で');
+      await meService.pinMessage(coupleId, id);
+
+      await partnerService.unpinMessage(coupleId, id);
+
+      final doc = await db.collection('couples').doc(coupleId).collection('chats').doc(id).get();
+      expect(doc.data()!.containsKey('pinnedAt'), isFalse);
+      expect(doc.data()!.containsKey('pinnedBy'), isFalse);
+      expect(await meService.watchPinnedMessages(coupleId).first, isEmpty);
+    });
+  });
 }
