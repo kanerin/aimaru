@@ -6,6 +6,7 @@ import '../services/question_service.dart';
 import '../utils/app_theme.dart';
 import '../utils/daily_question_picker.dart';
 import '../utils/question_streak.dart';
+import '../widgets/question_comment_thread.dart';
 import '../widgets/section_label.dart';
 
 // ── ふたりの質問（デイリー質問）─────────────────────────
@@ -37,6 +38,9 @@ class QuestionsScreen extends StatefulWidget {
   final DateTime? nowOverride;
   // テストから回答の送信（成功/失敗）を差し込むための注入ポイント。
   final Future<void> Function(String text, String question)? submitOverride;
+  // テストから回答へのコメント（エラー/データ）と、その送信を差し込むための注入ポイント。
+  final Stream<List<QuestionComment>>? commentsStreamOverride;
+  final Future<void> Function(String dateKey, String text)? sendCommentOverride;
 
   const QuestionsScreen({
     super.key,
@@ -48,6 +52,8 @@ class QuestionsScreen extends StatefulWidget {
     this.currentUidOverride,
     this.nowOverride,
     this.submitOverride,
+    this.commentsStreamOverride,
+    this.sendCommentOverride,
   });
 
   @override
@@ -65,6 +71,9 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
 
   late final Stream<List<QuestionAnswer>> _answersStream =
       widget.answersStreamOverride ?? _service.watchRecentAnswers(widget.coupleId);
+
+  late final Stream<List<QuestionComment>> _commentsStream =
+      widget.commentsStreamOverride ?? _service.watchRecentComments(widget.coupleId);
 
   String get _uid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
   String get _partnerUid =>
@@ -101,6 +110,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     if (mounted) setState(() => _submitting = false);
   }
 
+  Future<void> _sendComment(String dateKey, String text) {
+    final override = widget.sendCommentOverride;
+    if (override != null) return override(dateKey, text);
+    return _service.addComment(widget.coupleId, dateKey, text);
+  }
+
   static const _loadErrorMessage = Center(
     child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
       textAlign: TextAlign.center,
@@ -127,7 +142,16 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
     );
   }
 
+  // コメントは回答とは別のストリーム。読めなくても回答は見せ、
+  // コメント欄だけで失敗を知らせる（画面全体をエラーにしない）。
   Widget _buildBody(String question) {
+    return StreamBuilder<List<QuestionComment>>(
+      stream: _commentsStream,
+      builder: (context, commentSnap) => _buildAnswersBody(question, commentSnap),
+    );
+  }
+
+  Widget _buildAnswersBody(String question, AsyncSnapshot<List<QuestionComment>> commentSnap) {
     return StreamBuilder<List<QuestionAnswer>>(
       stream: _answersStream,
       builder: (context, snap) {
@@ -161,6 +185,24 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
             .toList()
           ..sort((a, b) => b.compareTo(a));
 
+        // コメント欄は2人とも回答した日だけ出す。片方が未回答のうちに
+        // やり取りできると、回答前に相手の答えをほのめかされてしまうため。
+        Widget commentThread(String dateKey, {bool expanded = false}) => Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: QuestionCommentThread(
+            key: ValueKey('comments-$dateKey'),
+            comments: commentSnap.hasData
+                ? (commentSnap.data!.where((c) => c.dateKey == dateKey).toList()
+                    ..sort((a, b) => a.createdAt.compareTo(b.createdAt)))
+                : null,
+            hasError: commentSnap.hasError,
+            myUid: _uid,
+            partnerName: widget.partnerName,
+            initiallyExpanded: expanded,
+            onSend: (text) => _sendComment(dateKey, text),
+          ),
+        );
+
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -173,9 +215,11 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
               else ...[
                 _buildAnswerTile('あなた', myAnswer.text),
                 const SizedBox(height: 12),
-                partnerAnswer != null
-                    ? _buildAnswerTile(widget.partnerName, partnerAnswer.text)
-                    : _buildWaitingTile(),
+                if (partnerAnswer != null) ...[
+                  _buildAnswerTile(widget.partnerName, partnerAnswer.text),
+                  commentThread(_dateKey, expanded: true),
+                ] else
+                  _buildWaitingTile(),
               ],
               if (historyDates.isNotEmpty) ...[
                 const SizedBox(height: 28),
@@ -185,6 +229,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                     date,
                     answerOf(_uid, date),
                     partnerUid.isEmpty ? null : answerOf(partnerUid, date),
+                    commentThread,
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -282,7 +327,12 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
   // 古い回答（手書きの質問を日付で選んでいた頃）は日付から復元する。
   // 「自分が回答するまで相手の回答は見えない」ルールは過去分にも同じく効かせる。
   // ここを緩めると、答えずに待って相手の回答だけ読む、が成立してしまう。
-  Widget _buildHistoryCard(String dateKey, QuestionAnswer? mine, QuestionAnswer? partner) {
+  Widget _buildHistoryCard(
+    String dateKey,
+    QuestionAnswer? mine,
+    QuestionAnswer? partner,
+    Widget Function(String dateKey) commentThread,
+  ) {
     final question = mine?.question ?? partner?.question ?? questionForDateKey(dateKey);
     return Container(
       padding: const EdgeInsets.all(14),
@@ -312,6 +362,7 @@ class _QuestionsScreenState extends State<QuestionsScreen> {
                 : Text('${widget.partnerName}の回答は、あなたが回答していないため伏せられています',
                     style: const TextStyle(fontSize: 12, color: AppColors.textMuted, height: 1.5)),
           ],
+          if (mine != null && partner != null) commentThread(dateKey),
         ],
       ),
     );

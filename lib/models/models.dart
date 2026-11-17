@@ -598,6 +598,50 @@ class QuestionAnswer {
   };
 }
 
+// ── QuestionComment（ふたりの質問の回答へのコメント）────────────
+// その日の2人の回答の下に付く短いやり取り。回答（questionAnswers）は
+// 書き換え・削除できないが、回答をきっかけに話を広げられるよう、日ごとの
+// コメントを別コレクション（couples/{coupleId}/questionComments）に持つ。
+// 予定のコメント（EventComment）と同じく、言った/言わないの記録として
+// 編集・削除はしない。
+class QuestionComment {
+  final String id;
+  final String coupleId;
+  final String dateKey; // 'yyyy-MM-dd'（どの日の質問へのコメントか）
+  final String text;
+  final String senderId;
+  final DateTime createdAt;
+
+  QuestionComment({
+    required this.id,
+    required this.coupleId,
+    required this.dateKey,
+    required this.text,
+    required this.senderId,
+    required this.createdAt,
+  });
+
+  factory QuestionComment.fromDoc(DocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    return QuestionComment(
+      id:        doc.id,
+      coupleId:  d['coupleId'] ?? '',
+      dateKey:   d['dateKey'] ?? '',
+      text:      d['text'] ?? '',
+      senderId:  d['senderId'] ?? '',
+      createdAt: (d['createdAt'] as Timestamp).toDate(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'coupleId':  coupleId,
+    'dateKey':   dateKey,
+    'text':      text,
+    'senderId':  senderId,
+    'createdAt': Timestamp.fromDate(createdAt),
+  };
+}
+
 // ── BugReportRecord（自分が送ったバグ報告・機能要望の状況）────────
 // submitBugReport（Cloud Functions）が書き込んだドキュメントを、
 // 送信者本人だけがfirestore.rulesで読める（他人の報告は見えない）。

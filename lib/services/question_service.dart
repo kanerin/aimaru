@@ -67,4 +67,35 @@ class QuestionService {
         .snapshots()
         .map((snap) => snap.docs.map(QuestionAnswer.fromDoc).toList());
   }
+
+  CollectionReference _commentsRef(String coupleId) =>
+      _db.collection('couples').doc(coupleId).collection('questionComments');
+
+  // ── 回答へのコメントを追加する ─────────────────────────
+  // その日の質問（dateKey）ごとのやり取り。firestore.rulesで、その日に
+  // 自分が回答済みでなければ書けないようにしてある。
+  Future<void> addComment(String coupleId, String dateKey, String text) async {
+    final ref = _commentsRef(coupleId).doc();
+    final comment = QuestionComment(
+      id:        ref.id,
+      coupleId:  coupleId,
+      dateKey:   dateKey,
+      text:      text,
+      senderId:  _uid,
+      createdAt: DateTime.now(),
+    );
+    await ref.set(comment.toMap());
+  }
+
+  // ── 直近のコメントを新しい日付順で取得 ────────────────────
+  // 画面に出す「今日」と「これまでの質問」のぶんを1本のストリームで賄う
+  // （watchRecentAnswersと同じく、単一フィールドのorderByで複合インデックス
+  // 不要）。同じ日の中の並び（古い順）は画面側で整える。
+  Stream<List<QuestionComment>> watchRecentComments(String coupleId, {int limit = 300}) {
+    return _commentsRef(coupleId)
+        .orderBy('dateKey', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs.map(QuestionComment.fromDoc).toList());
+  }
 }

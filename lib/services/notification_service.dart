@@ -59,7 +59,21 @@ SnackBar? buildForegroundNotificationSnackBar(
   final action = actionLabel == null ? null : SnackBarAction(label: actionLabel, onPressed: onOpen);
 
   return SnackBar(
-    content: Text(text),
+    // ボタンだけでなく、通知の文言そのものを押しても開けるようにする。
+    // 見た目が通知なので、文言をタップして何も起きないと「通知を押しても
+    // トークへ飛ばない」と受け取られる。
+    content: action == null
+        ? Text(text)
+        : Builder(
+            builder: (context) => GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                onOpen();
+              },
+              child: Text(text),
+            ),
+          ),
     action: action,
     behavior: SnackBarBehavior.floating,
     // actionがあるとSnackBarは既定で閉じなくなり、下のタブを覆い続けるため、

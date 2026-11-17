@@ -703,6 +703,67 @@ describe("questionAnswers — メンバー境界・自分の回答のみ書き�
   });
 });
 
+describe("questionComments — 自分が回答済みの日だけコメントでき、編集・削除はできない", () => {
+  const comment = (uid, overrides = {}) => ({
+    coupleId: COUPLE_ID,
+    dateKey: "2026-08-17",
+    text: "それ意外！",
+    senderId: uid,
+    createdAt: new Date("2026-08-17T21:00:00"),
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    await seedCouple(testEnv);
+    await seedQuestionAnswer(testEnv, { uid: USER_A });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc(`couples/${COUPLE_ID}/questionComments/c1`).set(comment(USER_A));
+    });
+  });
+
+  it("メンバーはコメントを読める", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/questionComments/c1`).get());
+    await assertSucceeds(asB().doc(`couples/${COUPLE_ID}/questionComments/c1`).get());
+  });
+
+  it("メンバー以外・未認証はコメントを読めない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/questionComments/c1`).get());
+    await assertFails(asAnon().doc(`couples/${COUPLE_ID}/questionComments/c1`).get());
+  });
+
+  it("その日に回答済みなら自分のコメントを作成できる", async () => {
+    await assertSucceeds(asA().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_A)));
+  });
+
+  it("その日にまだ回答していなければコメントできない", async () => {
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_B)));
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_A, { dateKey: "2026-08-16" })),
+    );
+  });
+
+  it("相手のuidを騙ってコメントできない", async () => {
+    await seedQuestionAnswer(testEnv, { uid: USER_B });
+    await assertFails(asB().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_A)));
+  });
+
+  it("空・長すぎるコメントは作成できない", async () => {
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_A, { text: "" })));
+    await assertFails(
+      asA().doc(`couples/${COUPLE_ID}/questionComments/c3`).set(comment(USER_A, { text: "あ".repeat(501) })),
+    );
+  });
+
+  it("メンバー以外はコメントを作成できない", async () => {
+    await assertFails(asC().doc(`couples/${COUPLE_ID}/questionComments/c2`).set(comment(USER_C)));
+  });
+
+  it("コメントは編集・削除できない", async () => {
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/questionComments/c1`).update({ text: "書き換え" }));
+    await assertFails(asA().doc(`couples/${COUPLE_ID}/questionComments/c1`).delete());
+  });
+});
+
 describe("dailyQuestions — ログインしていれば読めるが、書き込みは誰もできない", () => {
   beforeEach(async () => {
     await testEnv.withSecurityRulesDisabled(async (ctx) => {

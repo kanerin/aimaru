@@ -125,7 +125,6 @@ void main() {
       final action = snackBar.action!;
       expect(action.label, '開く');
       expect(snackBar.persist, isFalse);
-      expect((snackBar.content as Text).data, 'あいてさんからメッセージ - おつかれさま');
 
       action.onPressed();
       expect(opened, isTrue);
@@ -276,6 +275,25 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('タブ: questions'), findsOneWidget);
+    });
+
+    testWidgets('アプリ表示中に届いたトークの通知は、文言そのものを押してもチャットタブを開く', (tester) async {
+      await pumpApp(tester);
+      await NotificationService.forTest(
+        messages: messages,
+        registerDevice: () async {},
+        homeTabs: homeTabs,
+      ).init(scaffoldMessengerKey: messengerKey, router: router);
+
+      messages.foreground.add(_chatMessage);
+      await tester.pumpAndSettle();
+      expect(find.text('タブ: calendar'), findsOneWidget);
+
+      await tester.tap(find.text('あいてさんからメッセージ - おつかれさま'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('タブ: chat'), findsOneWidget);
+      expect(find.text('あいてさんからメッセージ - おつかれさま'), findsNothing);
     });
 
     testWidgets('ログイン確認中（ホーム表示前）に通知から起動しても、ホームが出たら質問タブを開く', (tester) async {

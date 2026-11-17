@@ -153,6 +153,24 @@ service cloud.firestore {
           && request.auth.uid == request.resource.data.uid;
       }
 
+      // ふたりの質問の回答へのコメント（日ごとのやり取り）。
+      // 書けるのはその日に自分が回答済みのメンバーだけ（答えずに相手の回答へ
+      // 反応する・コメント欄から回答をほのめかす抜け道を作らない）。
+      // 予定のコメントと同じく、言った/言わないの記録として編集・削除はしない。
+      match /questionComments/{commentId} {
+        allow read: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds;
+        allow create: if request.auth.uid in
+          get(/databases/$(database)/documents/couples/$(coupleId)).data.memberIds
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.dateKey is string
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && exists(/databases/$(database)/documents/couples/$(coupleId)/questionAnswers/$(request.resource.data.dateKey + '_' + request.auth.uid));
+        allow update, delete: if false;
+      }
+
       // Googleカレンダーのキャッシュ（ドキュメントID = uid）。
       // メンバーなら誰でも読めるが、書き込みは自分の分のみ。
       match /googleCalendarCache/{uid} {
