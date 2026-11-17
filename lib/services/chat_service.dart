@@ -73,4 +73,33 @@ class ChatService {
   Future<void> removeReaction(String coupleId, String messageId) async {
     await _chatsRef(coupleId).doc(messageId).update({'reactions.$_uid': FieldValue.delete()});
   }
+
+  // ── ピン留め（LINEのアナウンスのように上部から見返せるようにする）──
+  // どちらがピン留めしたメッセージでも、2人とも外せる（共有のトークなので）。
+  Future<void> pinMessage(String coupleId, String messageId) async {
+    await _chatsRef(coupleId).doc(messageId).update({
+      'pinnedAt': Timestamp.fromDate(DateTime.now()),
+      'pinnedBy': _uid,
+    });
+  }
+
+  Future<void> unpinMessage(String coupleId, String messageId) async {
+    await _chatsRef(coupleId).doc(messageId).update({
+      'pinnedAt': FieldValue.delete(),
+      'pinnedBy': FieldValue.delete(),
+    });
+  }
+
+  // ── ピン留めしたメッセージを新しくピン留めした順に取得 ──────────
+  // トーク一覧（watchMessages）は直近limit件しか読まないため、古いメッセージを
+  // ピン留めしても一覧からは拾えない。ピン留めだけは別のクエリで読む
+  // （pinnedAtの単一フィールドなので複合インデックスは不要）。
+  Stream<List<ChatMessage>> watchPinnedMessages(String coupleId, {int limit = 50}) {
+    return _chatsRef(coupleId)
+        .where('pinnedAt', isNull: false)
+        .orderBy('pinnedAt', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snap) => snap.docs.map(ChatMessage.fromDoc).toList());
+  }
 }

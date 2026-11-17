@@ -53,6 +53,7 @@ void main() {
   Widget wrap({
     required bool isActive,
     Stream<List<ChatMessage>>? messagesStreamOverride,
+    Stream<List<ChatMessage>>? pinnedStreamOverride,
   }) =>
       MaterialApp(
         home: ChatScreen(
@@ -62,6 +63,7 @@ void main() {
           coupleServiceOverride: meCoupleService,
           currentUidOverride: meUid,
           messagesStreamOverride: messagesStreamOverride,
+          pinnedStreamOverride: pinnedStreamOverride,
         ),
       );
 
@@ -402,6 +404,194 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+  group('ピン留め', () {
+    DocumentReference<Map<String, dynamic>> chatDoc(String id) =>
+        db.collection('couples').doc(coupleId).collection('chats').doc(id);
+
+    ChatMessage message(int i, {DateTime? pinnedAt, String sender = partnerUid}) => ChatMessage(
+          id: 'm$i',
+          coupleId: coupleId,
+          text: 'メッセージ$i',
+          senderId: sender,
+          timestamp: DateTime(2026, 1, 1).add(Duration(minutes: i)),
+          pinnedAt: pinnedAt,
+        );
+
+    testWidgets('長押しメニューの「ピン留め」で保存され、上部のバナーに出る', (tester) async {
+      await meChatService.sendMessage(coupleId, text: '金曜19時に駅前で');
+      final sent = (await meChatService.watchMessages(coupleId).first).single;
+
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value([sent]).asBroadcastStream(),
+      ));
+      await tester.pump();
+      expect(find.byIcon(Icons.push_pin), findsNothing);
+
+      await tester.longPress(find.text('金曜19時に駅前で'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ピン留め'));
+      await tester.pumpAndSettle();
+
+      expect((await chatDoc(sent.id).get()).data()!['pinnedBy'], meUid);
+      expect(find.textContaining('ピン留めしました'), findsOneWidget);
+      // トーク本文とバナーの両方に同じ文言が出る
+      expect(find.text('金曜19時に駅前で'), findsNWidgets(2));
+    });
+
+    testWidgets('ピン留め済みのメッセージは長押しメニューから外せる', (tester) async {
+      await meChatService.sendMessage(coupleId, text: '金曜19時に駅前で');
+      final sent = (await meChatService.watchMessages(coupleId).first).single;
+      await meChatService.pinMessage(coupleId, sent.id);
+      final pinned = (await meChatService.watchMessages(coupleId).first).single;
+
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value([pinned]).asBroadcastStream(),
+      ));
+      await tester.pump();
+
+      await tester.longPress(find.text('金曜19時に駅前で').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ピン留めを外す'));
+      await tester.pumpAndSettle();
+
+      expect((await chatDoc(sent.id).get()).data()!.containsKey('pinnedAt'), isFalse);
+      expect(find.text('ピン留めを外しました'), findsOneWidget);
+    });
+
+    testWidgets('バナーには最新のピン留めを出し、一覧には全件を全文で出す', (tester) async {
+      const longText = '来週の旅行の持ち物：パスポート、充電器、折りたたみ傘、常備薬、'
+          'それから向こうで使う変換プラグイン。忘れないようにここに残しておくね';
+      final messages = [
+        message(0, pinnedAt: DateTime(2026, 1, 2)),
+        ChatMessage(
+          id: 'm1',
+          coupleId: coupleId,
+          text: longText,
+          senderId: meUid,
+          timestamp: DateTime(2026, 1, 1, 0, 1),
+          pinnedAt: DateTime(2026, 1, 3),
+        ),
+      ];
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value(messages).asBroadcastStream(),
+        pinnedStreamOverride: Stream.value([messages[1], messages[0]]),
+      ));
+      await tester.pump();
+
+      expect(find.text('一覧（2）'), findsOneWidget);
+
+      await tester.tap(find.text('一覧（2）'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ピン留め（2件）'), findsOneWidget);
+      expect(find.textContaining('あなた ·'), findsOneWidget);
+      expect(find.textContaining('パートナー ·'), findsOneWidget);
+      // 一覧では省略せず全文を読める（トーク本文・バナー・一覧で3か所）
+      expect(find.text(longText), findsNWidgets(3));
+    });
+
+    testWidgets('一覧の「ピン留めを外す」で外れる', (tester) async {
+      await meChatService.sendMessage(coupleId, text: '金曜19時に駅前で');
+      final sent = (await meChatService.watchMessages(coupleId).first).single;
+      await partnerChatService.pinMessage(coupleId, sent.id);
+
+      await tester.pumpWidget(wrap(isActive: true));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('一覧'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('ピン留めを外す'));
+      await tester.pumpAndSettle();
+
+      expect((await chatDoc(sent.id).get()).data()!.containsKey('pinnedAt'), isFalse);
+      expect(find.text('一覧'), findsNothing);
+    });
+
+    testWidgets('バナーをタップすると、ピン留めしたメッセージの位置までスクロールする', (tester) async {
+      final messages = [
+        for (var i = 0; i < 40; i++) message(i, pinnedAt: i == 2 ? DateTime(2026, 1, 2) : null),
+      ];
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value(messages).asBroadcastStream(),
+        pinnedStreamOverride: Stream.value([messages[2]]),
+      ));
+      await tester.pumpAndSettle();
+      // 初回は最下部を表示しているので、古いメッセージ2は作られていない
+      expect(find.text('メッセージ2'), findsOneWidget); // バナーのみ
+
+      await tester.tap(find.text('メッセージ2'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('メッセージ2'), findsNWidgets(2)); // バナーとトーク本文
+      await tester.pump(const Duration(seconds: 3)); // 目立たせる表示が消えるまで進める
+    });
+
+    testWidgets('トークに読み込まれていない古いピン留めは、バナーのタップで一覧を開く', (tester) async {
+      final old = message(-500, pinnedAt: DateTime(2026, 1, 2));
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value([message(0)]).asBroadcastStream(),
+        pinnedStreamOverride: Stream.value([old]),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('メッセージ-500'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ピン留め（1件）'), findsOneWidget);
+    });
+
+    testWidgets('ピン留めの読み込みに失敗してもトークはそのまま使える', (tester) async {
+      await tester.pumpWidget(wrap(
+        isActive: true,
+        messagesStreamOverride: Stream.value([message(0)]).asBroadcastStream(),
+        pinnedStreamOverride: Stream.error(Exception('PERMISSION_DENIED')),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('メッセージ0'), findsOneWidget);
+      expect(find.byIcon(Icons.push_pin), findsNothing);
+    });
+
+    testWidgets('ピン留めの保存に失敗しても例外を出さずSnackBarで知らせる', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: ChatScreen(
+          coupleId: coupleId,
+          isActive: true,
+          chatServiceOverride: _FailingPinChatService(db),
+          coupleServiceOverride: meCoupleService,
+          currentUidOverride: meUid,
+          messagesStreamOverride: Stream.value([message(0)]).asBroadcastStream(),
+          pinnedStreamOverride: Stream.value(const <ChatMessage>[]),
+        ),
+      ));
+      await tester.pump();
+
+      await tester.longPress(find.text('メッセージ0'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ピン留め'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('ピン留めできませんでした。もう一度お試しください'), findsOneWidget);
+    });
+  });
+}
+
+class _FailingPinChatService extends ChatService {
+  _FailingPinChatService(FirebaseFirestore db) : super(firestore: db, uid: 'me');
+
+  @override
+  Future<void> pinMessage(String coupleId, String messageId) async {
+    throw Exception('permission-denied');
+  }
 }
 
 class _FailingMarkReadChatService extends ChatService {
