@@ -189,11 +189,21 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _toggleReaction(ChatMessage m, String emoji) {
-    if (m.reactions[_myUid] == emoji) {
-      _chatService.removeReaction(widget.coupleId, m.id);
-    } else {
-      _chatService.setReaction(widget.coupleId, m.id, emoji);
+  // 結果を待たずに呼ばれるため、失敗（権限・通信エラー、ログアウト直後）を握らないと
+  // 拾い手のない非同期例外になり、押したのに何も起きない状態になる。
+  Future<void> _toggleReaction(ChatMessage m, String emoji) async {
+    try {
+      if (m.reactions[_myUid] == emoji) {
+        await _chatService.removeReaction(widget.coupleId, m.id);
+      } else {
+        await _chatService.setReaction(widget.coupleId, m.id, emoji);
+      }
+    } catch (e) {
+      debugPrint('toggle reaction failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('リアクションを付けられませんでした。もう一度お試しください')),
+      );
     }
   }
 

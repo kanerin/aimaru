@@ -820,6 +820,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-16、トーク画面（`ChatScreen`）の既読更新（`markAsRead`）が結果を待たずに呼ばれ、権限・通信エラーやログアウト直後に失敗すると拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。新着受信時とタブ復帰時の両方を`_markAsRead`（失敗は`debugPrint`に残すだけ）経由にした。`test/screens/chat_screen_test.dart`に失敗時のテスト2件を追加した（`flutter analyze`・`flutter test`（843件）通過）。
 
+2026-11-17、トーク画面（`ChatScreen`）のリアクションの付け外し（`_toggleReaction`）が`setReaction`/`removeReaction`を待たずに呼び、権限・通信エラーやログアウト直後に失敗すると拾い手のない非同期例外になり、押したのに何も起きない経路を直した（reduce-debt枠、本PR）。失敗は`debugPrint`に残し、「リアクションを付けられませんでした。もう一度お試しください」を`SnackBar`で出す。`test/screens/chat_screen_test.dart`に付ける・外す両経路の失敗テストを追加した（`flutter analyze`・`flutter test`通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
