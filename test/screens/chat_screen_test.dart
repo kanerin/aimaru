@@ -226,6 +226,44 @@ void main() {
     expect((doc.data()?['reactions'] as Map).containsKey(meUid), isFalse);
   });
 
+  testWidgets('リアクションの保存に失敗しても例外を出さずSnackBarで知らせる', (tester) async {
+    final message = ChatMessage(
+      id: 'msg-1',
+      coupleId: coupleId,
+      text: 'こんにちは',
+      senderId: partnerUid,
+      timestamp: DateTime(2026, 1, 1),
+      reactions: {meUid: '👍'},
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(
+        coupleId: coupleId,
+        isActive: true,
+        chatServiceOverride: _FailingReactionChatService(db),
+        coupleServiceOverride: meCoupleService,
+        currentUidOverride: meUid,
+        messagesStreamOverride: Stream.value([message]).asBroadcastStream(),
+      ),
+    ));
+    await tester.pump();
+
+    // 外す経路（付与済みのピルをタップ）
+    await tester.tap(find.text('👍 1'));
+    await tester.pump();
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('リアクションを付けられませんでした。もう一度お試しください'), findsOneWidget);
+
+    // 付ける経路（長押しピッカー）
+    await tester.pump(const Duration(seconds: 5));
+    await tester.longPress(find.text('こんにちは'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('❤️').first);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('リアクションを付けられませんでした。もう一度お試しください'), findsOneWidget);
+  });
+
   testWidgets('メッセージストリームがエラーになったら無限ローディングではなくエラー表示にする', (tester) async {
     // _messagesStreamは既読マーカーの購読とStreamBuilderの両方から
     // listenされるため、本番のFirestoreの.snapshots()と同様broadcastにする。
@@ -389,6 +427,20 @@ class _FailingSendChatService extends ChatService {
 
   @override
   Future<void> sendMessage(String coupleId, {String? text, String? imageUrl}) async {
+    throw Exception('permission-denied');
+  }
+}
+
+class _FailingReactionChatService extends ChatService {
+  _FailingReactionChatService(FirebaseFirestore db) : super(firestore: db, uid: 'me');
+
+  @override
+  Future<void> setReaction(String coupleId, String messageId, String emoji) async {
+    throw Exception('permission-denied');
+  }
+
+  @override
+  Future<void> removeReaction(String coupleId, String messageId) async {
     throw Exception('permission-denied');
   }
 }
