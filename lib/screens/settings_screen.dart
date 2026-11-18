@@ -146,6 +146,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // 設定スイッチの保存。先に画面へ反映し、保存に失敗したら元の値へ戻して知らせる
+  // （戻さないと、押したのに保存されていないスイッチが残り、例外も拾い手がなくなる）。
+  Future<void> _saveSetting<T>({
+    required void Function(T value) apply,
+    required T previous,
+    required T next,
+    required Future<void> Function() save,
+  }) async {
+    apply(next);
+    try {
+      await save();
+    } catch (e) {
+      debugPrint('設定の保存に失敗: $e');
+      if (!mounted) return;
+      apply(previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('設定の保存に失敗しました。もう一度お試しください')),
+      );
+    }
+  }
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -372,20 +393,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: '祝日を表示',
               subtitle: 'カレンダーに日本の祝日を表示します',
               value: _showHolidays,
-              onChanged: (v) async {
-                setState(() => _showHolidays = v);
-                await _settingsService.setShowHolidays(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _showHolidays = value),
+                previous: _showHolidays,
+                next: v,
+                save: () => _settingsService.setShowHolidays(v),
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: '週の始まりを月曜日にする',
               subtitle: 'OFFの場合は日曜始まりで表示します',
               value: _weekStartsMonday,
-              onChanged: (v) async {
-                setState(() => _weekStartsMonday = v);
-                await _settingsService.setWeekStartsMonday(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _weekStartsMonday = value),
+                previous: _weekStartsMonday,
+                next: v,
+                save: () => _settingsService.setWeekStartsMonday(v),
+              ),
             ),
           ],
 
@@ -400,24 +425,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Googleカレンダーの予定を表示',
               subtitle: '自分と、連携済みのパートナーのGoogleカレンダーの予定をカレンダー画面に表示します',
               value: _showGoogleCalendar,
-              onChanged: (v) async {
-                setState(() => _showGoogleCalendar = v);
-                await _settingsService.setShowGoogleCalendar(v);
-                if (!v) {
-                  // OFFにしたら自分のキャッシュ（パートナーに見えている分）も消す
-                  await _googleCalendarCache.clearMyEvents(widget.coupleId);
-                }
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _showGoogleCalendar = value),
+                previous: _showGoogleCalendar,
+                next: v,
+                save: () async {
+                  await _settingsService.setShowGoogleCalendar(v);
+                  if (!v) {
+                    // OFFにしたら自分のキャッシュ（パートナーに見えている分）も消す
+                    try {
+                      await _googleCalendarCache.clearMyEvents(widget.coupleId);
+                    } catch (_) {
+                      // 消せていないのに設定だけOFFだと、パートナーに見え続けるので設定も戻す
+                      await _settingsService.setShowGoogleCalendar(true);
+                      rethrow;
+                    }
+                  }
+                },
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: '予定作成時にGoogleカレンダーにも同期',
               subtitle: 'このアプリで新しく作った予定に、Googleカレンダー同期のデフォルト値を適用します（予定ごとに変更も可能）',
               value: _defaultSync,
-              onChanged: (v) async {
-                setState(() => _defaultSync = v);
-                await _settingsService.setDefaultSyncGoogleCalendar(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _defaultSync = value),
+                previous: _defaultSync,
+                next: v,
+                save: () => _settingsService.setDefaultSyncGoogleCalendar(v),
+              ),
             ),
             const SizedBox(height: 12),
             SettingsNavigationRow(
@@ -448,50 +485,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'パートナーの予定登録を通知',
               subtitle: 'パートナーが新しい予定を追加したときにプッシュ通知でお知らせします',
               value: _notifyOnNewEvent,
-              onChanged: (v) async {
-                setState(() => _notifyOnNewEvent = v);
-                await _notificationSettingsService.setNotifyOnNewEvent(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _notifyOnNewEvent = value),
+                previous: _notifyOnNewEvent,
+                next: v,
+                save: () => _notificationSettingsService.setNotifyOnNewEvent(v),
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: 'トークのメッセージ通知',
               subtitle: 'パートナーからメッセージが届いたときにプッシュ通知でお知らせします',
               value: _notifyOnNewChatMessage,
-              onChanged: (v) async {
-                setState(() => _notifyOnNewChatMessage = v);
-                await _notificationSettingsService.setNotifyOnNewChatMessage(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _notifyOnNewChatMessage = value),
+                previous: _notifyOnNewChatMessage,
+                next: v,
+                save: () => _notificationSettingsService.setNotifyOnNewChatMessage(v),
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: 'ふたりの質問のリマインダー通知',
               subtitle: '今日の質問にまだ答えていないときに、夜のうちにプッシュ通知でお知らせします',
               value: _notifyOnDailyQuestion,
-              onChanged: (v) async {
-                setState(() => _notifyOnDailyQuestion = v);
-                await _notificationSettingsService.setNotifyOnDailyQuestion(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _notifyOnDailyQuestion = value),
+                previous: _notifyOnDailyQuestion,
+                next: v,
+                save: () => _notificationSettingsService.setNotifyOnDailyQuestion(v),
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: '家計の確定プランの変更を通知',
               subtitle: 'パートナーが家計の確定プランを変えたときにプッシュ通知でお知らせします',
               value: _notifyOnBudgetChange,
-              onChanged: (v) async {
-                setState(() => _notifyOnBudgetChange = v);
-                await _notificationSettingsService.setNotifyOnBudgetChange(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _notifyOnBudgetChange = value),
+                previous: _notifyOnBudgetChange,
+                next: v,
+                save: () => _notificationSettingsService.setNotifyOnBudgetChange(v),
+              ),
             ),
             const SizedBox(height: 12),
             _SettingsSwitch(
               title: '予定・記念日のリマインダー通知',
               subtitle: '予定の開始前や記念日の当日にプッシュ通知でお知らせします',
               value: _remindersEnabled,
-              onChanged: (v) async {
-                setState(() => _remindersEnabled = v);
-                await _notificationSettingsService.setRemindersEnabled(v);
-              },
+              onChanged: (v) => _saveSetting(
+                apply: (value) => setState(() => _remindersEnabled = value),
+                previous: _remindersEnabled,
+                next: v,
+                save: () => _notificationSettingsService.setRemindersEnabled(v),
+              ),
             ),
             if (_remindersEnabled) ...[
               const SizedBox(height: 12),
@@ -528,10 +575,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     child: Text(entry.value),
                                   ))
                               .toList(),
-                          onChanged: (value) async {
+                          onChanged: (value) {
                             if (value == null) return;
-                            setState(() => _reminderMinutesBefore = value);
-                            await _notificationSettingsService.setReminderMinutesBefore(value);
+                            _saveSetting(
+                              apply: (v) => setState(() => _reminderMinutesBefore = v),
+                              previous: _reminderMinutesBefore,
+                              next: value,
+                              save: () => _notificationSettingsService.setReminderMinutesBefore(value),
+                            );
                           },
                         ),
                       ),

@@ -28,14 +28,31 @@ class _ThrowingSettingsService extends SettingsService {
   }
 }
 
-Widget _screen({CoupleService? couple, SettingsService? settings}) {
+class _FailingSaveSettingsService extends SettingsService {
+  @override
+  Future<void> setShowHolidays(bool value) async => throw Exception('write failed');
+}
+
+class _FailingNotificationSettingsService extends NotificationSettingsService {
+  _FailingNotificationSettingsService() : super(firestore: FakeFirebaseFirestore(), uid: 'me');
+
+  @override
+  Future<void> setNotifyOnNewEvent(bool value) async => throw Exception('permission-denied');
+}
+
+Widget _screen({
+  CoupleService? couple,
+  SettingsService? settings,
+  NotificationSettingsService? notification,
+}) {
   final db = FakeFirebaseFirestore();
   return MaterialApp(
     home: SettingsScreen(
       coupleId: 'couple-1',
       coupleServiceOverride: couple ?? CoupleService(firestore: db, uid: 'me'),
       settingsServiceOverride: settings ?? SettingsService(),
-      notificationSettingsServiceOverride: NotificationSettingsService(firestore: db, uid: 'me'),
+      notificationSettingsServiceOverride:
+          notification ?? NotificationSettingsService(firestore: db, uid: 'me'),
       profileOverride: (displayName: 'わたし', email: 'me@example.com', photoUrl: null),
     ),
   );
@@ -84,6 +101,43 @@ void main() {
 
       expect(find.text('設定を読み込めませんでした'), findsNothing);
       expect(find.text('祝日を表示'), findsOneWidget);
+    });
+
+    testWidgets('設定の保存に失敗したらスイッチを元に戻し、例外にせず失敗を知らせる（端末内の設定）',
+        (tester) async {
+      await tester.pumpWidget(_screen(settings: _FailingSaveSettingsService()));
+      await tester.pumpAndSettle();
+
+      final sw = find.descendant(
+        of: find.ancestor(of: find.text('祝日を表示'), matching: find.byType(Row)).first,
+        matching: find.byType(Switch),
+      );
+      await tester.ensureVisible(sw);
+      final before = tester.widget<Switch>(sw).value;
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<Switch>(sw).value, before);
+      expect(find.text('設定の保存に失敗しました。もう一度お試しください'), findsOneWidget);
+    });
+
+    testWidgets('通知設定の保存に失敗したらスイッチを元に戻し、失敗を知らせる（Firestore）', (tester) async {
+      await tester.pumpWidget(_screen(notification: _FailingNotificationSettingsService()));
+      await tester.pumpAndSettle();
+
+      final sw = find.descendant(
+        of: find.ancestor(of: find.text('パートナーの予定登録を通知'), matching: find.byType(Row)).first,
+        matching: find.byType(Switch),
+      );
+      await tester.ensureVisible(sw);
+      final before = tester.widget<Switch>(sw).value;
+      await tester.tap(sw);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<Switch>(sw).value, before);
+      expect(find.text('設定の保存に失敗しました。もう一度お試しください'), findsOneWidget);
     });
 
     testWidgets('パートナー情報の読み込みに失敗しても例外にならず、設定は使える', (tester) async {
