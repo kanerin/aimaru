@@ -60,6 +60,46 @@ void main() {
     expect(field.controller!.text, isEmpty);
   });
 
+  testWidgets('パスコード確認が例外で失敗しても案内が出て、再入力して解除できる', (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(wrap((pin) async {
+      calls++;
+      if (calls == 1) throw Exception('storage error');
+      return true;
+    }));
+
+    await enterPin(tester, '1234');
+    await tester.tap(find.byType(FilledButton));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('パスコードを確認できませんでした。もう一度お試しください'), findsOneWidget);
+    final button = tester.widget<FilledButton>(find.byType(FilledButton));
+    expect(button.onPressed, isNotNull);
+
+    await tester.tap(find.byType(FilledButton));
+    await tester.pump();
+    expect(calls, 2);
+  });
+
+  testWidgets('生体認証の確認・実行が例外でもPIN入力が使える', (tester) async {
+    await tester.pumpWidget(wrap(
+      (_) async => true,
+      canUseBiometrics: () async => true,
+      biometricUnlock: () async => throw Exception('plugin error'),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byType(TextField), findsOneWidget);
+
+    await tester.pumpWidget(wrap(
+      (_) async => true,
+      canUseBiometrics: () async => throw Exception('plugin error'),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   group('生体認証での解除', () {
     testWidgets('生体認証が使えない端末・設定では専用ボタンを出さない', (tester) async {
       await tester.pumpWidget(wrap((_) async => true));

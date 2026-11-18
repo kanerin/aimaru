@@ -54,7 +54,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
   // 使えない設定・端末では端末への問い合わせ自体が起きない。
   Future<void> _initBiometrics() async {
     final canUse = widget.canUseBiometricsOverride ?? AppLockController.instance.canUseBiometrics;
-    final available = await canUse();
+    bool available;
+    try {
+      available = await canUse();
+    } catch (e) {
+      // 生体認証はあくまで補助。問い合わせに失敗してもPINで開ける。
+      debugPrint('[アプリロック] 生体認証の可否確認に失敗: $e');
+      return;
+    }
     if (!mounted || !available) return;
     setState(() => _biometricAvailable = true);
     await _authenticateWithBiometrics();
@@ -68,7 +75,12 @@ class _AppLockScreenState extends State<AppLockScreen> {
     });
 
     final unlock = widget.biometricUnlockOverride ?? AppLockController.instance.unlockWithBiometrics;
-    await unlock();
+    try {
+      await unlock();
+    } catch (e) {
+      // 失敗はキャンセルと同じ扱い（PINで開ける導線が残っている）。
+      debugPrint('[アプリロック] 生体認証での解除に失敗: $e');
+    }
 
     // 成功時はlocked=falseの通知で親が画面を差し替えるため、このウィジェットは
     // 破棄される。失敗・キャンセルはエラー扱いにしない（PINで開ける導線が
@@ -87,14 +99,24 @@ class _AppLockScreenState extends State<AppLockScreen> {
     });
 
     final unlock = widget.unlockOverride ?? AppLockController.instance.unlock;
-    final ok = await unlock(pin);
+    bool ok;
+    String? failure;
+    try {
+      ok = await unlock(pin);
+    } catch (e) {
+      // 端末の保存領域の読み出し失敗など。握らないと_checkingがtrueのまま残り、
+      // 解除ボタンが二度と押せずアプリを開けなくなる。
+      debugPrint('[アプリロック] パスコードの確認に失敗: $e');
+      ok = false;
+      failure = 'パスコードを確認できませんでした。もう一度お試しください';
+    }
 
     if (!mounted) return;
     if (!ok) {
       setState(() {
         _checking = false;
-        _error = 'パスコードが違います';
-        _pinController.clear();
+        _error = failure ?? 'パスコードが違います';
+        if (failure == null) _pinController.clear();
       });
     }
     // 成功時はAppLockController.locked=falseへの通知で親が画面を差し替えるため、
