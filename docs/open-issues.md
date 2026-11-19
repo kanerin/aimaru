@@ -824,6 +824,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-18、設定画面（`SettingsScreen`）の10個のスイッチ・ドロップダウン（祝日・週の開始曜日・Googleカレンダー表示・同期既定値・各種通知・リマインダー時刻）が、保存（`SettingsService`/`NotificationSettingsService`のFirestore・端末ストレージ書き込み）の失敗を捕まえておらず、失敗すると拾い手のない非同期例外になるうえ、画面のスイッチだけ切り替わって実際は保存されていない状態になる経路を直した（reduce-debt枠、本PR）。`_saveSetting`で失敗時にスイッチを元の値へ戻し「設定の保存に失敗しました。もう一度お試しください」を`SnackBar`で出す。Googleカレンダー表示をOFFにする際にキャッシュ削除が失敗したら、パートナーに見え続けるため設定も元へ戻す。`test/screens/settings_screen_test.dart`に端末内設定・Firestore通知設定の失敗テスト2件を追加した（`flutter analyze`・`flutter test`（876件）通過）。
 
+2026-11-19、他社カレンダーのインポート画面（`IcsImportScreen._importSelected`）が`addEvent`の例外を捕まえておらず、権限・通信エラーで失敗すると拾い手のない非同期例外になり、追加ボタンが回り続けたまま固まる経路を直した（reduce-debt枠、本PR）。失敗時は`SnackBar`で伝え、途中まで追加済みの予定は一覧から外して再試行で二重登録しないようにした。`test/screens/ics_import_screen_test.dart`に失敗・再試行のテストを追加した（`flutter analyze`・`flutter test`通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
