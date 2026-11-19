@@ -25,11 +25,26 @@ class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
   late final Future<bool> _biometricAvailable =
       AppLockController.instance.isBiometricAvailableOnDevice();
 
+  // 保存（SharedPreferences）の失敗は拾い手のない非同期例外になり、
+  // 利用者には何も起きなかったように見えるので、必ず捕まえて知らせる。
+  // コントローラは保存成功後にしか状態を変えないため、失敗時にスイッチは元の位置のまま。
+  Future<void> _guard(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (e) {
+      debugPrint('アプリロック設定の保存に失敗: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('設定の保存に失敗しました。もう一度お試しください')),
+      );
+    }
+  }
+
   Future<void> _onToggle(BuildContext context, bool value) async {
     if (value) {
       final pin = await _showSetPinDialog(context);
       if (pin == null) return; // キャンセル
-      await AppLockController.instance.setEnabled(true, pin: pin);
+      await _guard(() => AppLockController.instance.setEnabled(true, pin: pin));
       return;
     }
 
@@ -49,14 +64,14 @@ class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
       ),
     );
     if (confirmed == true) {
-      await AppLockController.instance.setEnabled(false);
+      await _guard(() => AppLockController.instance.setEnabled(false));
     }
   }
 
   Future<void> _onChangePin(BuildContext context) async {
     final pin = await _showSetPinDialog(context);
     if (pin == null) return;
-    await AppLockController.instance.setEnabled(true, pin: pin);
+    await _guard(() => AppLockController.instance.setEnabled(true, pin: pin));
   }
 
   @override
@@ -137,7 +152,8 @@ class _AppLockSettingsCardState extends State<AppLockSettingsCard> {
           ),
           Switch(
             value: AppLockController.instance.biometricEnabled,
-            onChanged: (v) => AppLockController.instance.setBiometricEnabled(v),
+            onChanged: (v) =>
+                _guard(() => AppLockController.instance.setBiometricEnabled(v)),
           ),
         ]),
       );
