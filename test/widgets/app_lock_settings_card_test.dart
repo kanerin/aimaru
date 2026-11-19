@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:aimaru/services/app_lock_controller.dart';
+import 'package:aimaru/services/app_lock_service.dart';
 import 'package:aimaru/widgets/app_lock_settings_card.dart';
 
 import '../helpers/fake_biometric_authenticator.dart';
@@ -19,6 +20,7 @@ void main() {
     // 既定は「端末が非対応」にして、既存のPIN周りの検証に影響させない。
     biometrics = FakeBiometricAuthenticator(available: false);
     AppLockController.instance.biometrics = biometrics;
+    AppLockController.instance.service = AppLockService();
     await AppLockController.instance.load();
   });
 
@@ -162,4 +164,65 @@ void main() {
       expect(AppLockController.instance.biometricEnabled, isFalse);
     });
   });
+
+  group('保存に失敗したとき', () {
+    const message = '設定の保存に失敗しました。もう一度お試しください';
+
+    testWidgets('有効化の保存が失敗してもスナックバーで知らせ、スイッチはオフのまま', (tester) async {
+      AppLockController.instance.service = _FailingAppLockService();
+      await tester.pumpWidget(wrap());
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await fillPinDialog(tester, '1234', '1234');
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(message), findsOneWidget);
+      expect(AppLockController.instance.enabled, isFalse);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    });
+
+    testWidgets('解除の保存が失敗してもスナックバーで知らせ、スイッチはオンのまま', (tester) async {
+      await AppLockController.instance.setEnabled(true, pin: '1234');
+      AppLockController.instance.service = _FailingAppLockService();
+      await tester.pumpWidget(wrap());
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('解除する'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(message), findsOneWidget);
+      expect(AppLockController.instance.enabled, isTrue);
+      expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    });
+
+    testWidgets('生体認証トグルの保存が失敗してもスナックバーで知らせ、オフのまま', (tester) async {
+      biometrics.available = true;
+      await AppLockController.instance.setEnabled(true, pin: '1234');
+      AppLockController.instance.service = _FailingAppLockService();
+      await tester.pumpWidget(wrap());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch).at(1));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text(message), findsOneWidget);
+      expect(AppLockController.instance.biometricEnabled, isFalse);
+      expect(tester.widget<Switch>(find.byType(Switch).at(1)).value, isFalse);
+    });
+  });
+}
+
+class _FailingAppLockService extends AppLockService {
+  @override
+  Future<void> setPin(String pin) async => throw Exception('disk full');
+
+  @override
+  Future<void> disable() async => throw Exception('disk full');
+
+  @override
+  Future<void> setBiometricEnabled(bool value) async => throw Exception('disk full');
 }

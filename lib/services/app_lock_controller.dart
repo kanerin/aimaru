@@ -11,7 +11,8 @@ class AppLockController extends ChangeNotifier {
   static final AppLockController instance = AppLockController._();
   AppLockController._();
 
-  final _service = AppLockService();
+  @visibleForTesting
+  AppLockService service = AppLockService();
 
   // 生体認証の実体。local_authはプラットフォームチャネル越しの呼び出しで
   // 単体テストから実行できないため、テストからは差し替えられるようにしてある。
@@ -30,8 +31,8 @@ class AppLockController extends ChangeNotifier {
 
   // 起動時に一度だけ呼ぶ。有効化済みなら起動直後からロック状態で始める。
   Future<void> load() async {
-    _enabled = await _service.isEnabled();
-    _biometricEnabled = _enabled && await _service.isBiometricEnabled();
+    _enabled = await service.isEnabled();
+    _biometricEnabled = _enabled && await service.isBiometricEnabled();
     _locked = _enabled;
     notifyListeners();
   }
@@ -41,10 +42,10 @@ class AppLockController extends ChangeNotifier {
   Future<void> setEnabled(bool value, {String? pin}) async {
     if (value) {
       if (pin == null || pin.length != AppLockService.pinLength) return;
-      await _service.setPin(pin);
+      await service.setPin(pin);
       _enabled = true;
     } else {
-      await _service.disable();
+      await service.disable();
       _enabled = false;
       _biometricEnabled = false;
       _locked = false;
@@ -56,7 +57,7 @@ class AppLockController extends ChangeNotifier {
   // （PINの無い状態で生体認証だけが残ると、認証に失敗したとき開く手段が無くなる）。
   Future<void> setBiometricEnabled(bool value) async {
     if (value && !_enabled) return;
-    await _service.setBiometricEnabled(value);
+    await service.setBiometricEnabled(value);
     _biometricEnabled = value;
     notifyListeners();
   }
@@ -79,7 +80,7 @@ class AppLockController extends ChangeNotifier {
   }
 
   Future<bool> unlock(String pin) async {
-    final ok = await _service.verifyPin(pin);
+    final ok = await service.verifyPin(pin);
     if (ok) {
       _locked = false;
       notifyListeners();
