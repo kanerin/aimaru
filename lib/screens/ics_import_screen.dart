@@ -93,22 +93,49 @@ class _IcsImportScreenState extends State<IcsImportScreen> {
     if (toImport.isEmpty) return;
 
     setState(() => _importing = true);
-    for (final parsed in toImport) {
-      await _eventService.addEvent(
-        widget.coupleId,
-        AimaruEvent(
-          id: '',
-          coupleId: widget.coupleId,
-          title: parsed.title,
-          date: parsed.start,
-          endDate: parsed.end,
-          type: EventType.plan,
-          location: parsed.location,
-          memo: parsed.description,
-          createdBy: '',
-          allDay: parsed.allDay,
-        ),
+    // 追加できた予定。途中で失敗したときに一覧から外し、再試行で二重登録しないために覚えておく。
+    final added = <IcsParsedEvent>[];
+    try {
+      for (final parsed in toImport) {
+        await _eventService.addEvent(
+          widget.coupleId,
+          AimaruEvent(
+            id: '',
+            coupleId: widget.coupleId,
+            title: parsed.title,
+            date: parsed.start,
+            endDate: parsed.end,
+            type: EventType.plan,
+            location: parsed.location,
+            memo: parsed.description,
+            createdBy: '',
+            allDay: parsed.allDay,
+          ),
+        );
+        added.add(parsed);
+      }
+    } catch (e) {
+      // 権限・通信エラーで例外を握らないと、拾い手のない非同期例外になり
+      // ボタンが回り続けたまま固まる。
+      debugPrint('ics import failed: $e');
+      if (!mounted) return;
+      final remaining = <IcsParsedEvent>[];
+      final remainingSelected = <bool>[];
+      for (var i = 0; i < _events.length; i++) {
+        if (added.contains(_events[i])) continue;
+        remaining.add(_events[i]);
+        remainingSelected.add(_selected[i]);
+      }
+      setState(() {
+        _importing = false;
+        _events = remaining;
+        _selected = remainingSelected;
+      });
+      final partial = added.isEmpty ? '' : '${added.length}件は追加済みです。';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('予定の追加に失敗しました。$partialもう一度お試しください')),
       );
+      return;
     }
     if (!mounted) return;
     setState(() => _importing = false);
