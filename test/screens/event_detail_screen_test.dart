@@ -8,6 +8,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/event_detail_screen.dart';
 import 'package:aimaru/services/event_comment_service.dart';
+import 'package:aimaru/services/event_service.dart';
 import 'package:aimaru/widgets/circular_action_button.dart';
 
 // 予定の詳細画面のコメント欄が、ストリームエラーで無限ローディングのまま
@@ -31,6 +32,7 @@ void main() {
     Stream<List<EventComment>> stream, {
     EventCommentService? commentService,
     String currentUid = 'user-me',
+    EventService? eventService,
   }) =>
       MaterialApp(
         home: EventDetailScreen(
@@ -39,6 +41,7 @@ void main() {
           commentsStreamOverride: stream,
           commentServiceOverride: commentService,
           currentUidOverride: currentUid,
+          eventServiceOverride: eventService,
         ),
       );
 
@@ -198,4 +201,61 @@ void main() {
 
     await controller.close();
   });
+
+  testWidgets('コメントの送信に失敗したら入力を戻してSnackBarで知らせる', (tester) async {
+    final controller = StreamController<List<EventComment>>();
+    await tester.pumpWidget(
+        wrap(controller.stream, commentService: _ThrowingCommentService()));
+    controller.add([]);
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField), 'いいね！');
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('コメントの送信に失敗しました。もう一度お試しください'), findsOneWidget);
+    final textField = tester.widget<TextField>(find.byType(TextField));
+    expect(textField.controller!.text, 'いいね！');
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+
+  testWidgets('予定の削除に失敗したらSnackBarで知らせ、画面に留まる', (tester) async {
+    final controller = StreamController<List<EventComment>>();
+    await tester.pumpWidget(
+        wrap(controller.stream, eventService: _ThrowingEventService()));
+    controller.add([]);
+    await tester.pump();
+
+    final deleteButton = find.text('この予定を削除');
+    await tester.ensureVisible(deleteButton.first);
+    await tester.tap(deleteButton.first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('削除する'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('削除に失敗しました。もう一度お試しください'), findsOneWidget);
+    expect(find.byType(EventDetailScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+}
+
+class _ThrowingCommentService extends EventCommentService {
+  _ThrowingCommentService() : super(firestore: FakeFirebaseFirestore(), uid: 'user-me');
+
+  @override
+  Future<void> addComment(String coupleId, String eventId, String text) =>
+      Future.error(Exception('PERMISSION_DENIED'));
+}
+
+class _ThrowingEventService extends EventService {
+  _ThrowingEventService() : super(firestore: FakeFirebaseFirestore());
+
+  @override
+  Future<void> deleteEvent(AimaruEvent event) =>
+      Future.error(Exception('PERMISSION_DENIED'));
 }

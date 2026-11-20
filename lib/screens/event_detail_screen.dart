@@ -21,6 +21,8 @@ class EventDetailScreen extends StatefulWidget {
   final EventCommentService? commentServiceOverride;
   // テストからFirebase Authに触れずに「自分」を差し込むための注入ポイント。
   final String? currentUidOverride;
+  // テストから予定の削除（ゴミ箱への移動）の成否を差し込むための注入ポイント。
+  final EventService? eventServiceOverride;
   const EventDetailScreen({
     super.key,
     required this.event,
@@ -28,6 +30,7 @@ class EventDetailScreen extends StatefulWidget {
     this.commentsStreamOverride,
     this.commentServiceOverride,
     this.currentUidOverride,
+    this.eventServiceOverride,
   });
 
   @override
@@ -39,7 +42,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   // コメント機能のテスト（commentsStreamOverrideのみ差し込む）ではFirebase
   // 初期化なしに動けるよう、実際に使うときまで生成を遅らせる。
   EventService? _eventServiceInstance;
-  EventService get _eventService => _eventServiceInstance ??= EventService();
+  EventService get _eventService =>
+      _eventServiceInstance ??= widget.eventServiceOverride ?? EventService();
   final _calendarService = GoogleCalendarService();
 
   EventCommentService? _commentServiceInstance;
@@ -71,6 +75,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     setState(() => _sendingComment = true);
     try {
       await _commentService.addComment(widget.coupleId, widget.event.id, text);
+    } catch (e) {
+      // 権限・通信エラーで失敗しても例外を漏らさず、入力した内容を戻して再送できるようにする。
+      debugPrint('コメントの送信に失敗: $e');
+      if (mounted) {
+        if (_commentCtrl.text.isEmpty) _commentCtrl.text = text;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('コメントの送信に失敗しました。もう一度お試しください')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sendingComment = false);
     }
@@ -109,9 +122,21 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     try {
       await _eventService.deleteEvent(widget.event);
       if (widget.event.googleCalendarEventId != null) {
-        await _calendarService.deleteEvent(widget.event.googleCalendarEventId!);
+        try {
+          await _calendarService.deleteEvent(widget.event.googleCalendarEventId!);
+        } catch (e) {
+          // 予定自体は既にゴミ箱へ移っているので、Google側の削除失敗では画面を止めない。
+          debugPrint('Googleカレンダーからの削除に失敗: $e');
+        }
       }
       if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      debugPrint('予定の削除に失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('削除に失敗しました。もう一度お試しください')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
