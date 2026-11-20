@@ -23,6 +23,13 @@ class _CalendarFeedScreenState extends State<CalendarFeedScreen> {
   late Future<String> _urlFuture = _service.fetchUrl();
   bool _regenerating = false;
 
+  void _retry() {
+    final next = _service.fetchUrl();
+    setState(() {
+      _urlFuture = next;
+    });
+  }
+
   Future<void> _copy(String url) async {
     await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
@@ -83,11 +90,22 @@ class _CalendarFeedScreenState extends State<CalendarFeedScreen> {
               return Center(child: CircularProgressIndicator(color: appAccent(context)));
             }
             if (snapshot.hasError) {
-              return const Center(
-                child: Text(
-                  'リンクの取得に失敗しました。もう一度開き直してください',
-                  style: TextStyle(color: AppColors.textMuted),
-                  textAlign: TextAlign.center,
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'リンクの取得に失敗しました。通信状況を確認して、もう一度お試しください',
+                      style: TextStyle(color: AppColors.textMuted),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _retry,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('再読み込み'),
+                    ),
+                  ],
                 ),
               );
             }

@@ -41,6 +41,28 @@ void main() {
     expect(find.textContaining('リンクの取得に失敗しました'), findsOneWidget);
   });
 
+  testWidgets('取得に失敗しても「再読み込み」で取り直せる', (tester) async {
+    var calls = 0;
+    final service = _FakeCalendarFeedService(
+      fetchUrl: () async {
+        calls++;
+        if (calls == 1) throw Exception('unavailable');
+        return sampleUrl;
+      },
+    );
+
+    await tester.pumpWidget(wrap(service));
+    await tester.pumpAndSettle();
+    expect(find.text('再読み込み'), findsOneWidget);
+
+    await tester.tap(find.text('再読み込み'));
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text(sampleUrl), findsOneWidget);
+    expect(find.text('再読み込み'), findsNothing);
+  });
+
   testWidgets('URLが取得できたら表示し、コピーボタンでスナックバーを出す', (tester) async {
     final messages = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
