@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aimaru/screens/ai_chat_screen.dart';
@@ -86,6 +88,44 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
+  testWidgets('メッセージの吹き出しはスクリーンリーダーから「コピー」を実行でき、クリップボードに入る', (tester) async {
+    final handle = tester.ensureSemantics();
+    String? clipboard;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboard = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await tester.pumpWidget(wrap(
+      sendMessageOverride: (message, history, {required eventsContext}) async =>
+          const GeminiReply.text('了解しました'),
+    ));
+    await tester.enterText(find.byType(TextField), 'コピーしたい文言');
+    await tester.tap(find.byIcon(Icons.arrow_upward));
+    await tester.pump();
+    await tester.pump();
+
+    final node = tester.getSemantics(find.text('コピーしたい文言'));
+    expect(
+        node.getSemanticsData().hasAction(SemanticsAction.longPress), isTrue);
+
+    node.owner!.performAction(node.id, SemanticsAction.longPress);
+    await tester.pump();
+
+    expect(clipboard, 'コピーしたい文言');
+    expect(find.text('コピーしました'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    handle.dispose();
+  });
+
   testWidgets('応答が届いたあとは次のメッセージを送信できる', (tester) async {
     var callCount = 0;
 
@@ -130,7 +170,8 @@ void main() {
 
     // 応答待ち中は次を送れないので、1件目の応答が遅れて届いた場合でも
     // それより後の会話として別のエラーが割り込むことはない。
-    firstReplyCompleter.complete(const GeminiReply.text('エラーが発生しました。もう一度試してください。'));
+    firstReplyCompleter
+        .complete(const GeminiReply.text('エラーが発生しました。もう一度試してください。'));
     await tester.pump();
     await tester.pump();
 
@@ -161,10 +202,12 @@ void main() {
         home: AiChatScreen(
           coupleId: coupleId,
           buildEventsContextOverride: () async => 'なし',
-          sendMessageOverride: (message, history, {required eventsContext}) async => reply,
+          sendMessageOverride:
+              (message, history, {required eventsContext}) async => reply,
           notificationSettingsServiceOverride:
               NotificationSettingsService(firestore: firestore, uid: meUid),
-          shoppingListServiceOverride: ShoppingListService(firestore: firestore, uid: meUid),
+          shoppingListServiceOverride:
+              ShoppingListService(firestore: firestore, uid: meUid),
         ),
       );
     }
@@ -180,7 +223,8 @@ void main() {
       final db = FakeFirebaseFirestore();
       await tester.pumpWidget(wrapAction(
         db: db,
-        reply: GeminiReply.action(GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
+        reply: GeminiReply.action(
+            GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
       ));
 
       await sendAnyMessage(tester);
@@ -243,7 +287,8 @@ void main() {
       final db = FakeFirebaseFirestore();
       await tester.pumpWidget(wrapAction(
         db: db,
-        reply: GeminiReply.action(GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
+        reply: GeminiReply.action(
+            GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
       ));
 
       await sendAnyMessage(tester);

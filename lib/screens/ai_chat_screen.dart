@@ -596,34 +596,42 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
       ),
       child: Align(
         alignment: isAi ? Alignment.centerLeft : Alignment.centerRight,
-        child: GestureDetector(
-          onLongPress: () {
-            Clipboard.setData(ClipboardData(text: item.text ?? ''));
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('コピーしました'), duration: Duration(seconds: 1)),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: isAi ? AppColors.navySurface : appAccent(context),
-              borderRadius: BorderRadius.circular(18).copyWith(
-                bottomLeft: isAi ? const Radius.circular(4) : null,
-                bottomRight: !isAi ? const Radius.circular(4) : null,
+        // 長押しコピーはジェスチャだけだとスクリーンリーダーから発見・実行できないため、
+        // セマンティクスにも長押し操作とヒントを公開する。
+        child: Semantics(
+          onLongPressHint: 'メッセージをコピー',
+          onLongPress: () => _copyMessage(item.text ?? ''),
+          child: GestureDetector(
+            onLongPress: () => _copyMessage(item.text ?? ''),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isAi ? AppColors.navySurface : appAccent(context),
+                borderRadius: BorderRadius.circular(18).copyWith(
+                  bottomLeft: isAi ? const Radius.circular(4) : null,
+                  bottomRight: !isAi ? const Radius.circular(4) : null,
+                ),
+                border: isAi ? Border.all(color: AppColors.hairline) : null,
               ),
-              border: isAi ? Border.all(color: AppColors.hairline) : null,
-            ),
-            child: Text(
-              item.text ?? '',
-              style: TextStyle(
-                fontSize: 13,
-                color: isAi ? AppColors.textPrimary : Colors.white,
-                height: 1.5,
+              child: Text(
+                item.text ?? '',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isAi ? AppColors.textPrimary : Colors.white,
+                  height: 1.5,
+                ),
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  void _copyMessage(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('コピーしました'), duration: Duration(seconds: 1)),
     );
   }
 
