@@ -19,12 +19,15 @@ class TodosScreen extends StatefulWidget {
   final TodoService? todoServiceOverride;
   // テストからFirebase Authに触れずに「自分」を差し込むための注入ポイント。
   final String? currentUidOverride;
+  // テストからFirebaseを要するEventFormScreenの代わりに差し込むための注入ポイント。
+  final Widget Function(String initialTitle)? eventFormBuilderOverride;
   const TodosScreen({
     super.key,
     required this.coupleId,
     this.todosStreamOverride,
     this.todoServiceOverride,
     this.currentUidOverride,
+    this.eventFormBuilderOverride,
   });
 
   @override
@@ -123,14 +126,26 @@ class _TodosScreenState extends State<TodosScreen> {
   Future<void> _addToCalendar(TodoItem todo) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => EventFormScreen(
-          coupleId: widget.coupleId,
-          initialTitle: todo.text,
-        ),
+        builder: (_) =>
+            widget.eventFormBuilderOverride?.call(todo.text) ??
+            EventFormScreen(
+              coupleId: widget.coupleId,
+              initialTitle: todo.text,
+            ),
       ),
     );
     if (saved == true) {
-      await _todoService.markAddedToCalendar(todo);
+      // 予定自体は保存済み。マークだけ失敗しても未捕捉の非同期例外にせず、
+      // 「登録済み」バッジが付かない理由を伝える。
+      try {
+        await _todoService.markAddedToCalendar(todo);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('予定は登録しましたが、リストの「登録済み」表示を更新できませんでした')),
+          );
+        }
+      }
     }
   }
 

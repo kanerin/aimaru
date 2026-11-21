@@ -20,6 +20,7 @@ void main() {
     TodoService? todoService,
     NavigatorObserver? observer,
     String currentUid = 'u1',
+    Widget Function(String)? eventFormBuilder,
   }) =>
       MaterialApp(
         navigatorObservers: observer != null ? [observer] : [],
@@ -28,6 +29,7 @@ void main() {
           todosStreamOverride: stream,
           todoServiceOverride: todoService,
           currentUidOverride: currentUid,
+          eventFormBuilderOverride: eventFormBuilder,
         ),
       );
 
@@ -307,6 +309,34 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('カレンダー登録後に「登録済み」マークの更新が失敗したらエラーを表示する', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      todoService: _ThrowingTodoService(),
+      eventFormBuilder: (_) => Builder(
+        builder: (ctx) => Scaffold(
+          body: TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('保存'),
+          ),
+        ),
+      ),
+    ));
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    await tester.tap(find.text('温泉に行く'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('「登録済み」表示を更新できませんでした'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await controller.close();
+  });
+
   testWidgets('自分が既に興味ありを付けているTodoは塗りつぶしハートで表示される', (tester) async {
     final controller = StreamController<List<TodoItem>>();
     await tester.pumpWidget(wrap(controller.stream, currentUid: 'u1'));
@@ -351,6 +381,11 @@ class _ThrowingTodoService extends TodoService {
 
   @override
   Future<void> toggleLike(TodoItem todo, String uid) {
+    throw Exception('firestore unavailable');
+  }
+
+  @override
+  Future<void> markAddedToCalendar(TodoItem todo) {
     throw Exception('firestore unavailable');
   }
 }

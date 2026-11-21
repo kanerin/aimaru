@@ -828,6 +828,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-20、予定詳細画面（`EventDetailScreen`）のコメント送信（`_sendComment`）と予定の削除（`_delete`）が`try/finally`だけで`catch`が無く、権限・通信エラーで失敗すると拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。コメントは入力欄を先に空にしていたため入力内容も消えていたので、失敗時は入力を戻して`SnackBar`で伝える。削除失敗も`SnackBar`で伝え画面に留まる（Googleカレンダー側の削除失敗だけは、予定が既にゴミ箱へ移っているため握って画面を閉じる）。`eventServiceOverride`を注入ポイントとして追加し、`test/screens/event_detail_screen_test.dart`に失敗2件を追加した（`flutter analyze`・`flutter test`通過）。
 
+2026-11-21、やりたいことリスト（`TodosScreen._addToCalendar`）が、予定の保存後に「登録済み」マークを立てる`markAddedToCalendar`の例外を捕まえておらず、権限・通信エラーで失敗すると拾い手のない非同期例外になり、予定は登録されたのにバッジが付かない理由も分からない経路を直した（reduce-debt枠、本PR）。失敗時は「予定は登録しましたが、リストの「登録済み」表示を更新できませんでした」を`SnackBar`で出す。`eventFormBuilderOverride`を注入ポイントとして追加し、`test/screens/todos_screen_test.dart`に失敗テストを追加した（`flutter analyze`・`flutter test`（886件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
