@@ -136,6 +136,21 @@ void main() {
     expect(find.text('起点画面'), findsNothing); // フォームが開いている
   });
 
+  testWidgets('写真追加ボタンはスクリーンリーダー向けに「写真を追加」ラベルのボタンとして公開される', (tester) async {
+    tester.view.physicalSize = const Size(1080, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final handle = tester.ensureSemantics();
+    await openForm(tester);
+
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('写真を追加')),
+      matchesSemantics(label: '写真を追加', isButton: true, hasTapAction: true),
+    );
+    handle.dispose();
+  });
+
   testWidgets('設定で既定がONなら新規作成フォームのGoogle同期スイッチがONになる', (tester) async {
     SharedPreferences.setMockInitialValues({'default_sync_google_calendar': true});
     tester.view.physicalSize = const Size(1080, 3000);
