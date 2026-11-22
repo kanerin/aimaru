@@ -302,16 +302,24 @@ class _EventFormScreenState extends State<EventFormScreen> {
                 file,
                 onRemove: () => setState(() => _newImages.remove(file)),
               )),
-              GestureDetector(
+              // アイコンだけのボタンはスクリーンリーダーに何も読まれないため、ラベルを付ける
+              // （アルバム画面の追加ボタンのtooltipと同じ文言）。
+              Semantics(
+                button: true,
+                label: '写真を追加',
+                excludeSemantics: true,
                 onTap: _pickImages,
-                child: Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    color: AppColors.navySurface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.hairline),
+                child: GestureDetector(
+                  onTap: _pickImages,
+                  child: Container(
+                    width: 72, height: 72,
+                    decoration: BoxDecoration(
+                      color: AppColors.navySurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.hairline),
+                    ),
+                    child: const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted),
                   ),
-                  child: const Icon(Icons.add_photo_alternate_outlined, color: AppColors.textMuted),
                 ),
               ),
             ],
