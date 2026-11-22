@@ -830,6 +830,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-21、やりたいことリスト（`TodosScreen._addToCalendar`）が、予定の保存後に「登録済み」マークを立てる`markAddedToCalendar`の例外を捕まえておらず、権限・通信エラーで失敗すると拾い手のない非同期例外になり、予定は登録されたのにバッジが付かない理由も分からない経路を直した（reduce-debt枠、本PR）。失敗時は「予定は登録しましたが、リストの「登録済み」表示を更新できませんでした」を`SnackBar`で出す。`eventFormBuilderOverride`を注入ポイントとして追加し、`test/screens/todos_screen_test.dart`に失敗テストを追加した（`flutter analyze`・`flutter test`（886件）通過）。
 
+2026-11-22、AIチャット（`AiChatScreen`）の確認カード（予定の追加・まとめて追加・設定変更/買い物リスト追加）の書き込み（`_confirmEvent`/`_confirmBulk`/`_confirmAction`）が失敗を捕まえておらず、権限・通信エラーで拾い手のない非同期例外になる経路を直した（reduce-debt枠、本PR）。予定の追加は先に「追加しました ✅」へ切り替えてから書き込んでいたため、失敗しても保存されたように見えていた。書き込み完了後に表示を切り替え、失敗時はカードを残して`SnackBar`で伝える（押し直せる。実行中の連打による二重追加も防ぐ）。`test/screens/ai_chat_screen_test.dart`に3経路の失敗テストを追加した（`flutter analyze`・`flutter test`（890件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |
