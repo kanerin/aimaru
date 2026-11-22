@@ -69,6 +69,7 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
 
   final List<_ChatItem> _messages = [];
   bool _thinking = false;
+  bool _confirming = false;
 
   // サジェストチップ（実在の人物名は使わない）。
   // 2人の予定を扱うアプリなので、最初に出るのはカップルとして使う場面にする。
@@ -307,26 +308,50 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     return '$minutes分前';
   }
 
-  Future<void> _confirmAction(_ChatItem item, GeminiAction action) async {
-    switch (action.type) {
-      case GeminiActionType.notifyOnNewEvent:
-        await _notificationSettingsService.setNotifyOnNewEvent(action.boolValue!);
-        break;
-      case GeminiActionType.notifyOnNewChatMessage:
-        await _notificationSettingsService.setNotifyOnNewChatMessage(action.boolValue!);
-        break;
-      case GeminiActionType.remindersEnabled:
-        await _notificationSettingsService.setRemindersEnabled(action.boolValue!);
-        break;
-      case GeminiActionType.reminderMinutesBefore:
-        await _notificationSettingsService.setReminderMinutesBefore(action.intValue!);
-        break;
-      case GeminiActionType.addShoppingItems:
-        await Future.wait(
-          action.items.map((title) => _shoppingListService.addItem(widget.coupleId, title)),
-        );
-        break;
+  // 確認カードの「実行」を押した後の書き込みの共通処理。書き込みが権限・通信エラーで
+  // 失敗しても拾い手のない非同期例外にせず、カードは残したまま SnackBar で伝える
+  // （押し直せる。実行済みの表示に先に切り替えると、保存されていないのに「✅」と見える）。
+  // 書き込み中の連打で二重に追加されないよう、実行中は次の確認を受け付けない。
+  Future<bool> _runConfirm(Future<void> Function() write, String failureMessage) async {
+    if (_confirming) return false;
+    _confirming = true;
+    try {
+      await write();
+      return true;
+    } catch (e) {
+      debugPrint('AIチャットの確認カードの実行に失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failureMessage)));
+      }
+      return false;
+    } finally {
+      _confirming = false;
     }
+  }
+
+  Future<void> _confirmAction(_ChatItem item, GeminiAction action) async {
+    final ok = await _runConfirm(() async {
+      switch (action.type) {
+        case GeminiActionType.notifyOnNewEvent:
+          await _notificationSettingsService.setNotifyOnNewEvent(action.boolValue!);
+          break;
+        case GeminiActionType.notifyOnNewChatMessage:
+          await _notificationSettingsService.setNotifyOnNewChatMessage(action.boolValue!);
+          break;
+        case GeminiActionType.remindersEnabled:
+          await _notificationSettingsService.setRemindersEnabled(action.boolValue!);
+          break;
+        case GeminiActionType.reminderMinutesBefore:
+          await _notificationSettingsService.setReminderMinutesBefore(action.intValue!);
+          break;
+        case GeminiActionType.addShoppingItems:
+          await Future.wait(
+            action.items.map((title) => _shoppingListService.addItem(widget.coupleId, title)),
+          );
+          break;
+      }
+    }, '設定を反映できませんでした。もう一度お試しください');
+    if (!ok) return;
 
     if (!mounted) return;
     setState(() {
@@ -385,14 +410,17 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
   }
 
   Future<void> _confirmEvent(_ChatItem item, GeminiParsedEvent event) async {
-    setState(() {
-      final idx = _messages.indexOf(item);
-      if (idx >= 0) _messages[idx] = _ChatItem.ai('「${event.title}」をカレンダーに追加しました ✅');
-    });
-
-    await _eventService.addFromGemini(widget.coupleId, event);
+    final ok = await _runConfirm(
+      () => _eventService.addFromGemini(widget.coupleId, event),
+      '予定を追加できませんでした。もう一度お試しください',
+    );
+    if (!ok) return;
 
     if (mounted) {
+      setState(() {
+        final idx = _messages.indexOf(item);
+        if (idx >= 0) _messages[idx] = _ChatItem.ai('「${event.title}」をカレンダーに追加しました ✅');
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${event.title} を追加しました'),
@@ -406,6 +434,14 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     final events = item.events!;
     final batchId = item.batchId;
 
+    // 複数件のうち一部だけ書き込めている場合があるため、失敗時はカードを残したまま
+    // 確認を促す（押し直すと書き込み済みの分が二重になり得る）。
+    final ok = await _runConfirm(
+      () => Future.wait(events.map((e) => _eventService.addFromGemini(widget.coupleId, e))),
+      '予定を追加できませんでした。一部だけ追加されている場合があるので、カレンダーを確認してください',
+    );
+    if (!ok || !mounted) return;
+
     setState(() {
       final idx = _messages.indexOf(item);
       if (idx >= 0) _messages[idx] = _ChatItem.ai('${events.length}件まとめてカレンダーに追加しました ✅');
@@ -418,8 +454,6 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
         }
       }
     });
-
-    await Future.wait(events.map((e) => _eventService.addFromGemini(widget.coupleId, e)));
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

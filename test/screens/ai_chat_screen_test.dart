@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
+import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/ai_chat_screen.dart';
+import 'package:aimaru/services/event_service.dart';
 import 'package:aimaru/services/gemini_service.dart';
 import 'package:aimaru/services/notification_settings_service.dart';
 import 'package:aimaru/services/shopping_list_service.dart';
@@ -17,6 +20,25 @@ import 'package:aimaru/services/shopping_list_service.dart';
 // 2つの呼び出しが独立に完了してしまい、片方が先に届いたあとで
 // もう片方（例えばエラー応答）が遅れて出てくる。ユーザーからは
 // 「何も送っていないのにエラーが届いた」ように見える。
+// 書き込みが権限・通信エラーで失敗する状況を再現するフェイク。
+class _ThrowingEventService extends EventService {
+  _ThrowingEventService({required super.firestore, required super.uid});
+
+  @override
+  Future<AimaruEvent> addFromGemini(String coupleId, GeminiParsedEvent parsed) async {
+    throw Exception('firestore unavailable');
+  }
+}
+
+class _ThrowingNotificationSettingsService extends NotificationSettingsService {
+  _ThrowingNotificationSettingsService({required super.firestore, required super.uid});
+
+  @override
+  Future<void> setNotifyOnNewEvent(bool value) async {
+    throw Exception('firestore unavailable');
+  }
+}
+
 void main() {
   Widget wrap({
     required Future<GeminiReply> Function(
@@ -300,6 +322,104 @@ void main() {
       expect(find.text('キャンセルしました。何か変更はありますか？'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 500));
+    });
+  });
+
+  group('確認カードの書き込みに失敗したとき', () {
+    const coupleId = 'couple-1';
+    const meUid = 'user-me';
+
+    setUpAll(() => initializeDateFormatting('ja'));
+
+    Future<void> sendAnyMessage(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextField), 'お願い');
+      await tester.tap(find.byIcon(Icons.arrow_upward));
+      await tester.pump();
+      await tester.pump();
+    }
+
+    final event = GeminiParsedEvent(
+      title: '水族館デート',
+      date: DateTime(2030, 5, 3, 10),
+      type: EventType.plan,
+    );
+
+    testWidgets('予定の追加に失敗したら「追加しました」とは表示せず、カードを残して押し直せる', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(MaterialApp(
+        home: AiChatScreen(
+          coupleId: coupleId,
+          eventServiceOverride: _ThrowingEventService(firestore: db, uid: meUid),
+          buildEventsContextOverride: () async => 'なし',
+          sendMessageOverride: (message, history, {required eventsContext}) async =>
+              GeminiReply.events([event]),
+        ),
+      ));
+
+      await sendAnyMessage(tester);
+      await tester.tap(find.text('追加する'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('予定を追加できませんでした。もう一度お試しください'), findsOneWidget);
+      expect(find.textContaining('追加しました'), findsNothing);
+      expect(find.text('追加する'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('まとめて追加に失敗したらカードを残して知らせる', (tester) async {
+      final db = FakeFirebaseFirestore();
+      final second = GeminiParsedEvent(
+        title: '映画', date: DateTime(2030, 5, 4, 10), type: EventType.plan);
+      await tester.pumpWidget(MaterialApp(
+        home: AiChatScreen(
+          coupleId: coupleId,
+          eventServiceOverride: _ThrowingEventService(firestore: db, uid: meUid),
+          buildEventsContextOverride: () async => 'なし',
+          sendMessageOverride: (message, history, {required eventsContext}) async =>
+              GeminiReply.events([event, second]),
+        ),
+      ));
+
+      await sendAnyMessage(tester);
+      await tester.ensureVisible(find.textContaining('件まとめて追加する'));
+      await tester.pump();
+      await tester.tap(find.textContaining('件まとめて追加する'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('予定を追加できませんでした'), findsOneWidget);
+      expect(find.textContaining('件まとめてカレンダーに追加しました'), findsNothing);
+      expect(find.textContaining('件まとめて追加する'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('設定変更の反映に失敗したら「設定しました」とは表示せず、カードを残す', (tester) async {
+      final db = FakeFirebaseFirestore();
+      await tester.pumpWidget(MaterialApp(
+        home: AiChatScreen(
+          coupleId: coupleId,
+          notificationSettingsServiceOverride:
+              _ThrowingNotificationSettingsService(firestore: db, uid: meUid),
+          buildEventsContextOverride: () async => 'なし',
+          sendMessageOverride: (message, history, {required eventsContext}) async =>
+              GeminiReply.action(
+                  GeminiAction.toggle(GeminiActionType.notifyOnNewEvent, false)),
+        ),
+      ));
+
+      await sendAnyMessage(tester);
+      await tester.tap(find.text('実行する'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('設定を反映できませんでした。もう一度お試しください'), findsOneWidget);
+      expect(find.text('設定しました ✅'), findsNothing);
+      expect(find.text('実行する'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 5));
     });
   });
 }
