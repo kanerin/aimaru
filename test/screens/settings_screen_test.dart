@@ -44,6 +44,7 @@ Widget _screen({
   CoupleService? couple,
   SettingsService? settings,
   NotificationSettingsService? notification,
+  Future<void> Function()? signOut,
 }) {
   final db = FakeFirebaseFirestore();
   return MaterialApp(
@@ -54,6 +55,7 @@ Widget _screen({
       notificationSettingsServiceOverride:
           notification ?? NotificationSettingsService(firestore: db, uid: 'me'),
       profileOverride: (displayName: 'わたし', email: 'me@example.com', photoUrl: null),
+      signOutOverride: signOut,
     ),
   );
 }
@@ -120,6 +122,35 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(tester.widget<Switch>(sw).value, before);
       expect(find.text('設定の保存に失敗しました。もう一度お試しください'), findsOneWidget);
+    });
+
+    testWidgets('ログアウトに失敗したら例外にせず失敗を知らせ、押し直せる', (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(_screen(signOut: () async {
+        calls++;
+        throw Exception('sign-out failed');
+      }));
+      await tester.pumpAndSettle();
+
+      Future<void> logout() async {
+        final btn = find.text('ログアウト');
+        await tester.ensureVisible(btn);
+        await tester.tap(btn);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('ログアウト').last);
+        await tester.pumpAndSettle();
+      }
+
+      await logout();
+      expect(tester.takeException(), isNull);
+      expect(calls, 1);
+      expect(find.text('ログアウトに失敗しました。もう一度お試しください'), findsOneWidget);
+
+      // ボタンは押せる状態のまま（もう一度ログアウトを試せる）
+      await tester.pump(const Duration(seconds: 5));
+      await logout();
+      expect(tester.takeException(), isNull);
+      expect(calls, 2);
     });
 
     testWidgets('通知設定の保存に失敗したらスイッチを元に戻し、失敗を知らせる（Firestore）', (tester) async {
