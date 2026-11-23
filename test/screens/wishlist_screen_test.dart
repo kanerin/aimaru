@@ -90,6 +90,18 @@ void main() {
     expect(find.textContaining('予約済み'), findsNothing);
   });
 
+  testWidgets('削除ボタンのツールチップに項目名が入り、スクリーンリーダーで区別できる', (tester) async {
+    final controller = StreamController<List<WishlistItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([mine]);
+    await tester.pump();
+
+    expect(find.byTooltip('「マグカップ」を削除'), findsOneWidget);
+
+    await controller.close();
+  });
+
   testWidgets('相手が追加したアイテムはリンクと「用意する」ボタンを表示し、削除ボタンは出ない', (tester) async {
     final controller = StreamController<List<WishlistItem>>();
     await tester.pumpWidget(wrap(controller.stream));
