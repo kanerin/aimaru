@@ -42,6 +42,7 @@ class SettingsScreen extends StatefulWidget {
   final SettingsService? settingsServiceOverride;
   final NotificationSettingsService? notificationSettingsServiceOverride;
   final ({String? displayName, String? email, String? photoUrl})? profileOverride;
+  final Future<void> Function()? signOutOverride;
 
   const SettingsScreen({
     super.key,
@@ -50,6 +51,7 @@ class SettingsScreen extends StatefulWidget {
     this.settingsServiceOverride,
     this.notificationSettingsServiceOverride,
     this.profileOverride,
+    this.signOutOverride,
   });
 
   @override
@@ -184,7 +186,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     if (confirmed != true) return;
 
-    await _authService.signOut();
+    // Googleのサインアウト（プラグイン）やFirebase Authが失敗しても拾い手のない
+    // 非同期例外にせず、ログイン画面へ進まずに失敗を伝えて押し直せるようにする。
+    try {
+      await (widget.signOutOverride ?? _authService.signOut)();
+    } catch (e) {
+      debugPrint('[設定] ログアウトに失敗: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ログアウトに失敗しました。もう一度お試しください')),
+      );
+      return;
+    }
     if (mounted) context.go('/login');
   }
 
