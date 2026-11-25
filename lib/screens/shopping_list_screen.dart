@@ -305,7 +305,7 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
-                  tooltip: '削除',
+                  tooltip: '「${item.title}」を削除',
                   onPressed: () => _confirmAndDelete(item),
                 ),
               ],

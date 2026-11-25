@@ -333,7 +333,7 @@ class _TodosScreenState extends State<TodosScreen> {
                 _buildLikeButton(todo),
                 IconButton(
                   icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
-                  tooltip: '削除',
+                  tooltip: '「${todo.text}」を削除',
                   onPressed: () => _confirmAndDelete(todo),
                 ),
               ],

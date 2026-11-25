@@ -210,6 +210,18 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('削除ボタンのツールチップに項目名が入り、スクリーンリーダーで区別できる', (tester) async {
+    final controller = StreamController<List<TodoItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+
+    expect(find.byTooltip('「温泉に行く」を削除'), findsOneWidget);
+
+    await controller.close();
+  });
+
   testWidgets('興味ありボタンを押すと自分のuidがlikedByに入る（TodoServiceのtoggleLikeが呼ばれる）', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = TodoService(firestore: db, uid: 'u1');

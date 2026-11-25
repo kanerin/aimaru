@@ -254,7 +254,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
           if (isMine)
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
-              tooltip: '削除',
+              tooltip: '「${item.text}」を削除',
               onPressed: () => _confirmAndDelete(item),
             )
           else

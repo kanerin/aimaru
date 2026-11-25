@@ -84,6 +84,18 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('削除ボタンのツールチップに項目名が入り、スクリーンリーダーで区別できる', (tester) async {
+    final controller = StreamController<List<ShoppingItem>>();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.add([sampleItem]);
+    await tester.pump();
+
+    expect(find.byTooltip('「${sampleItem.title}」を削除'), findsOneWidget);
+
+    await controller.close();
+  });
+
   testWidgets('削除ボタンは確認をとってから消す（キャンセルすれば残る）', (tester) async {
     final db = FakeFirebaseFirestore();
     final service = ShoppingListService(firestore: db, uid: 'u1');
