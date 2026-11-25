@@ -28,6 +28,8 @@ class BugReportScreen extends StatefulWidget {
   // テスト用の注入ポイント。実機のImagePickerを操作せずに「画像が選択済み」
   // の状態から送信フローを検証できるようにする。
   final List<File>? initialImagesForTest;
+  // 写真選択（権限拒否などで例外になり得る）を差し替えるテスト用の注入ポイント。
+  final Future<List<XFile>> Function(int limit)? pickImagesOverride;
 
   const BugReportScreen({
     super.key,
@@ -35,6 +37,7 @@ class BugReportScreen extends StatefulWidget {
     this.storageServiceOverride,
     this.myReportsStreamOverride,
     this.initialImagesForTest,
+    this.pickImagesOverride,
   });
 
   @override
@@ -71,7 +74,17 @@ class _BugReportScreenState extends State<BugReportScreen> {
       _showMessage('画像は最大$kBugReportMaxImages件までです');
       return;
     }
-    final files = await _picker.pickMultiImage(limit: remaining);
+    final List<XFile> files;
+    try {
+      files = await (widget.pickImagesOverride?.call(remaining) ??
+          _picker.pickMultiImage(limit: remaining));
+    } catch (e) {
+      // 写真へのアクセス拒否などで選択自体が失敗しても拾い手のない例外にしない。
+      debugPrint('pick bug report images failed: $e');
+      _showMessage('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください');
+      return;
+    }
+    if (!mounted) return;
     if (files.isNotEmpty) {
       setState(() => _images.addAll(files.take(remaining).map((f) => File(f.path))));
     }

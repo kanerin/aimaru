@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/bug_report_screen.dart';
@@ -30,6 +31,7 @@ void main() {
     Stream<List<BugReportRecord>>? myReportsStreamOverride,
     StorageService? storageService,
     List<File>? initialImages,
+    Future<List<XFile>> Function(int limit)? pickImages,
   }) =>
       MaterialApp(
         home: BugReportScreen(
@@ -37,6 +39,7 @@ void main() {
           storageServiceOverride: storageService,
           myReportsStreamOverride: myReportsStreamOverride ?? Stream.value(const []),
           initialImagesForTest: initialImages,
+          pickImagesOverride: pickImages,
         ),
       );
 
@@ -309,5 +312,19 @@ void main() {
 
       expect(uploadCalled, isFalse);
     });
+  });
+
+  testWidgets('写真の選択が失敗しても例外にならず、案内を出す', (tester) async {
+    await tester.pumpWidget(wrap(
+      dummyService(),
+      pickImages: (_) async => throw Exception('photo_access_denied'),
+    ));
+
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください'), findsOneWidget);
   });
 }
