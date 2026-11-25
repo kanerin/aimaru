@@ -834,6 +834,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-23、設定画面（`SettingsScreen._signOut`）のログアウトが`AuthService.signOut`（Googleサインアウトのプラグイン呼び出しとFirebase Auth）の失敗を捕まえておらず、失敗すると拾い手のない非同期例外になり、押しても何も起きない理由が分からない経路を直した（reduce-debt枠、本PR）。失敗は`debugPrint`に残し、ログイン画面へは進まず「ログアウトに失敗しました。もう一度お試しください」を`SnackBar`で出す。`signOutOverride`を注入ポイントとして追加し、`test/screens/settings_screen_test.dart`に失敗・押し直しのテストを追加した（`flutter analyze`・`flutter test`通過）。
 
+2026-11-25、写真の選択（`ImagePicker.pickImage`/`pickMultiImage`）が`try`の外にあり、写真へのアクセス拒否などで例外になると拾い手のない非同期例外になって、押したのに何も起きない経路を直した（reduce-debt枠、本PR）。対象は共有アルバム（`AlbumScreen._addPhotos`）・予定フォーム（`_pickImages`）・バグ報告フォーム（`_pickImages`）・トーク（`_sendImage`）の4画面。失敗は`debugPrint`に残し「写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください」を表示する。`pickImagesOverride`/`pickImageOverride`を注入ポイントとして追加し、4画面のテストに失敗ケースを追加した（`flutter analyze`・`flutter test`（896件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

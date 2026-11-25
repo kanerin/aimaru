@@ -26,6 +26,8 @@ class AlbumScreen extends StatefulWidget {
   // フローを検証できるようにするテスト用の注入ポイント
   // （bug_report_screen.dartのinitialImagesForTestと同じ設計）。
   final List<File>? imagesToUploadForTest;
+  // 写真選択（権限拒否などで例外になり得る）を差し替えるテスト用の注入ポイント。
+  final Future<List<XFile>> Function()? pickImagesOverride;
 
   const AlbumScreen({
     super.key,
@@ -34,6 +36,7 @@ class AlbumScreen extends StatefulWidget {
     this.storageServiceOverride,
     this.photosStreamOverride,
     this.imagesToUploadForTest,
+    this.pickImagesOverride,
   });
 
   @override
@@ -58,8 +61,22 @@ class _AlbumScreenState extends State<AlbumScreen> {
   bool _uploading = false;
 
   Future<void> _addPhotos() async {
-    final files = widget.imagesToUploadForTest ??
-        (await _picker.pickMultiImage()).map((f) => File(f.path)).toList();
+    final List<File> files;
+    try {
+      files = widget.imagesToUploadForTest ??
+          (await (widget.pickImagesOverride?.call() ?? _picker.pickMultiImage()))
+              .map((f) => File(f.path))
+              .toList();
+    } catch (e) {
+      // 写真へのアクセス拒否などで選択自体が失敗しても、拾い手のない
+      // 非同期例外にせず、押したのに何も起きない状態も避ける。
+      debugPrint('pick album images failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください')));
+      }
+      return;
+    }
     if (files.isEmpty) return;
 
     setState(() => _uploading = true);

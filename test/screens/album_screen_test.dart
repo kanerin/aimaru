@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:aimaru/models/models.dart';
 import 'package:aimaru/screens/album_screen.dart';
@@ -33,6 +34,7 @@ void main() {
     AlbumService? albumService,
     StorageService? storageService,
     List<File>? imagesToUpload,
+    Future<List<XFile>> Function()? pickImages,
   }) =>
       MaterialApp(
         home: AlbumScreen(
@@ -41,6 +43,7 @@ void main() {
           albumServiceOverride: albumService,
           storageServiceOverride: storageService,
           imagesToUploadForTest: imagesToUpload,
+          pickImagesOverride: pickImages,
         ),
       );
 
@@ -291,6 +294,31 @@ void main() {
         .doc('p1')
         .get();
     expect(doc.exists, isTrue);
+
+    await controller.close();
+  });
+
+  testWidgets('写真の選択が失敗しても例外にならず、案内を出してボタンを押し直せる', (tester) async {
+    final controller = StreamController<List<AlbumPhoto>>();
+    var calls = 0;
+    await tester.pumpWidget(wrap(
+      controller.stream,
+      pickImages: () async {
+        calls++;
+        throw Exception('photo_access_denied');
+      },
+    ));
+
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pump();
+    expect(calls, 2);
 
     await controller.close();
   });

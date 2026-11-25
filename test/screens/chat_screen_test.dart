@@ -583,6 +583,29 @@ void main() {
       expect(find.text('ピン留めできませんでした。もう一度お試しください'), findsOneWidget);
     });
   });
+
+  testWidgets('画像の選択が失敗しても例外にならず、案内を出す', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: ChatScreen(
+        coupleId: coupleId,
+        isActive: true,
+        chatServiceOverride: meChatService,
+        coupleServiceOverride: meCoupleService,
+        currentUidOverride: meUid,
+        messagesStreamOverride: Stream.value(const <ChatMessage>[]).asBroadcastStream(),
+        pinnedStreamOverride: Stream.value(const <ChatMessage>[]).asBroadcastStream(),
+        pickImageOverride: () async => throw Exception('photo_access_denied'),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.camera_alt_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください'), findsOneWidget);
+  });
 }
 
 class _FailingPinChatService extends ChatService {
