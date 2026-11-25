@@ -26,6 +26,8 @@ class EventFormScreen extends StatefulWidget {
   final StorageService? storageServiceOverride;
   final GoogleCalendarService? calendarServiceOverride;
   final SettingsService? settingsServiceOverride;
+  // 写真選択（権限拒否などで例外になり得る）を差し替えるテスト用の注入ポイント。
+  final Future<List<XFile>> Function()? pickImagesOverride;
   final List<File>? initialImagesForTest;
 
   const EventFormScreen({
@@ -38,6 +40,7 @@ class EventFormScreen extends StatefulWidget {
     this.storageServiceOverride,
     this.calendarServiceOverride,
     this.settingsServiceOverride,
+    this.pickImagesOverride,
     this.initialImagesForTest,
   });
 
@@ -112,7 +115,19 @@ class _EventFormScreenState extends State<EventFormScreen> {
   }
 
   Future<void> _pickImages() async {
-    final files = await _picker.pickMultiImage();
+    final List<XFile> files;
+    try {
+      files = await (widget.pickImagesOverride?.call() ?? _picker.pickMultiImage());
+    } catch (e) {
+      // 写真へのアクセス拒否などで選択自体が失敗しても拾い手のない例外にしない。
+      debugPrint('pick event images failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください')));
+      }
+      return;
+    }
+    if (!mounted) return;
     if (files.isNotEmpty) {
       setState(() => _newImages.addAll(files.map((f) => File(f.path))));
     }

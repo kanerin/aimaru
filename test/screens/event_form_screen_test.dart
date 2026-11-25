@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -102,6 +103,7 @@ void main() {
     GoogleCalendarService? calendarService,
     SettingsService? settingsService,
     List<File>? initialImages,
+    Future<List<XFile>> Function()? pickImages,
   }) async {
     await tester.pumpWidget(MaterialApp(
       home: Builder(
@@ -117,6 +119,7 @@ void main() {
                   calendarServiceOverride: calendarService,
                   settingsServiceOverride: settingsService,
                   initialImagesForTest: initialImages,
+                  pickImagesOverride: pickImages,
                 ),
               )),
               child: const Text('起点画面'),
@@ -273,5 +276,25 @@ void main() {
 
     final docs = (await eventsRef().get()).docs;
     expect(docs.first.data()['imageUrls'], ['https://example.com/fake/photo.jpg']);
+  });
+
+  testWidgets('写真の選択が失敗しても例外にならず、案内を出してフォームに留まる', (tester) async {
+    await openForm(
+      tester,
+      pickImages: () async => throw Exception('photo_access_denied'),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byIcon(Icons.add_photo_alternate_outlined),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '保存'), findsOneWidget);
   });
 }

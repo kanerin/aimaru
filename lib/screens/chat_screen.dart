@@ -32,6 +32,8 @@ class ChatScreen extends StatefulWidget {
   final String? currentUidOverride;
   final Stream<List<ChatMessage>>? messagesStreamOverride;
   final Stream<List<ChatMessage>>? pinnedStreamOverride;
+  // 写真選択（権限拒否などで例外になり得る）を差し替えるテスト用の注入ポイント。
+  final Future<XFile?> Function()? pickImageOverride;
 
   const ChatScreen({
     super.key,
@@ -42,6 +44,7 @@ class ChatScreen extends StatefulWidget {
     this.currentUidOverride,
     this.messagesStreamOverride,
     this.pinnedStreamOverride,
+    this.pickImageOverride,
   });
 
   @override
@@ -176,11 +179,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _sendImage() async {
     // トーク画面が重くならないよう、送信前に解像度・容量を抑える
-    final file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-      maxWidth: 1440,
-    );
+    final XFile? file;
+    try {
+      file = await (widget.pickImageOverride?.call() ??
+          _picker.pickImage(
+            source: ImageSource.gallery,
+            imageQuality: 70,
+            maxWidth: 1440,
+          ));
+    } catch (e) {
+      // 写真へのアクセス拒否などで選択自体が失敗しても拾い手のない例外にしない。
+      debugPrint('pick chat image failed: $e');
+      _showSnack('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください');
+      return;
+    }
     if (file == null) return;
 
     setState(() => _sendingImage = true);
