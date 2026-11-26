@@ -450,7 +450,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 spacing: 12,
                 children: ChatService.quickReactionEmojis.map((emoji) {
                   final mine = m.reactions[_myUid] == emoji;
-                  return GestureDetector(
+                  return Semantics(
+                    button: true,
+                    selected: mine,
+                    label: '$emojiでリアクション',
+                    excludeSemantics: true,
+                    child: GestureDetector(
                     onTap: () {
                       Navigator.pop(ctx);
                       _toggleReaction(m, emoji);
@@ -464,6 +469,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         shape: BoxShape.circle,
                       ),
                       child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                    ),
                     ),
                   );
                 }).toList(),
@@ -827,8 +833,19 @@ class _ChatScreenState extends State<ChatScreen> {
         spacing: 4,
         children: counts.entries.map((e) {
           final mine = m.reactions[_myUid] == e.key;
-          return GestureDetector(
+          return Semantics(
+            button: true,
+            selected: mine,
+            label: '${e.key} ${e.value}人がリアクション',
+            hint: mine ? 'タップで自分のリアクションを外す' : 'タップで同じリアクションを付ける',
+            excludeSemantics: true,
+            child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _toggleReaction(m, e.key),
+            child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 32),
+            child: Center(
+            widthFactor: 1,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -839,6 +856,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 border: mine ? Border.all(color: appAccent(context)) : null,
               ),
               child: Text('${e.key} ${e.value}', style: const TextStyle(fontSize: 11)),
+            ),
+            ),
+            ),
             ),
           );
         }).toList(),
