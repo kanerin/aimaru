@@ -326,6 +326,33 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(44));
   });
 
+  testWidgets('リアクションのピルとピッカーの絵文字がボタンとして読み上げられ、ピルのタップ領域が十分ある', (tester) async {
+    final handle = tester.ensureSemantics();
+    final message = ChatMessage(
+      id: 'msg-sem',
+      coupleId: coupleId,
+      text: 'こんにちは',
+      senderId: partnerUid,
+      timestamp: DateTime(2026, 1, 1),
+      reactions: {meUid: '❤️', partnerUid: '❤️'},
+    );
+
+    await tester.pumpWidget(
+        wrap(isActive: true, messagesStreamOverride: Stream.value([message]).asBroadcastStream()));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel(RegExp('2人がリアクション')), findsOneWidget);
+    expect(tester.getSize(find.text('❤️ 2')).height, lessThan(32));
+    final pill = find.ancestor(
+        of: find.text('❤️ 2'), matching: find.byType(ConstrainedBox)).first;
+    expect(tester.getSize(pill).height, greaterThanOrEqualTo(32));
+
+    await tester.longPress(find.text('こんにちは'));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp('👍でリアクション')), findsOneWidget);
+    handle.dispose();
+  });
+
   testWidgets('画像メッセージ本体に「写真を開く」の読み上げラベルが付く', (tester) async {
     final handle = tester.ensureSemantics();
     final message = ChatMessage(
