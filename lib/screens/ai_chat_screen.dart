@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -196,17 +197,27 @@ class _AiChatScreenState extends State<AiChatScreen> with WidgetsBindingObserver
     if (_pickingImage || _thinking) return;
 
     setState(() => _pickingImage = true);
-    XFile? file;
+    Uint8List bytes;
+    String mimeType;
     try {
-      file = await (widget.pickImageOverride?.call() ??
+      final file = await (widget.pickImageOverride?.call() ??
           _picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 1600));
+      if (file == null) return;
+      bytes = await file.readAsBytes();
+      mimeType = file.mimeType ?? 'image/jpeg';
+    } catch (e) {
+      // 写真へのアクセス拒否などで選択・読み込みが失敗しても拾い手のない例外にしない。
+      debugPrint('pick ai chat image failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください')),
+        );
+      }
+      return;
     } finally {
       if (mounted) setState(() => _pickingImage = false);
     }
-    if (file == null) return;
-
-    final bytes = await file.readAsBytes();
-    final mimeType = file.mimeType ?? 'image/jpeg';
+    if (!mounted) return;
 
     setState(() {
       _messages.add(_ChatItem.userImage(bytes));

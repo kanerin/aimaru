@@ -422,4 +422,33 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
   });
+
+  testWidgets('写真の選択が失敗しても例外にならず、案内を出して押し直せる状態に戻る', (tester) async {
+    var pickCount = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: AiChatScreen(
+        coupleId: 'couple-1',
+        sendMessageOverride: (message, history, {required eventsContext}) async =>
+            const GeminiReply.text('了解しました'),
+        buildEventsContextOverride: () async => 'なし',
+        pickImageOverride: () async {
+          pickCount++;
+          throw PlatformException(code: 'photo_access_denied');
+        },
+      ),
+    ));
+
+    await tester.tap(find.byIcon(Icons.add_photo_alternate_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください'),
+        findsOneWidget);
+
+    // 失敗後は選択中の表示が残らず、押し直せる状態（アイコン表示）に戻る
+    expect(pickCount, 1);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byIcon(Icons.add_photo_alternate_outlined), findsOneWidget);
+  });
 }
