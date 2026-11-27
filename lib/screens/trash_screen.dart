@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/event_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/load_error_view.dart';
 
 // ── ゴミ箱（削除した予定）────────────────────────────
 // 誤って削除した予定を30日以内なら復元できるようにする画面。
@@ -31,8 +32,17 @@ class _TrashScreenState extends State<TrashScreen> {
   EventService? _eventServiceInstance;
   EventService get _eventService => _eventServiceInstance ??= EventService();
 
-  late final Stream<List<AimaruEvent>> _eventsStream =
+  late Stream<List<AimaruEvent>> _eventsStream = _buildEventsStream();
+
+  Stream<List<AimaruEvent>> _buildEventsStream() =>
       widget.eventsStreamOverride ?? _eventService.watchDeletedEvents(widget.coupleId);
+
+  // 一時的な通信エラーで止まったストリームを張り直す（エラー表示の「再読み込み」）。
+  int _loadAttempt = 0;
+  void _retryLoad() => setState(() {
+    _eventsStream = _buildEventsStream();
+    _loadAttempt++; // 同じStreamが返っても購読し直させる
+  });
 
   void _showSnack(String message) {
     if (!mounted) return;
@@ -81,16 +91,13 @@ class _TrashScreenState extends State<TrashScreen> {
       backgroundColor: AppColors.navy,
       appBar: AppBar(title: const Text('ゴミ箱')),
       body: StreamBuilder<List<AimaruEvent>>(
+        key: ValueKey(_loadAttempt),
         stream: _eventsStream,
         builder: (context, snap) {
           // hasDataだけを見ていると、権限エラー等でストリームがエラーに
           // 落ちたときに無限ローディングのまま固まる。
           if (snap.hasError) {
-            return const Center(
-              child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-            );
+            return LoadErrorView(onRetry: _retryLoad);
           }
           if (!snap.hasData) {
             return Center(child: CircularProgressIndicator(color: appAccent(context)));

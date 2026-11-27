@@ -8,6 +8,7 @@ import '../services/album_service.dart';
 import '../services/storage_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/load_error_view.dart';
 import 'image_detail_screen.dart';
 
 // ── 共有アルバム ────────────────────────────────────────
@@ -54,8 +55,17 @@ class _AlbumScreenState extends State<AlbumScreen> {
   StorageService get _storageService =>
       _storageServiceInstance ??= widget.storageServiceOverride ?? StorageService();
 
-  late final Stream<List<AlbumPhoto>> _photosStream =
+  late Stream<List<AlbumPhoto>> _photosStream = _buildPhotosStream();
+
+  Stream<List<AlbumPhoto>> _buildPhotosStream() =>
       widget.photosStreamOverride ?? _albumService.watchPhotos(widget.coupleId);
+
+  // 一時的な通信エラーで止まったストリームを張り直す（エラー表示の「再読み込み」）。
+  int _loadAttempt = 0;
+  void _retryLoad() => setState(() {
+    _photosStream = _buildPhotosStream();
+    _loadAttempt++; // 同じStreamが返っても購読し直させる
+  });
 
   final _picker = ImagePicker();
   bool _uploading = false;
@@ -134,17 +144,14 @@ class _AlbumScreenState extends State<AlbumScreen> {
         ],
       ),
       body: StreamBuilder<List<AlbumPhoto>>(
+        key: ValueKey(_loadAttempt),
         stream: _photosStream,
         builder: (context, snap) {
           // hasDataだけを見ていると、権限エラー等でストリームがエラーに
           // 落ちたときに無限ローディングのまま固まる
           // （本番でFirestoreルール未反映のまま実際に発生した不具合と同じ経路）。
           if (snap.hasError) {
-            return const Center(
-              child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-            );
+            return LoadErrorView(onRetry: _retryLoad);
           }
           if (!snap.hasData) {
             return Center(child: CircularProgressIndicator(color: appAccent(context)));
