@@ -31,9 +31,19 @@ class AppLockController extends ChangeNotifier {
 
   // 起動時に一度だけ呼ぶ。有効化済みなら起動直後からロック状態で始める。
   Future<void> load() async {
-    _enabled = await service.isEnabled();
-    _biometricEnabled = _enabled && await service.isBiometricEnabled();
-    _locked = _enabled;
+    // main()から待たれるため、端末ストレージの読み出しが失敗しても例外にしない
+    // （runAppに到達できず起動できなくなるため）。設定もPINも読めない状態では
+    // 解除手段が無くロックを掛けても開けなくなるので、ロック無しで起動する。
+    try {
+      _enabled = await service.isEnabled();
+      _biometricEnabled = _enabled && await service.isBiometricEnabled();
+      _locked = _enabled;
+    } catch (e) {
+      debugPrint('アプリロック設定の読み込みに失敗しました: $e');
+      _enabled = false;
+      _biometricEnabled = false;
+      _locked = false;
+    }
     notifyListeners();
   }
 

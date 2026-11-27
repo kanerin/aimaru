@@ -8,14 +8,22 @@ class ThemeController extends ChangeNotifier {
   static final ThemeController instance = ThemeController._();
   ThemeController._();
 
-  final _settingsService = SettingsService();
+  @visibleForTesting
+  SettingsService settingsService = SettingsService();
 
   String _accentName = SettingsService.defaultAccentName;
   String get accentName => _accentName;
   Color get accent => AppColors.accentPresets[_accentName] ?? AppColors.lavender;
 
   Future<void> load() async {
-    _accentName = await _settingsService.getAccentName();
+    // main()から待たれるため、端末ストレージの読み出しが失敗しても例外にしない
+    // （runAppに到達できず起動できなくなるため）。既定の色のまま起動する。
+    try {
+      _accentName = await settingsService.getAccentName();
+    } catch (e) {
+      debugPrint('テーマ色の読み込みに失敗しました: $e');
+      _accentName = SettingsService.defaultAccentName;
+    }
     notifyListeners();
   }
 
@@ -23,6 +31,6 @@ class ThemeController extends ChangeNotifier {
     if (!AppColors.accentPresets.containsKey(name)) return;
     _accentName = name;
     notifyListeners();
-    await _settingsService.setAccentName(name);
+    await settingsService.setAccentName(name);
   }
 }

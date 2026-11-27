@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:aimaru/services/app_lock_controller.dart';
+import 'package:aimaru/services/app_lock_service.dart';
 
 import '../helpers/fake_biometric_authenticator.dart';
 
@@ -190,4 +191,22 @@ void main() {
       expect(controller.biometricEnabled, isFalse);
     });
   });
+
+  test('設定の読み出しが失敗しても例外にせず、ロック無しで起動できる', () async {
+    final controller = AppLockController.instance;
+    final original = controller.service;
+    addTearDown(() => controller.service = original);
+    controller.service = _ThrowingAppLockService();
+
+    await controller.load();
+
+    expect(controller.enabled, isFalse);
+    expect(controller.locked, isFalse);
+    expect(controller.biometricEnabled, isFalse);
+  });
+}
+
+class _ThrowingAppLockService extends AppLockService {
+  @override
+  Future<bool> isEnabled() async => throw Exception('prefs unavailable');
 }
