@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/todo_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/circular_action_button.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import 'event_form_screen.dart';
@@ -43,8 +44,17 @@ class _TodosScreenState extends State<TodosScreen> {
       _todoServiceInstance ??= widget.todoServiceOverride ?? TodoService();
   final _controller = TextEditingController();
 
-  late final Stream<List<TodoItem>> _todosStream =
+  late Stream<List<TodoItem>> _todosStream = _buildTodosStream();
+
+  Stream<List<TodoItem>> _buildTodosStream() =>
       widget.todosStreamOverride ?? _todoService.watchTodos(widget.coupleId);
+
+  // 一時的な通信エラーで止まったストリームを張り直す（エラー表示の「再読み込み」）。
+  int _loadAttempt = 0;
+  void _retryLoad() => setState(() {
+    _todosStream = _buildTodosStream();
+    _loadAttempt++; // 同じStreamが返っても購読し直させる
+  });
 
   String get _uid => widget.currentUidOverride ?? FirebaseAuth.instance.currentUser!.uid;
 
@@ -158,17 +168,14 @@ class _TodosScreenState extends State<TodosScreen> {
         children: [
           Expanded(
             child: StreamBuilder<List<TodoItem>>(
+              key: ValueKey(_loadAttempt),
               stream: _todosStream,
               builder: (context, snap) {
                 // hasDataだけを見ていると、権限エラー等でストリームがエラーに
                 // 落ちたときに無限ローディングのまま固まる
                 // （本番でFirestoreルール未反映のまま実際に発生した）。
                 if (snap.hasError) {
-                  return const Center(
-                    child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-                  );
+                  return LoadErrorView(onRetry: _retryLoad);
                 }
                 if (!snap.hasData) {
                   return Center(child: CircularProgressIndicator(color: appAccent(context)));

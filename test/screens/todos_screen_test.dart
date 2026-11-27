@@ -63,6 +63,27 @@ void main() {
     await controller.close();
   });
 
+  testWidgets('エラー表示の「再読み込み」でストリームを張り直し、データが来れば一覧に戻る', (tester) async {
+    final controller = StreamController<List<TodoItem>>.broadcast();
+    await tester.pumpWidget(wrap(controller.stream));
+
+    controller.addError(Exception('unavailable'));
+    await tester.pump();
+    expect(find.text('再読み込み'), findsOneWidget);
+
+    await tester.tap(find.text('再読み込み'));
+    await tester.pump();
+    // 張り直し直後はエラーを消してローディングに戻る。
+    expect(find.textContaining('読み込みに失敗'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    controller.add([sampleTodo]);
+    await tester.pump();
+    expect(find.text('温泉に行く'), findsOneWidget);
+
+    await controller.close();
+  });
+
   testWidgets('データが来たら一覧を表示する', (tester) async {
     final controller = StreamController<List<TodoItem>>();
     await tester.pumpWidget(wrap(controller.stream));

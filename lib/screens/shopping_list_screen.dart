@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/shopping_list_service.dart';
 import '../utils/app_theme.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/circular_action_button.dart';
 import '../widgets/confirm_delete_dialog.dart';
 
@@ -39,8 +40,17 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
   final _titleController = TextEditingController();
   final _quantityController = TextEditingController();
 
-  late final Stream<List<ShoppingItem>> _itemsStream =
+  late Stream<List<ShoppingItem>> _itemsStream = _buildItemsStream();
+
+  Stream<List<ShoppingItem>> _buildItemsStream() =>
       widget.itemsStreamOverride ?? _service.watchItems(widget.coupleId);
+
+  // 一時的な通信エラーで止まったストリームを張り直す（エラー表示の「再読み込み」）。
+  int _loadAttempt = 0;
+  void _retryLoad() => setState(() {
+    _itemsStream = _buildItemsStream();
+    _loadAttempt++; // 同じStreamが返っても購読し直させる
+  });
 
   @override
   void dispose() {
@@ -152,16 +162,13 @@ class _ShoppingListScreenState extends State<ShoppingListScreen> {
         children: [
           Expanded(
             child: StreamBuilder<List<ShoppingItem>>(
+              key: ValueKey(_loadAttempt),
               stream: _itemsStream,
               builder: (context, snap) {
                 // hasDataだけを見ていると、権限エラー等でストリームがエラーに
                 // 落ちたときに無限ローディングのまま固まる。
                 if (snap.hasError) {
-                  return const Center(
-                    child: Text('読み込みに失敗しました\nしばらくしてから開き直してください',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.6)),
-                  );
+                  return LoadErrorView(onRetry: _retryLoad);
                 }
                 if (!snap.hasData) {
                   return Center(child: CircularProgressIndicator(color: appAccent(context)));
