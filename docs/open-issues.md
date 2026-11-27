@@ -838,6 +838,8 @@ initStateと月送りのどちらからも結果を待たないため拾い手�
 
 2026-11-26、AIチャット（`AiChatScreen._sendImage`）の写真の選択（`pickImage`）と読み込み（`readAsBytes`）が`try/finally`だけで`catch`が無く、写真へのアクセス拒否などで失敗すると拾い手のない非同期例外になって、押したのに何も起きない経路を直した（reduce-debt枠、本PR。11-25の4画面の修正で漏れていた5つ目）。失敗は`debugPrint`に残し「写真を選べませんでした。写真へのアクセス許可を確認してもう一度お試しください」を`SnackBar`で出す。`test/screens/ai_chat_screen_test.dart`に失敗テストを追加した（`flutter analyze`・`flutter test`（900件）通過）。
 
+2026-11-27、起動時の`ThemeController.load()`・`AppLockController.load()`（`main()`が`runApp`の前に`await`する）が端末ストレージ（SharedPreferences）の読み出し失敗を捕まえておらず、失敗すると`runApp`に到達できずアプリが起動しない経路を直した（reduce-debt枠、本PR）。どちらも失敗は`debugPrint`に残して既定値で起動する（テーマは既定色。アプリロックは設定もPINも読めず解除手段が無いため、ロック無しで起動）。`test/services/theme_controller_test.dart`・`test/services/app_lock_controller_test.dart`に失敗時のテストを追加した（`flutter analyze`・`flutter test`（903件）通過）。
+
 ### P2 — 余力があれば
 
 | # | 課題 | 対応する要件 |

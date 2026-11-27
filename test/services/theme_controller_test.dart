@@ -50,4 +50,20 @@ void main() {
 
     expect(controller.accentName, before);
   });
+
+  test('設定の読み出しが失敗しても例外にせず既定の色で起動できる', () async {
+    final controller = ThemeController.instance;
+    final original = controller.settingsService;
+    addTearDown(() => controller.settingsService = original);
+    controller.settingsService = _ThrowingSettingsService();
+
+    await controller.load();
+
+    expect(controller.accentName, SettingsService.defaultAccentName);
+  });
+}
+
+class _ThrowingSettingsService extends SettingsService {
+  @override
+  Future<String> getAccentName() async => throw Exception('prefs unavailable');
 }
